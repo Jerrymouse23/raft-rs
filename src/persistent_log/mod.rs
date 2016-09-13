@@ -6,6 +6,7 @@
 //! *Note:* Your consuming application should not necessarily interface with this data. It is meant
 //! for internal use by the library, we simply chose not to be opinionated about how data is stored.
 mod mem;
+pub mod doc;
 
 use std::error;
 use std::fmt::Debug;

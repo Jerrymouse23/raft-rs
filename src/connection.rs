@@ -172,10 +172,10 @@ impl Connection {
     {
         scoped_trace!("{:?}: register", self);
         event_loop.register(self.stream().inner(), token, self.events(), poll_opt())
-                  .map_err(|error| {
-                      scoped_warn!("{:?}: reregister failed: {}", self, error);
-                      From::from(error)
-                  })
+            .map_err(|error| {
+                scoped_warn!("{:?}: reregister failed: {}", self, error);
+                From::from(error)
+            })
     }
 
     /// Reregisters the connection with the event loop.
@@ -188,10 +188,10 @@ impl Connection {
     {
         scoped_trace!("{:?}: reregister", self);
         event_loop.reregister(self.stream().inner(), token, self.events(), poll_opt())
-                  .map_err(|error| {
-                      scoped_warn!("{:?}: register failed: {}", self, error);
-                      From::from(error)
-                  })
+            .map_err(|error| {
+                scoped_warn!("{:?}: register failed: {}", self, error);
+                From::from(error)
+            })
     }
 
     /// Reconnects to the given peer ID and sends the preamble, advertising the

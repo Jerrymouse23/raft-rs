@@ -1,4 +1,9 @@
 use std::{error, fmt, result};
+use std::fs::File;
+use std::io::prelude::*;
+use bincode::SizeLimit;
+use bincode::rustc_serialize::{encode_into, encode, decode, decode_from};
+use std::fs::OpenOptions;
 
 use persistent_log::Log;
 use LogIndex;
@@ -13,7 +18,7 @@ use Term;
 /// No bounds checking is performed and attempted access to non-existing log
 /// indexes will panic.
 #[derive(Clone, Debug)]
-pub struct MemLog {
+pub struct DocLog {
     current_term: Term,
     voted_for: Option<ServerId>,
     entries: Vec<(Term, Vec<u8>)>,
@@ -40,17 +45,32 @@ impl error::Error for Error {
     }
 }
 
-impl MemLog {
-    pub fn new() -> MemLog {
-        MemLog {
+impl DocLog {
+    pub fn new() -> Self {
+        DocLog {
             current_term: Term(0),
             voted_for: None,
             entries: Vec::new(),
         }
     }
+
+    pub fn sync_term(&mut self) -> result::Result<Term, Error> {
+        let mut term_handler = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open("term")
+            .unwrap();
+
+        let term: Term = (decode_from(&mut term_handler, SizeLimit::Infinite)).unwrap();
+
+        self.current_term = term;
+
+        Ok(term)
+    }
 }
 
-impl Log for MemLog {
+impl Log for DocLog {
     type Error = Error;
 
     fn current_term(&self) -> result::Result<Term, Error> {
@@ -58,6 +78,22 @@ impl Log for MemLog {
     }
 
     fn set_current_term(&mut self, term: Term) -> result::Result<(), Error> {
+        let mut term_handler = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open("term")
+            .unwrap();
+
+        //  let mut voted_for_handler = match File::open("voted_for") {
+        // Ok(h) => h,
+        // Err(err) => panic!("file not found"),
+        // };
+
+        encode_into(&term, &mut term_handler, SizeLimit::Infinite);
+
+        // voted_for_handler.write_all(b_vote.as_slice());
+
         self.voted_for = None;
         Ok(self.current_term = term)
     }
@@ -112,13 +148,36 @@ mod test {
     use ServerId;
     use Term;
     use persistent_log::Log;
+    use std::fs::File;
+    use bincode::SizeLimit;
+    use bincode::rustc_serialize::{encode_into, encode, decode, decode_from};
+    use std::io::prelude::*;
+    use std::fs::OpenOptions;
+    use std::io::SeekFrom;
+
+    #[test]
+    fn test_sync() {
+        let mut f = OpenOptions::new().read(true).write(true).create(true).open("term").unwrap();
+
+        let term = Term(10);
+
+        encode_into(&term, &mut f, SizeLimit::Infinite).unwrap();
+
+        f.seek(SeekFrom::Start(0));
+
+        let decoded_term: Term = decode_from(&mut f, SizeLimit::Infinite).unwrap();
+
+        assert_eq!(decoded_term, term);
+    }
 
     #[test]
     fn test_current_term() {
-        let mut store = MemLog::new();
+        let mut store = DocLog::new();
         assert_eq!(Term(0), store.current_term().unwrap());
         store.set_voted_for(ServerId::from(0)).unwrap();
         store.set_current_term(Term(42)).unwrap();
+        let sync = store.sync_term().unwrap();
+        assert_eq!(Term(42), sync);
         assert_eq!(None, store.voted_for().unwrap());
         assert_eq!(Term(42), store.current_term().unwrap());
         store.inc_current_term().unwrap();
@@ -127,7 +186,7 @@ mod test {
 
     #[test]
     fn test_voted_for() {
-        let mut store = MemLog::new();
+        let mut store = DocLog::new();
         assert_eq!(None, store.voted_for().unwrap());
         let id = ServerId::from(0);
         store.set_voted_for(id).unwrap();
@@ -136,7 +195,7 @@ mod test {
 
     #[test]
     fn test_append_entries() {
-        let mut store = MemLog::new();
+        let mut store = DocLog::new();
         assert_eq!(LogIndex::from(0), store.latest_log_index().unwrap());
         assert_eq!(Term::from(0), store.latest_log_term().unwrap());
 

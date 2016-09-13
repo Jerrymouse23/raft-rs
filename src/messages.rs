@@ -15,8 +15,8 @@ pub fn server_connection_preamble(id: ServerId, addr: &SocketAddr) -> Rc<Builder
     let mut message = Builder::new_default();
     {
         let mut server = message.init_root::<connection_preamble::Builder>()
-                                .init_id()
-                                .init_server();
+            .init_id()
+            .init_server();
         server.set_addr(&format!("{}", addr));
         server.set_id(id.as_u64());
     }
@@ -27,8 +27,8 @@ pub fn client_connection_preamble(id: ClientId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
         message.init_root::<connection_preamble::Builder>()
-               .init_id()
-               .set_client(id.as_bytes());
+            .init_id()
+            .set_client(id.as_bytes());
     }
     Rc::new(message)
 }
@@ -44,7 +44,7 @@ pub fn append_entries_request(term: Term,
     let mut message = Builder::new_default();
     {
         let mut request = message.init_root::<message::Builder>()
-                                 .init_append_entries_request();
+            .init_append_entries_request();
         request.set_term(term.as_u64());
         request.set_prev_log_index(prev_log_index.as_u64());
         request.set_prev_log_term(prev_log_term.as_u64());
@@ -66,7 +66,7 @@ pub fn append_entries_response_success(term: Term,
     let mut message = Builder::new_default();
     {
         let mut response = message.init_root::<message::Builder>()
-                                  .init_append_entries_response();
+            .init_append_entries_response();
         response.set_term(term.as_u64());
         response.set_success(log_index.as_u64());
     }
@@ -77,7 +77,7 @@ pub fn append_entries_response_stale_term(term: Term) -> Rc<Builder<HeapAllocato
     let mut message = Builder::new_default();
     {
         let mut response = message.init_root::<message::Builder>()
-                                  .init_append_entries_response();
+            .init_append_entries_response();
         response.set_term(term.as_u64());
         response.set_stale_term(());
     }
@@ -90,7 +90,7 @@ pub fn append_entries_response_inconsistent_prev_entry(term: Term,
     let mut message = Builder::new_default();
     {
         let mut response = message.init_root::<message::Builder>()
-                                  .init_append_entries_response();
+            .init_append_entries_response();
         response.set_term(term.as_u64());
         response.set_inconsistent_prev_entry(index.into());
     }
@@ -103,7 +103,7 @@ pub fn append_entries_response_internal_error(term: Term,
     let mut message = Builder::new_default();
     {
         let mut response = message.init_root::<message::Builder>()
-                                  .init_append_entries_response();
+            .init_append_entries_response();
         response.set_term(term.as_u64());
         response.set_internal_error(error);
     }
@@ -119,7 +119,7 @@ pub fn request_vote_request(term: Term,
     let mut message = Builder::new_default();
     {
         let mut request = message.init_root::<message::Builder>()
-                                 .init_request_vote_request();
+            .init_request_vote_request();
         request.set_term(term.as_u64());
         request.set_last_log_index(last_log_index.as_u64());
         request.set_last_log_term(last_log_term.as_u64());
@@ -131,7 +131,7 @@ pub fn request_vote_response_granted(term: Term) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
         let mut response = message.init_root::<message::Builder>()
-                                  .init_request_vote_response();
+            .init_request_vote_response();
         response.set_term(term.as_u64());
         response.set_granted(());
     }
@@ -142,7 +142,7 @@ pub fn request_vote_response_stale_term(term: Term) -> Rc<Builder<HeapAllocator>
     let mut message = Builder::new_default();
     {
         let mut response = message.init_root::<message::Builder>()
-                                  .init_request_vote_response();
+            .init_request_vote_response();
         response.set_term(term.as_u64());
         response.set_stale_term(());
     }
@@ -153,7 +153,7 @@ pub fn request_vote_response_already_voted(term: Term) -> Rc<Builder<HeapAllocat
     let mut message = Builder::new_default();
     {
         let mut response = message.init_root::<message::Builder>()
-                                  .init_request_vote_response();
+            .init_request_vote_response();
         response.set_term(term.as_u64());
         response.set_already_voted(());
     }
@@ -164,7 +164,7 @@ pub fn request_vote_response_inconsistent_log(term: Term) -> Rc<Builder<HeapAllo
     let mut message = Builder::new_default();
     {
         let mut response = message.init_root::<message::Builder>()
-                                  .init_request_vote_response();
+            .init_request_vote_response();
         response.set_term(term.as_u64());
         response.set_inconsistent_log(());
     }
@@ -175,7 +175,7 @@ pub fn request_vote_response_internal_error(term: Term, error: &str) -> Rc<Build
     let mut message = Builder::new_default();
     {
         let mut response = message.init_root::<message::Builder>()
-                                  .init_request_vote_response();
+            .init_request_vote_response();
         response.set_term(term.as_u64());
         response.set_internal_error(error);
     }
@@ -188,7 +188,7 @@ pub fn ping_request() -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
         message.init_root::<client_request::Builder>()
-               .init_ping();
+            .init_ping();
     }
     message
 }
@@ -199,8 +199,8 @@ pub fn query_request(entry: &[u8]) -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
         message.init_root::<client_request::Builder>()
-               .init_query()
-               .set_query(entry);
+            .init_query()
+            .set_query(entry);
     }
     message
 }
@@ -212,8 +212,8 @@ pub fn proposal_request(entry: &[u8]) -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
         message.init_root::<client_request::Builder>()
-               .init_proposal()
-               .set_entry(entry);
+            .init_proposal()
+            .set_entry(entry);
     }
     message
 }
@@ -224,8 +224,8 @@ pub fn command_response_success(data: &[u8]) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
         message.init_root::<client_response::Builder>()
-               .init_proposal()
-               .set_success(data);
+            .init_proposal()
+            .set_success(data);
     }
     Rc::new(message)
 }
@@ -234,8 +234,8 @@ pub fn command_response_unknown_leader() -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
         message.init_root::<client_response::Builder>()
-               .init_proposal()
-               .set_unknown_leader(());
+            .init_proposal()
+            .set_unknown_leader(());
     }
     Rc::new(message)
 }
@@ -244,8 +244,8 @@ pub fn command_response_not_leader(leader_hint: &SocketAddr) -> Rc<Builder<HeapA
     let mut message = Builder::new_default();
     {
         message.init_root::<client_response::Builder>()
-               .init_proposal()
-               .set_not_leader(&format!("{}", leader_hint));
+            .init_proposal()
+            .set_not_leader(&format!("{}", leader_hint));
     }
     Rc::new(message)
 }

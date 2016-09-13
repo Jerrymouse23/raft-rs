@@ -113,10 +113,8 @@ impl<L, M> Server<L, M>
 
         for (peer_id, peer_addr) in peers {
             let token: Token = try!(server.connections
-                                          .insert(try!(Connection::peer(peer_id, peer_addr)))
-                                          .map_err(|_| {
-                                              Error::Raft(RaftError::ConnectionLimitReached)
-                                          }));
+                .insert(try!(Connection::peer(peer_id, peer_addr)))
+                .map_err(|_| Error::Raft(RaftError::ConnectionLimitReached)));
             scoped_assert!(server.peer_tokens.insert(peer_id, token).is_none());
 
             try!(server.connections[token].register(&mut event_loop, token));
@@ -227,7 +225,7 @@ impl<L, M> Server<L, M>
             // is already registered, which is by default 65,536. We use a
             // maximum of one timeout per peer, so this unwrap should be safe.
             let handle = event_loop.timeout_ms(ServerTimeout::Consensus(timeout), duration)
-                                   .unwrap();
+                .unwrap();
             self.consensus_timeouts
                 .insert(timeout, handle)
                 .map(|handle| {
@@ -250,8 +248,8 @@ impl<L, M> Server<L, M>
             ConnectionKind::Peer(..) => {
                 // Crash if reseting the connection fails.
                 let (timeout, handle) = self.connections[token]
-                                            .reset_peer(event_loop, token)
-                                            .unwrap();
+                    .reset_peer(event_loop, token)
+                    .unwrap();
 
                 scoped_assert!(self.reconnection_timeouts.insert(token, handle).is_none(),
                                "timeout already registered: {:?}",
@@ -308,8 +306,8 @@ impl<L, M> Server<L, M>
                             self.connections[token].set_addr(peer_addr);
 
                             let prev_token = Some(self.peer_tokens
-                                                      .insert(peer_id, token)
-                                                      .expect("peer token not found"));
+                                .insert(peer_id, token)
+                                .expect("peer token not found"));
 
                             // Close the existing connection, if any.
                             // Currently, prev_token is never `None`; see above.
@@ -339,7 +337,7 @@ impl<L, M> Server<L, M>
                             scoped_debug!("received new client connection from {}", client_id);
                             self.connections[token].set_kind(ConnectionKind::Client(client_id));
                             let prev_token = self.client_tokens
-                                                 .insert(client_id, token);
+                                .insert(client_id, token);
                             scoped_assert!(prev_token.is_none(),
                                            "{:?}: two clients connected with the same id: {:?}",
                                            self,
@@ -832,7 +830,7 @@ mod tests {
         // Send a test message (the type is not important).
         let mut actions = Actions::new();
         actions.peer_messages
-               .push((peer_id, messages::server_connection_preamble(peer_id, &peer_addr)));
+            .push((peer_id, messages::server_connection_preamble(peer_id, &peer_addr)));
         server.execute_actions(&mut event_loop, actions);
 
         assert_eq!(peer_id, read_server_preamble(&mut in_stream));

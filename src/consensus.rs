@@ -71,13 +71,13 @@ pub struct Actions {
 impl fmt::Debug for Actions {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         let peer_messages: Vec<ServerId> = self.peer_messages
-                                               .iter()
-                                               .map(|peer_message| peer_message.0)
-                                               .collect();
+            .iter()
+            .map(|peer_message| peer_message.0)
+            .collect();
         let client_messages: Vec<ClientId> = self.client_messages
-                                                 .iter()
-                                                 .map(|client_message| client_message.0)
-                                                 .collect();
+            .iter()
+            .map(|client_message| client_message.0)
+            .collect();
         write!(fmt,
                "Actions {{ peer_messages: {:?}, client_messages: {:?}, clear_timeouts: {:?}, \
                 timeouts: {:?}, clear_peer_messages: {} }}",
@@ -262,9 +262,8 @@ impl<L, M> Consensus<L, M>
                 let latest_index = self.latest_log_index();
                 let latest_term = self.log.latest_log_term().unwrap();
 
-                let message = messages::request_vote_request(current_term,
-                                                             latest_index,
-                                                             latest_term);
+                let message =
+                    messages::request_vote_request(current_term, latest_index, latest_term);
                 actions.peer_messages.push((peer, message));
             }
             ConsensusState::Follower => {
@@ -341,13 +340,12 @@ impl<L, M> Consensus<L, M>
                                               num_entries,
                                               from);
 
-                                let entries_vec: Vec<(Term, &[u8])> =
-                                    entries.iter()
-                                           .map(|entry| {
-                                               (Term::from(entry.get_term()),
-                                                entry.get_data().unwrap_or(b""))
-                                           })
-                                           .collect();
+                                let entries_vec: Vec<(Term, &[u8])> = entries.iter()
+                                    .map(|entry| {
+                                        (Term::from(entry.get_term()),
+                                         entry.get_data().unwrap_or(b""))
+                                    })
+                                    .collect();
 
                                 self.log
                                     .append_entries(leader_prev_log_index + 1, &entries_vec)
@@ -491,8 +489,8 @@ impl<L, M> Consensus<L, M>
             let until_index = local_latest_log_index + 1;
 
             let entries = self.log
-                              .entries(LogIndex::from(from_index), LogIndex::from(until_index))
-                              .unwrap();
+                .entries(LogIndex::from(from_index), LogIndex::from(until_index))
+                .unwrap();
 
             let message = messages::append_entries_request(local_term,
                                                            prev_log_index,
@@ -541,7 +539,7 @@ impl<L, M> Consensus<L, M>
         let message = if candidate_term < local_term {
             messages::request_vote_response_stale_term(new_local_term)
         } else if candidate_log_term < self.latest_log_term() ||
-                         candidate_log_index < self.latest_log_index() {
+                                candidate_log_index < self.latest_log_index() {
             messages::request_vote_response_inconsistent_log(new_local_term)
         } else {
             match self.log.voted_for().unwrap() {
@@ -605,8 +603,8 @@ impl<L, M> Consensus<L, M>
             actions.client_messages.push((from, messages::command_response_unknown_leader()));
         } else if self.is_follower() {
             let message = messages::command_response_not_leader(&self.peers[&self.follower_state
-                                                                                 .leader
-                                                                                 .unwrap()]);
+                .leader
+                .unwrap()]);
             actions.client_messages.push((from, message));
         } else if let Ok(entry) = request.get_entry() {
             let prev_log_index = self.latest_log_index();
@@ -650,8 +648,8 @@ impl<L, M> Consensus<L, M>
             actions.client_messages.push((from, messages::command_response_unknown_leader()));
         } else if self.is_follower() {
             let message = messages::command_response_not_leader(&self.peers[&self.follower_state
-                                                                                 .leader
-                                                                                 .unwrap()]);
+                .leader
+                .unwrap()]);
             actions.client_messages.push((from, message));
         } else {
             // TODO: This is probably not exactly safe.
@@ -669,7 +667,7 @@ impl<L, M> Consensus<L, M>
         let mut message = Builder::new_default();
         {
             let mut request = message.init_root::<message::Builder>()
-                                     .init_append_entries_request();
+                .init_append_entries_request();
             request.set_term(self.current_term().as_u64());
             request.set_prev_log_index(self.latest_log_index().as_u64());
             request.set_prev_log_term(self.log.latest_log_term().unwrap().as_u64());
@@ -835,7 +833,7 @@ impl<L, M> Consensus<L, M>
     fn majority(&self) -> usize {
         let peers = self.peers.len();
         let cluster_members = peers.checked_add(1)
-                                   .expect(&format!("unable to support {} cluster members", peers));
+            .expect(&format!("unable to support {} cluster members", peers));
         (cluster_members >> 1) + 1
     }
 }
@@ -894,23 +892,17 @@ mod tests {
 
     fn new_cluster(size: u64) -> HashMap<ServerId, TestPeer> {
         let ids: HashMap<ServerId, SocketAddr> = (0..size)
-                                                     .map(Into::into)
-                                                     .map(|id| {
-                                                         (id,
-                                                          SocketAddr::from_str(&format!("127.0.0.\
-                                                                                         1:{}",
-                                                                                        id))
-                                                              .unwrap())
-                                                     })
-                                                     .collect();
+            .map(Into::into)
+            .map(|id| (id, SocketAddr::from_str(&format!("127.0.0.1:{}", id)).unwrap()))
+            .collect();
         ids.iter()
-           .map(|(&id, _)| {
-               let mut peers = ids.clone();
-               peers.remove(&id);
-               let store = MemLog::new();
-               (id, Consensus::new(id, peers, store, NullStateMachine))
-           })
-           .collect()
+            .map(|(&id, _)| {
+                let mut peers = ids.clone();
+                peers.remove(&id);
+                let store = MemLog::new();
+                (id, Consensus::new(id, peers, store, NullStateMachine))
+            })
+            .collect()
     }
 
     fn into_reader<A>(message: &Builder<A>) -> Reader<OwnedSegments>
@@ -1076,14 +1068,14 @@ mod tests {
 
         let mut peer_0_actions = Actions::new();
         peers.get_mut(peer_0)
-             .unwrap()
-             .apply_timeout(ConsensusTimeout::Heartbeat(*peer_1), &mut peer_0_actions);
+            .unwrap()
+            .apply_timeout(ConsensusTimeout::Heartbeat(*peer_1), &mut peer_0_actions);
         assert!(peers[peer_0].is_leader());
 
         let mut peer_1_actions = Actions::new();
         peers.get_mut(peer_1)
-             .unwrap()
-             .apply_timeout(ConsensusTimeout::Election, &mut peer_1_actions);
+            .unwrap()
+            .apply_timeout(ConsensusTimeout::Election, &mut peer_1_actions);
         assert!(peers[peer_1].is_candidate());
 
         // Apply candidate messages.
@@ -1117,8 +1109,8 @@ mod tests {
             let client = ClientId::new();
 
             peers.get_mut(&leader)
-                 .unwrap()
-                 .apply_client_message(client, &proposal, &mut actions);
+                .unwrap()
+                .apply_client_message(client, &proposal, &mut actions);
 
             let client_messages = apply_actions(leader, actions, &mut peers);
             assert_eq!(1, client_messages.len());
@@ -1187,8 +1179,8 @@ mod tests {
         b.iter(|| {
             let mut actions = Actions::new();
             peers.get_mut(&leader)
-                 .unwrap()
-                 .apply_client_message(client, &proposal, &mut actions);
+                .unwrap()
+                .apply_client_message(client, &proposal, &mut actions);
 
             let client_messages = apply_actions(leader, actions, &mut peers);
             assert_eq!(1, client_messages.len());

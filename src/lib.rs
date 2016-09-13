@@ -89,6 +89,8 @@ extern crate wrapped_enum;
 extern crate env_logger;
 #[cfg(feature = "serde")]
 extern crate serde;
+extern crate bincode;
+extern crate rustc_serialize;
 
 /// Prepares the environment testing. Should be called as the first line of every test with the
 /// name of the test as the only argument.
@@ -183,7 +185,7 @@ impl fmt::Display for Error {
 }
 
 /// The term of a log entry.
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord,RustcEncodable,RustcDecodable)]
 pub struct Term(u64);
 impl Term {
     pub fn as_u64(self) -> u64 {

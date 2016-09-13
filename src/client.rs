@@ -118,7 +118,7 @@ impl Client {
                             scoped_debug!("received response Success");
                             self.leader_connection = Some(connection);
                             return data.map(Vec::from)
-                                       .map_err(|e| e.into()); // Exit the function.
+                                .map_err(|e| e.into()); // Exit the function.
                         }
                         Ok(command_response::Which::UnknownLeader(())) => {
                             scoped_debug!("received response UnknownLeader");
