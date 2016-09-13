@@ -2,8 +2,8 @@
 
 > Note: This project is of **alpha** quality. **APIs are still in some flux, but they are ready for you to play with them.** A stable version will be released when we feel it is ready.
 
-[![Build Status](https://img.shields.io/travis/Hoverbear/raft-rs/master.svg)](https://travis-ci.org/Hoverbear/raft-rs)
-[![Coverage Status](https://img.shields.io/coveralls/Hoverbear/raft-rs/master.svg)](https://coveralls.io/github/Hoverbear/raft-rs)
+master: [![Build Status](https://travis-ci.org/paenko/PaenkoDb.svg?branch=master)](https://travis-ci.org/paenko/PaenkoDb)
+dev: [![Build Status](https://travis-ci.org/paenko/PaenkoDb.svg?branch=dev)](https://travis-ci.org/paenko/PaenkoDb)
 
 **[Development Updates](http://www.hoverbear.org/tag/raft/)**
 
