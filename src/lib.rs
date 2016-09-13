@@ -265,7 +265,7 @@ impl fmt::Display for LogIndex {
 
 /// The ID of a Raft server. Must be unique among the participants in a
 /// consensus group.
-#[derive(Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, RustcEncodable, RustcDecodable)]
 pub struct ServerId(u64);
 impl ServerId {
     fn as_u64(self) -> u64 {

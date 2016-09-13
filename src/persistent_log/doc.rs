@@ -54,6 +54,20 @@ impl DocLog {
         }
     }
 
+    pub fn sync_voted_for(&mut self) -> result::Result<ServerId, Error> {
+        let mut voted_for_handler = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open("voted_for")
+            .unwrap();
+
+        let voted_for_decode: ServerId = (decode_from(&mut voted_for_handler, SizeLimit::Infinite)).unwrap();
+        self.voted_for = Some(voted_for_decode);
+
+        Ok(voted_for_decode)
+    }
+
     pub fn sync_term(&mut self) -> result::Result<Term, Error> {
         let mut term_handler = OpenOptions::new()
             .read(true)
@@ -100,7 +114,10 @@ impl Log for DocLog {
 
     fn inc_current_term(&mut self) -> result::Result<Term, Error> {
         self.voted_for = None;
-        self.current_term = self.current_term + 1;
+        let new_term = self.sync_term().unwrap() + 1;
+        self.set_current_term(new_term);
+        println!("{}", new_term);
+        //self.set_current_term(self.current_term().unwrap() + 1).unwrap();
         self.current_term()
     }
 
@@ -109,6 +126,15 @@ impl Log for DocLog {
     }
 
     fn set_voted_for(&mut self, address: ServerId) -> result::Result<(), Error> {
+        let mut voted_for_handler = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open("voted_for")
+            .unwrap();
+
+        encode_into(&address, &mut voted_for_handler, SizeLimit::Infinite);
+
         Ok(self.voted_for = Some(address))
     }
 
@@ -156,7 +182,7 @@ mod test {
     use std::io::SeekFrom;
 
     #[test]
-    fn test_sync() {
+    fn test_sync_term() {
         let mut f = OpenOptions::new().read(true).write(true).create(true).open("term").unwrap();
 
         let term = Term(10);
@@ -167,7 +193,24 @@ mod test {
 
         let decoded_term: Term = decode_from(&mut f, SizeLimit::Infinite).unwrap();
 
+        println!("{}",decoded_term);
+
         assert_eq!(decoded_term, term);
+    }
+
+    #[test]
+    fn test_sync_voted_for() {
+        let mut f = OpenOptions::new().read(true).write(true).create(true).open("voted_for").unwrap();
+
+        let voted_for = ServerId(5);
+
+        encode_into(&voted_for, &mut f, SizeLimit::Infinite).unwrap();
+
+        f.seek(SeekFrom::Start(0));
+
+        let decoded_voted_for: ServerId = decode_from(&mut f, SizeLimit::Infinite).unwrap();
+        
+        assert_eq!(decoded_voted_for, voted_for);
     }
 
     #[test]
@@ -182,15 +225,27 @@ mod test {
         assert_eq!(Term(42), store.current_term().unwrap());
         store.inc_current_term().unwrap();
         assert_eq!(Term(43), store.current_term().unwrap());
+        store.current_term = Term(44);
+        let sync = store.sync_term().unwrap();
+        assert_eq!(sync,Term(43));
     }
 
     #[test]
     fn test_voted_for() {
         let mut store = DocLog::new();
+        
         assert_eq!(None, store.voted_for().unwrap());
         let id = ServerId::from(0);
         store.set_voted_for(id).unwrap();
         assert_eq!(Some(id), store.voted_for().unwrap());
+        //sync
+        store.set_voted_for(ServerId(5)).unwrap();
+        let sync = store.sync_voted_for().unwrap();
+        assert_eq!(ServerId(5), sync);
+        store.voted_for = Some(ServerId(6));
+        let sync = store.sync_voted_for().unwrap();
+        assert_eq!(ServerId(5), sync);
+
     }
 
     #[test]
