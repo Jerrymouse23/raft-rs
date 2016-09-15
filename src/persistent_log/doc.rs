@@ -10,13 +10,6 @@ use LogIndex;
 use ServerId;
 use Term;
 
-/// This is a `Log` implementation that stores entries in a simple in-memory vector. Other data
-/// is stored in a struct. It is chiefly intended for testing.
-///
-/// # Panic
-///
-/// No bounds checking is performed and attempted access to non-existing log
-/// indexes will panic.
 #[derive(Clone, Debug)]
 pub struct DocLog {
     current_term: Term,
@@ -62,7 +55,8 @@ impl DocLog {
             .open("voted_for")
             .unwrap();
 
-        let voted_for_decode: ServerId = (decode_from(&mut voted_for_handler, SizeLimit::Infinite)).unwrap();
+        let voted_for_decode: ServerId = (decode_from(&mut voted_for_handler, SizeLimit::Infinite))
+            .unwrap();
         self.voted_for = Some(voted_for_decode);
 
         Ok(voted_for_decode)
@@ -99,14 +93,7 @@ impl Log for DocLog {
             .open("term")
             .unwrap();
 
-        //  let mut voted_for_handler = match File::open("voted_for") {
-        // Ok(h) => h,
-        // Err(err) => panic!("file not found"),
-        // };
-
         encode_into(&term, &mut term_handler, SizeLimit::Infinite);
-
-        // voted_for_handler.write_all(b_vote.as_slice());
 
         self.voted_for = None;
         Ok(self.current_term = term)
@@ -117,7 +104,7 @@ impl Log for DocLog {
         let new_term = self.sync_term().unwrap() + 1;
         self.set_current_term(new_term);
         println!("{}", new_term);
-        //self.set_current_term(self.current_term().unwrap() + 1).unwrap();
+        // self.set_current_term(self.current_term().unwrap() + 1).unwrap();
         self.current_term()
     }
 
@@ -193,14 +180,15 @@ mod test {
 
         let decoded_term: Term = decode_from(&mut f, SizeLimit::Infinite).unwrap();
 
-        println!("{}",decoded_term);
+        println!("{}", decoded_term);
 
         assert_eq!(decoded_term, term);
     }
 
     #[test]
     fn test_sync_voted_for() {
-        let mut f = OpenOptions::new().read(true).write(true).create(true).open("voted_for").unwrap();
+        let mut f =
+            OpenOptions::new().read(true).write(true).create(true).open("voted_for").unwrap();
 
         let voted_for = ServerId(5);
 
@@ -209,7 +197,7 @@ mod test {
         f.seek(SeekFrom::Start(0));
 
         let decoded_voted_for: ServerId = decode_from(&mut f, SizeLimit::Infinite).unwrap();
-        
+
         assert_eq!(decoded_voted_for, voted_for);
     }
 
@@ -227,18 +215,18 @@ mod test {
         assert_eq!(Term(43), store.current_term().unwrap());
         store.current_term = Term(44);
         let sync = store.sync_term().unwrap();
-        assert_eq!(sync,Term(43));
+        assert_eq!(sync, Term(43));
     }
 
     #[test]
     fn test_voted_for() {
         let mut store = DocLog::new();
-        
+
         assert_eq!(None, store.voted_for().unwrap());
         let id = ServerId::from(0);
         store.set_voted_for(id).unwrap();
         assert_eq!(Some(id), store.voted_for().unwrap());
-        //sync
+        // sync
         store.set_voted_for(ServerId(5)).unwrap();
         let sync = store.sync_voted_for().unwrap();
         assert_eq!(ServerId(5), sync);
