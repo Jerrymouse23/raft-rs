@@ -14,8 +14,8 @@ extern crate env_logger;
 extern crate scoped_log;
 
 extern crate docopt;
-extern crate serde;
-extern crate serde_json;
+// extern crate serde;
+// extern crate serde_json;
 extern crate rustc_serialize;
 extern crate bincode;
 
@@ -25,7 +25,9 @@ use std::error::Error;
 use rustful::{Server, Context, Response, TreeRouter, Router};
 use rustful::Method;
 use std::net::{SocketAddr, ToSocketAddrs};
-use serde_json::Value;
+// use serde_json::Value;
+use bincode::rustc_serialize::{encode, decode};
+use bincode::SizeLimit;
 use docopt::Docopt;
 
 use raft::{Client, state_machine, persistent_log, ServerId};
@@ -72,11 +74,16 @@ struct Args {
     arg_node_address: Vec<String>,
 }
 
-#[derive(Serialize,Deserialize)]
+#[derive(RustcEncodable,RustcDecodable)]
 pub enum Message {
     Get(Uuid),
     Put(String, Vec<u8>),
     Remove(Uuid),
+}
+
+pub struct Document {
+    filename: String,
+    payload: Vec<u8>,
 }
 
 fn main() {
@@ -152,12 +159,12 @@ fn get(args: &Args) {
 
     let mut client = Client::new(cluster);
 
-
     let id: Uuid = Uuid::parse_str(&args.arg_doc_id.clone().unwrap()).unwrap();
 
-    let payload = serde_json::to_string(&Message::Get(id)).unwrap();
+    // let payload = serde_json::to_string(&Message::Get(id)).unwrap();
+    let payload = encode(&Message::Get(id), SizeLimit::Infinite).unwrap();
 
-    let response = client.query(payload.as_bytes()).unwrap();
+    let response = client.query(payload.as_slice()).unwrap();
 
     let mut handler = OpenOptions::new()
         .read(false)
@@ -182,9 +189,9 @@ fn put(args: &Args) {
 
     handler.read_to_end(&mut buffer);
 
-    let payload = serde_json::to_string(&Message::Put(filename, buffer)).unwrap();
+    let payload = encode(&Message::Put(filename, buffer), SizeLimit::Infinite).unwrap();
 
-    let response = client.propose(payload.as_bytes()).unwrap();
+    let response = client.propose(payload.as_slice()).unwrap();
 
     println!("{}", String::from_utf8(response).unwrap())
 }
@@ -214,8 +221,7 @@ impl DocumentStateMachine {
 
 impl state_machine::StateMachine for DocumentStateMachine {
     fn apply(&mut self, new_value: &[u8]) -> Vec<u8> {
-        let string = String::from_utf8_lossy(new_value);
-        let message = serde_json::from_str(&string).unwrap();
+        let message = decode(&new_value).unwrap();
 
         let response = match message {
             Get(id) => {
@@ -225,9 +231,9 @@ impl state_machine::StateMachine for DocumentStateMachine {
                     Ok(mut h) => {
                         let mut content: Vec<u8> = Vec::new();
                         h.read_to_end(&mut content);
-                        serde_json::to_string(&content)
+                        encode(&content, SizeLimit::Infinite)
                     }
-                    Err(err) => serde_json::to_string(&"Entry not found"),
+                    Err(err) => encode(&"Entry not found", SizeLimit::Infinite),
                 };
 
                 response
@@ -247,9 +253,9 @@ impl state_machine::StateMachine for DocumentStateMachine {
                     Ok(mut h) => {
                         h.write_all(bytes.as_slice());
 
-                        serde_json::to_string(&format!("{}", id))
+                        encode(&format!("{}", id), SizeLimit::Infinite)
                     }
-                    Err(err) => serde_json::to_string(&"Error with writing"),
+                    Err(err) => encode(&"Error with writing", SizeLimit::Infinite),
                 };
 
                 response
@@ -258,20 +264,19 @@ impl state_machine::StateMachine for DocumentStateMachine {
                 self.map.remove(&id);
 
                 let response = match remove_file(format!("data/{}", id)) {
-                    Ok(()) => serde_json::to_string(&"Document deleted!"),
-                    Err(err) => serde_json::to_string(&"Could not delete document"),
+                    Ok(()) => encode(&"Document deleted!", SizeLimit::Infinite),
+                    Err(err) => encode(&"Could not delete document", SizeLimit::Infinite),
                 };
 
                 response
             }
         };
 
-        response.unwrap().into_bytes()
+        response.unwrap()
     }
 
     fn query(&self, query: &[u8]) -> Vec<u8> {
-        let string = String::from_utf8_lossy(query);
-        let message = serde_json::from_str(&string).unwrap();
+        let message = decode(&query).unwrap();
 
         let response = match message {
             Get(id) => {
@@ -281,17 +286,17 @@ impl state_machine::StateMachine for DocumentStateMachine {
                     Ok(mut h) => {
                         let mut content: Vec<u8> = Vec::new();
                         h.read_to_end(&mut content);
-                        serde_json::to_string(&content)
+                        encode(&content, SizeLimit::Infinite)
                     }
-                    Err(err) => serde_json::to_string(&"Entry not found"),
+                    Err(err) => encode(&"Entry not found", SizeLimit::Infinite),
                 };
 
-                response.unwrap().into_bytes()
+                response.unwrap()
             } 
             _ => {
-                let response = serde_json::to_string(&"Wrong usage of .query()");
+                let response = encode(&"Wrong usage of .query()", SizeLimit::Infinite);
 
-                response.unwrap().into_bytes()
+                response.unwrap()
             }
         };
 
@@ -299,13 +304,11 @@ impl state_machine::StateMachine for DocumentStateMachine {
     }
 
     fn snapshot(&self) -> Vec<u8> {
-        serde_json::to_string(&self.map)
-            .unwrap()
-            .into_bytes()
+        encode(&self.map, SizeLimit::Infinite).unwrap()
     }
 
     fn restore_snapshot(&mut self, snapshot_value: Vec<u8>) {
-        self.map = serde_json::from_str(&String::from_utf8_lossy(&snapshot_value)).unwrap();
+        self.map = decode(&snapshot_value).unwrap();
         ()
     }
 }
