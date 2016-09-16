@@ -40,11 +40,15 @@ impl error::Error for Error {
 
 impl DocLog {
     pub fn new() -> Self {
-        DocLog {
+        let mut d = DocLog {
             current_term: Term(0),
             voted_for: None,
             entries: Vec::new(),
-        }
+        };
+
+        d.set_current_term(Term(0));
+
+        d
     }
 
     pub fn sync_voted_for(&mut self) -> result::Result<ServerId, Error> {
