@@ -19,6 +19,8 @@ extern crate serde_json;
 extern crate rustc_serialize;
 extern crate bincode;
 
+extern crate uuid;
+
 use std::error::Error;
 use rustful::{Server, Context, Response, TreeRouter, Router};
 use rustful::Method;
@@ -29,7 +31,15 @@ use docopt::Docopt;
 use raft::{Client, state_machine, persistent_log, ServerId};
 use std::collections::HashMap;
 
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::fs::remove_file;
+use std::io::Read;
+use std::io::Write;
+
 use Message::*;
+
+use uuid::Uuid;
 
 static USAGE: &'static str = "
 A replicated document database.
@@ -44,7 +54,7 @@ Commands:
 
 Usage:
     document get <doc_id> <node-address>
-    document put <node-address>
+    document put <filename>
     document remove <node-address>
     document server <id> [<node-id> <node-address>]...
 ";
@@ -56,14 +66,17 @@ struct Args {
     cmd_put: bool,
     cmd_remove: bool,
     arg_id: Option<u64>,
+    arg_doc_id: Option<String>,
+    arg_filename: Option<String>,
     arg_node_id: Vec<u64>,
     arg_node_address: Vec<String>,
 }
 
 #[derive(Serialize,Deserialize)]
 pub enum Message {
-    Get(u64),
-    Put,
+    Get(Uuid),
+    Put(String, Vec<u8>),
+    Remove(Uuid),
 }
 
 fn main() {
@@ -75,27 +88,27 @@ fn main() {
 
     if args.cmd_server {
 
-
-        let mut router = TreeRouter::new();
-
-        router.insert(Method::Get,
-                      "documents",
-                      get_all_documents as fn(Context, Response));
-        router.insert(Method::Post,
-                      "documents",
-                      post_new_document as fn(Context, Response));
-
-        let server_result = Server {
-                host: 9000.into(),
-                handlers: router,
-                ..Server::default()
-            }
-            .run();
-
-        match server_result {
-            Ok(_server) => println!("Server started"),
-            Err(e) => error!("could not start server: {}", e.description()),
-        }
+        //        let mut router = TreeRouter::new();
+        //
+        // router.insert(Method::Get,
+        // "documents",
+        // get_all_documents as fn(Context, Response));
+        // router.insert(Method::Post,
+        // "documents",
+        // post_new_document as fn(Context, Response));
+        //
+        // let server_result = Server {
+        // host: 9000.into(),
+        // handlers: router,
+        // ..Server::default()
+        // }
+        // .run();
+        //
+        // match server_result {
+        // Ok(_server) => println!("Server started"),
+        // Err(e) => error!("could not start server: {}", e.description()),
+        // }
+        //
 
         server(&args);
 
@@ -135,11 +148,45 @@ fn server(args: &Args) {
 }
 
 fn get(args: &Args) {
-    unimplemented!()
+    let cluster = args.arg_node_address.iter().map(|v| parse_addr(&v)).collect();
+
+    let mut client = Client::new(cluster);
+
+
+    let id: Uuid = Uuid::parse_str(&args.arg_doc_id.clone().unwrap()).unwrap();
+
+    let payload = serde_json::to_string(&Message::Get(id)).unwrap();
+
+    let response = client.query(payload.as_bytes()).unwrap();
+
+    let mut handler = OpenOptions::new()
+        .read(false)
+        .write(true)
+        .create(true)
+        .open("temp")
+        .unwrap();
+
+    handler.write_all(response.as_slice());
+
+    println!("Written");
 }
 
 fn put(args: &Args) {
-    unimplemented!()
+    let cluster = args.arg_node_address.iter().map(|v| parse_addr(&v)).collect();
+
+    let mut client = Client::new(cluster);
+
+    let filename = (&args.arg_filename).clone().unwrap();
+    let mut handler = File::open(&filename).unwrap();
+    let mut buffer: Vec<u8> = Vec::new();
+
+    handler.read_to_end(&mut buffer);
+
+    let payload = serde_json::to_string(&Message::Put(filename, buffer)).unwrap();
+
+    let response = client.propose(payload.as_bytes()).unwrap();
+
+    println!("{}", String::from_utf8(response).unwrap())
 }
 
 fn remove(args: &Args) {
@@ -155,28 +202,110 @@ fn parse_addr(addr: &str) -> SocketAddr {
 }
 
 #[derive(Debug)]
-pub struct DocumentStateMachine;
+pub struct DocumentStateMachine {
+    map: HashMap<Uuid, String>,
+}
 
 impl DocumentStateMachine {
     pub fn new() -> Self {
-        DocumentStateMachine
+        DocumentStateMachine { map: HashMap::new() }
     }
 }
 
 impl state_machine::StateMachine for DocumentStateMachine {
     fn apply(&mut self, new_value: &[u8]) -> Vec<u8> {
-        unimplemented!()
+        let string = String::from_utf8_lossy(new_value);
+        let message = serde_json::from_str(&string).unwrap();
+
+        let response = match message {
+            Get(id) => {
+                let handler = File::open(format!("data/{}", id));
+
+                let response = match handler {
+                    Ok(mut h) => {
+                        let mut content: Vec<u8> = Vec::new();
+                        h.read_to_end(&mut content);
+                        serde_json::to_string(&content)
+                    }
+                    Err(err) => serde_json::to_string(&"Entry not found"),
+                };
+
+                response
+            }
+            Put(filename, bytes) => {
+
+                let id = Uuid::new_v4();
+                self.map.insert(id, filename);
+
+                let mut handler = OpenOptions::new()
+                    .read(false)
+                    .write(true)
+                    .create(true)
+                    .open(format!("data/{}", id));
+
+                let response = match handler {
+                    Ok(mut h) => {
+                        h.write_all(bytes.as_slice());
+
+                        serde_json::to_string(&format!("{}", id))
+                    }
+                    Err(err) => serde_json::to_string(&"Error with writing"),
+                };
+
+                response
+            }
+            Remove(id) => {
+                self.map.remove(&id);
+
+                let response = match remove_file(format!("data/{}", id)) {
+                    Ok(()) => serde_json::to_string(&"Document deleted!"),
+                    Err(err) => serde_json::to_string(&"Could not delete document"),
+                };
+
+                response
+            }
+        };
+
+        response.unwrap().into_bytes()
     }
 
     fn query(&self, query: &[u8]) -> Vec<u8> {
-        unimplemented!()
+        let string = String::from_utf8_lossy(query);
+        let message = serde_json::from_str(&string).unwrap();
+
+        let response = match message {
+            Get(id) => {
+                let handler = File::open(format!("data/{}", id));
+
+                let response = match handler {
+                    Ok(mut h) => {
+                        let mut content: Vec<u8> = Vec::new();
+                        h.read_to_end(&mut content);
+                        serde_json::to_string(&content)
+                    }
+                    Err(err) => serde_json::to_string(&"Entry not found"),
+                };
+
+                response.unwrap().into_bytes()
+            } 
+            _ => {
+                let response = serde_json::to_string(&"Wrong usage of .query()");
+
+                response.unwrap().into_bytes()
+            }
+        };
+
+        response
     }
 
     fn snapshot(&self) -> Vec<u8> {
-        unimplemented!()
+        serde_json::to_string(&self.map)
+            .unwrap()
+            .into_bytes()
     }
 
-    fn restore_snapshot(&mut self, snaphost_value: Vec<u8>) {
-        unimplemented!()
+    fn restore_snapshot(&mut self, snapshot_value: Vec<u8>) {
+        self.map = serde_json::from_str(&String::from_utf8_lossy(&snapshot_value)).unwrap();
+        ()
     }
 }
