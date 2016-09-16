@@ -51,7 +51,7 @@ log = "0.3"
 mio = "0.5"
 rand = "0.3"
 scoped_log = "0.1"
-uuid = "0.1"
+uuid = {version="*",features=["serde","v4"],git="https://github.com/paenko/uuid.git"}
 wrapped_enum = "0.1"
 bincode = "*"
 rustc-serialize = "*"
@@ -64,3 +64,4 @@ serde = "*"
 serde_json = "*"
 serde_macros = "*"
 rustful = "0.9"
+

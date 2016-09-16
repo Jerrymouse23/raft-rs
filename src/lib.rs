@@ -305,8 +305,8 @@ impl ClientId {
     }
     fn from_bytes(bytes: &[u8]) -> Result<ClientId> {
         match Uuid::from_bytes(bytes) {
-            Some(uuid) => Ok(ClientId(uuid)),
-            None => Err(Error::Raft(RaftError::InvalidClientId)),
+            Ok(uuid) => Ok(ClientId(uuid)),
+            Err(err) => Err(Error::Raft(RaftError::InvalidClientId)),
         }
     }
 }
