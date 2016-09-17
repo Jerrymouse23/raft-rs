@@ -52,6 +52,7 @@ before_script:
 
 script:
     - travis-cargo build
+    - travis-cargo build --example document
     - travis-cargo test
     - travis-cargo doc
 
