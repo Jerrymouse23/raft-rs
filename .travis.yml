@@ -6,7 +6,7 @@ language: rust
 
 # Test only on nightly for now.
 rust:
-  - nightly
+  - 1.13.0-nightly 
 
 env:
   global:
