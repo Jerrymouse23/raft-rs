@@ -14,8 +14,6 @@ extern crate env_logger;
 extern crate scoped_log;
 
 extern crate docopt;
-// extern crate serde;
-// extern crate serde_json;
 extern crate rustc_serialize;
 extern crate bincode;
 
@@ -25,7 +23,6 @@ use std::error::Error;
 use rustful::{Server, Context, Response, TreeRouter, Router};
 use rustful::Method;
 use std::net::{SocketAddr, ToSocketAddrs};
-// use serde_json::Value;
 use bincode::rustc_serialize::{encode, decode};
 use bincode::SizeLimit;
 use docopt::Docopt;
@@ -55,8 +52,8 @@ Commands:
     server  Starts server
 
 Usage:
-    document get <doc_id> <node-address>
-    document put <filename>
+    document get <doc-id> <node-address>
+    document put <node-address> <filename> <filepath>
     document remove <node-address>
     document server <id> [<node-id> <node-address>]...
 ";
@@ -77,10 +74,11 @@ struct Args {
 #[derive(RustcEncodable,RustcDecodable)]
 pub enum Message {
     Get(Uuid),
-    Put(String, Vec<u8>),
+    Put(Document),
     Remove(Uuid),
 }
 
+#[derive(RustcEncodable,RustcDecodable)]
 pub struct Document {
     filename: String,
     payload: Vec<u8>,
@@ -161,19 +159,20 @@ fn get(args: &Args) {
 
     let id: Uuid = Uuid::parse_str(&args.arg_doc_id.clone().unwrap()).unwrap();
 
-    // let payload = serde_json::to_string(&Message::Get(id)).unwrap();
     let payload = encode(&Message::Get(id), SizeLimit::Infinite).unwrap();
 
     let response = client.query(payload.as_slice()).unwrap();
+
+    let document: Document = decode(response.as_slice()).unwrap();
 
     let mut handler = OpenOptions::new()
         .read(false)
         .write(true)
         .create(true)
-        .open("temp")
+        .open(&document.filename)
         .unwrap();
 
-    handler.write_all(response.as_slice());
+    handler.write_all(document.payload.as_slice());
 
     println!("Written");
 }
@@ -189,7 +188,12 @@ fn put(args: &Args) {
 
     handler.read_to_end(&mut buffer);
 
-    let payload = encode(&Message::Put(filename, buffer), SizeLimit::Infinite).unwrap();
+    let document = Document {
+        filename: filename,
+        payload: buffer,
+    };
+
+    let payload = encode(&Message::Put(document), SizeLimit::Infinite).unwrap();
 
     let response = client.propose(payload.as_slice()).unwrap();
 
@@ -224,24 +228,11 @@ impl state_machine::StateMachine for DocumentStateMachine {
         let message = decode(&new_value).unwrap();
 
         let response = match message {
-            Get(id) => {
-                let handler = File::open(format!("data/{}", id));
-
-                let response = match handler {
-                    Ok(mut h) => {
-                        let mut content: Vec<u8> = Vec::new();
-                        h.read_to_end(&mut content);
-                        encode(&content, SizeLimit::Infinite)
-                    }
-                    Err(err) => encode(&"Entry not found", SizeLimit::Infinite),
-                };
-
-                response
-            }
-            Put(filename, bytes) => {
+            Get(id) => self.query(new_value),
+            Put(document) => {
 
                 let id = Uuid::new_v4();
-                self.map.insert(id, filename);
+                self.map.insert(id, document.filename.clone());
 
                 let mut handler = OpenOptions::new()
                     .read(false)
@@ -251,14 +242,14 @@ impl state_machine::StateMachine for DocumentStateMachine {
 
                 let response = match handler {
                     Ok(mut h) => {
-                        h.write_all(bytes.as_slice());
+                        h.write_all(document.payload.as_slice());
 
                         encode(&format!("{}", id), SizeLimit::Infinite)
                     }
                     Err(err) => encode(&"Error with writing", SizeLimit::Infinite),
                 };
 
-                response
+                response.unwrap()
             }
             Remove(id) => {
                 self.map.remove(&id);
@@ -268,11 +259,11 @@ impl state_machine::StateMachine for DocumentStateMachine {
                     Err(err) => encode(&"Could not delete document", SizeLimit::Infinite),
                 };
 
-                response
+                response.unwrap()
             }
         };
 
-        response.unwrap()
+        response
     }
 
     fn query(&self, query: &[u8]) -> Vec<u8> {
@@ -286,12 +277,25 @@ impl state_machine::StateMachine for DocumentStateMachine {
                     Ok(mut h) => {
                         let mut content: Vec<u8> = Vec::new();
                         h.read_to_end(&mut content);
-                        encode(&content, SizeLimit::Infinite)
+
+                        match self.map.get(&id) {
+                            Some(name) => {
+                                let document = Document {
+                                    filename: name.clone(),
+                                    payload: content,
+                                };
+
+                                encode(&document, SizeLimit::Infinite)
+                            }
+                            None => encode(&"Entry not found in our hashmap", SizeLimit::Infinite), 
+                        }
+
                     }
                     Err(err) => encode(&"Entry not found", SizeLimit::Infinite),
                 };
 
                 response.unwrap()
+
             } 
             _ => {
                 let response = encode(&"Wrong usage of .query()", SizeLimit::Infinite);
