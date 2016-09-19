@@ -69,6 +69,7 @@ struct Args {
     arg_filename: Option<String>,
     arg_node_id: Vec<u64>,
     arg_node_address: Vec<String>,
+    arg_filepath: String,
 }
 
 #[derive(RustcEncodable,RustcDecodable)]
@@ -186,7 +187,7 @@ fn put(args: &Args) {
     let mut client = Client::new(cluster);
 
     let filename = (&args.arg_filename).clone().unwrap();
-    let mut handler = File::open(&filename).unwrap();
+    let mut handler = File::open(&args.arg_filepath).unwrap();
     let mut buffer: Vec<u8> = Vec::new();
 
     handler.read_to_end(&mut buffer);
