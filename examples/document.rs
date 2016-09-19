@@ -262,7 +262,7 @@ impl state_machine::StateMachine for DocumentStateMachine {
 
                         encode(&format!("{}", id), SizeLimit::Infinite)
                     }
-                    Err(err) => encode(&"Error writing file", SizeLimit::Infinite),
+                    Err(err) => encode(&err.description(), SizeLimit::Infinite),
                 };
 
                 response.unwrap()
@@ -272,7 +272,7 @@ impl state_machine::StateMachine for DocumentStateMachine {
 
                 let response = match remove_file(format!("data/{}", id)) {
                     Ok(()) => encode(&"Document deleted!", SizeLimit::Infinite),
-                    Err(err) => encode(&"Could not delete document", SizeLimit::Infinite),
+                    Err(err) => encode(&err.description(), SizeLimit::Infinite),
                 };
 
                 response.unwrap()
