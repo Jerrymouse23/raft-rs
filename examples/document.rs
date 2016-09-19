@@ -157,8 +157,10 @@ fn get(args: &Args) {
 
     let mut client = Client::new(cluster);
 
-    // TODO error handling
-    let id: Uuid = Uuid::parse_str(&args.arg_doc_id.clone().unwrap()).unwrap();
+    let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
+        Ok(id) => id,
+        Err(err) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
+    };
 
     let payload = encode(&Message::Get(id), SizeLimit::Infinite).unwrap();
 
@@ -208,7 +210,7 @@ fn remove(args: &Args) {
 
     let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
         Ok(id) => id,
-        Err(err) => panic!("{} is not a valid id"),
+        Err(err) => panic!("{} is not a valid id", &args.arg_doc_id.clone().unwrap()),
     };
 
     let payload = encode(&Message::Remove(id), SizeLimit::Infinite).unwrap();
