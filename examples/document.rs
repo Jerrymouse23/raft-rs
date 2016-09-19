@@ -54,7 +54,7 @@ Commands:
 Usage:
     document get <doc-id> <node-address>
     document put <node-address> <filename> <filepath>
-    document remove <node-address>
+    document remove <doc-id> <node-address>
     document server <id> [<node-id> <node-address>]...
 ";
 
@@ -157,6 +157,7 @@ fn get(args: &Args) {
 
     let mut client = Client::new(cluster);
 
+    // TODO error handling
     let id: Uuid = Uuid::parse_str(&args.arg_doc_id.clone().unwrap()).unwrap();
 
     let payload = encode(&Message::Get(id), SizeLimit::Infinite).unwrap();
@@ -201,7 +202,20 @@ fn put(args: &Args) {
 }
 
 fn remove(args: &Args) {
-    unimplemented!()
+    let cluster = args.arg_node_address.iter().map(|v| parse_addr(&v)).collect();
+
+    let mut client = Client::new(cluster);
+
+    let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
+        Ok(id) => id,
+        Err(err) => panic!("{} is not a valid id"),
+    };
+
+    let payload = encode(&Message::Remove(id), SizeLimit::Infinite).unwrap();
+
+    let response = client.propose(payload.as_slice()).unwrap();
+
+    println!("{}", String::from_utf8(response).unwrap())
 }
 
 fn parse_addr(addr: &str) -> SocketAddr {
@@ -246,7 +260,7 @@ impl state_machine::StateMachine for DocumentStateMachine {
 
                         encode(&format!("{}", id), SizeLimit::Infinite)
                     }
-                    Err(err) => encode(&"Error with writing", SizeLimit::Infinite),
+                    Err(err) => encode(&"Error writing file", SizeLimit::Infinite),
                 };
 
                 response.unwrap()
