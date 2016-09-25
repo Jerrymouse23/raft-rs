@@ -5,7 +5,8 @@
 extern crate raft;
 
 #[macro_use]
-extern crate rustful;
+extern crate iron;
+extern crate router;
 
 #[macro_use]
 extern crate log;
@@ -20,8 +21,6 @@ extern crate bincode;
 extern crate uuid;
 
 use std::error::Error;
-use rustful::{Server, Context, Response, TreeRouter, Router};
-use rustful::Method;
 use std::net::{SocketAddr, ToSocketAddrs};
 use bincode::rustc_serialize::{encode, decode};
 use bincode::SizeLimit;
@@ -40,6 +39,10 @@ use Message::*;
 
 use uuid::Uuid;
 
+use iron::prelude::*;
+use iron::status;
+use router::Router;
+
 static USAGE: &'static str = "
 A replicated document database.
 
@@ -57,6 +60,8 @@ Usage:
     document remove <doc-id> <node-address>
     document server <id> [<node-id> <node-address>]...
 ";
+
+static mut state_machine: DocumentStateMachine = DocumentStateMachine::new();
 
 #[derive(Debug,RustcDecodable)]
 struct Args {
@@ -85,6 +90,11 @@ pub struct Document {
     payload: Vec<u8>,
 }
 
+fn handler(req: &mut Request) -> IronResult<Response> {
+    let ref query = req.extensions.get::<Router>().unwrap().find("query").unwrap();
+    Ok(Response::with((status::Ok, *query)))
+}
+
 fn main() {
     env_logger::init().unwrap();
 
@@ -94,27 +104,10 @@ fn main() {
 
     if args.cmd_server {
 
-        //        let mut router = TreeRouter::new();
-        //
-        // router.insert(Method::Get,
-        // "documents",
-        // get_all_documents as fn(Context, Response));
-        // router.insert(Method::Post,
-        // "documents",
-        // post_new_document as fn(Context, Response));
-        //
-        // let server_result = Server {
-        // host: 9000.into(),
-        // handlers: router,
-        // ..Server::default()
-        // }
-        // .run();
-        //
-        // match server_result {
-        // Ok(_server) => println!("Server started"),
-        // Err(e) => error!("could not start server: {}", e.description()),
-        // }
-        //
+        let mut router = Router::new();
+        router.get("/:query", handler, "index");
+
+        Iron::new(router).http("localhost:3000").unwrap();
 
         server(&args);
 
@@ -127,18 +120,11 @@ fn main() {
     }
 }
 
-fn get_all_documents(context: Context, response: Response) {
-    unimplemented!()
-}
-fn post_new_document(context: Context, response: Response) {
-    unimplemented!()
-}
-
 fn server(args: &Args) {
 
     let persistent_log = persistent_log::doc::DocLog::new();
 
-    let state_machine = DocumentStateMachine::new();
+    // let state_machine = DocumentStateMachine::new();
 
     let id = ServerId::from(args.arg_id.unwrap());
 
@@ -150,7 +136,9 @@ fn server(args: &Args) {
 
     let addr = peers.remove(&id).unwrap();
 
-    raft::Server::run(id, addr, peers, persistent_log, state_machine).unwrap();
+    unsafe {
+        raft::Server::run(id, addr, peers, persistent_log, state_machine).unwrap();
+    }
 }
 
 fn get(args: &Args) {
