@@ -1,6 +1,5 @@
 #![feature(plugin)]
 #![feature(custom_derive)]
-#![plugin(serde_macros)]
 #![feature(drop_types_in_const)]
 
 extern crate raft;
