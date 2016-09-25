@@ -1,6 +1,7 @@
 #![feature(plugin)]
 #![feature(custom_derive)]
 #![plugin(serde_macros)]
+#![feature(drop_types_in_const)]
 
 extern crate raft;
 
@@ -61,7 +62,7 @@ Usage:
     document server <id> [<node-id> <node-address>]...
 ";
 
-static mut state_machine: DocumentStateMachine = DocumentStateMachine::new();
+static mut state_machine: Option<DocumentStateMachine> = None;
 
 #[derive(Debug,RustcDecodable)]
 struct Args {
@@ -105,9 +106,13 @@ fn main() {
     if args.cmd_server {
 
         let mut router = Router::new();
-        router.get("/:query", handler, "index");
+        router.get("/", handler, "index");
 
         Iron::new(router).http("localhost:3000").unwrap();
+
+        fn handler(req: &mut Request) -> IronResult<Response> {
+            Ok(Response::with((status::Ok, "Ok")))
+        }
 
         server(&args);
 
@@ -124,8 +129,6 @@ fn server(args: &Args) {
 
     let persistent_log = persistent_log::doc::DocLog::new();
 
-    // let state_machine = DocumentStateMachine::new();
-
     let id = ServerId::from(args.arg_id.unwrap());
 
     let mut peers = args.arg_node_id
@@ -137,7 +140,13 @@ fn server(args: &Args) {
     let addr = peers.remove(&id).unwrap();
 
     unsafe {
-        raft::Server::run(id, addr, peers, persistent_log, state_machine).unwrap();
+        state_machine = Some(DocumentStateMachine::new());
+        raft::Server::run(id,
+                          addr,
+                          peers,
+                          persistent_log,
+                          state_machine.clone().unwrap())
+            .unwrap();
     }
 }
 
@@ -217,7 +226,7 @@ fn parse_addr(addr: &str) -> SocketAddr {
         .unwrap()
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct DocumentStateMachine {
     map: HashMap<Uuid, String>,
 }
