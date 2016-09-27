@@ -21,7 +21,7 @@ extern crate bincode;
 extern crate uuid;
 
 use std::error::Error;
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, Ipv4Addr};
 use bincode::rustc_serialize::{encode, decode};
 use bincode::SizeLimit;
 use docopt::Docopt;
@@ -56,14 +56,14 @@ Commands:
 
 Usage:
     document get <doc-id> <node-address>
-    document put <node-address> <filename> <filepath>
+    document put <node-address> <filepath> <filename>
     document remove <doc-id> <node-address>
-    document server <id> [<node-id> <node-address>]...
+    document server <rest-port> <id> [<node-id> <node-address>]...
 ";
 
 static mut state_machine: Option<DocumentStateMachine> = None;
 
-#[derive(Debug,RustcDecodable)]
+#[derive(Debug,RustcDecodable,Clone)]
 struct Args {
     cmd_server: bool,
     cmd_get: bool,
@@ -75,6 +75,7 @@ struct Args {
     arg_node_id: Vec<u64>,
     arg_node_address: Vec<String>,
     arg_filepath: String,
+    arg_rest_port: Option<u64>,
 }
 
 #[derive(RustcEncodable,RustcDecodable)]
@@ -105,11 +106,25 @@ fn main() {
     if args.cmd_server {
 
         let mut router = Router::new();
-        router.get("/", handler, "index");
+        router.get("/document/:fileId", http_get, "get_document");
+        router.post("/document/", http_post, "post_document");
+        router.delete("/document/:fileId", http_delete, "delete_document");
 
-        Iron::new(router).http("localhost:3000").unwrap();
+        let rest_port = args.arg_rest_port.unwrap() as u16;
 
-        fn handler(req: &mut Request) -> IronResult<Response> {
+        std::thread::spawn(move || {
+            Iron::new(router).http(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), rest_port));
+        });
+
+        fn http_get(req: &mut Request) -> IronResult<Response> {
+            Ok(Response::with((status::Ok, "Ok")))
+        }
+
+        fn http_post(req: &mut Request) -> IronResult<Response> {
+            Ok(Response::with((status::Ok, "Ok")))
+        }
+
+        fn http_delete(req: &mut Request) -> IronResult<Response> {
             Ok(Response::with((status::Ok, "Ok")))
         }
 
