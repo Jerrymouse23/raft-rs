@@ -20,7 +20,6 @@ extern crate bincode;
 
 extern crate uuid;
 
-use std::error::Error;
 use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, Ipv4Addr};
 use bincode::rustc_serialize::{encode, decode};
 use bincode::SizeLimit;
@@ -34,6 +33,8 @@ use std::fs::OpenOptions;
 use std::fs::remove_file;
 use std::io::Read;
 use std::io::Write;
+use std::error::Error;
+use std::io::ErrorKind;
 
 use Message::*;
 
@@ -85,15 +86,10 @@ pub enum Message {
     Remove(Uuid),
 }
 
-#[derive(RustcEncodable,RustcDecodable)]
+#[derive(RustcEncodable,RustcDecodable,Debug)]
 pub struct Document {
     filename: String,
     payload: Vec<u8>,
-}
-
-fn handler(req: &mut Request) -> IronResult<Response> {
-    let ref query = req.extensions.get::<Router>().unwrap().find("query").unwrap();
-    Ok(Response::with((status::Ok, *query)))
 }
 
 fn main() {
@@ -116,8 +112,21 @@ fn main() {
             Iron::new(router).http(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), rest_port));
         });
 
+        // TODO refactor
         fn http_get(req: &mut Request) -> IronResult<Response> {
-            Ok(Response::with((status::Ok, "Ok")))
+            unsafe {
+                let sm = state_machine.clone().unwrap();
+
+                let ref fileId = req.extensions
+                    .get::<Router>()
+                    .unwrap()
+                    .find("fileId")
+                    .unwrap();
+
+                let document = sm.get(Uuid::parse_str(*fileId).unwrap());
+
+                Ok(Response::with((status::Ok, format!("{:?}", document))))
+            }
         }
 
         fn http_post(req: &mut Request) -> IronResult<Response> {
@@ -249,6 +258,49 @@ impl DocumentStateMachine {
     pub fn new() -> Self {
         DocumentStateMachine { map: HashMap::new() }
     }
+
+    pub fn get(&self, id: Uuid) -> Result<Document, std::io::Error> {
+        let mut handler = try!(File::open(format!("data/{}", id)));
+
+        let mut content: Vec<u8> = Vec::new();
+        try!(handler.read_to_end(&mut content));
+
+        let name = self.map.get(&id);
+
+        match name {
+            Some(name) => {
+                Ok(Document {
+                    filename: name.clone(),
+                    payload: content,
+                })
+            } 
+            None => {
+                Err(std::io::Error::new(ErrorKind::Other,
+                                        format!("No entry with the id \"{}\" found", id)))
+            }
+        }
+    }
+
+    pub fn put(&mut self, document: Document) -> Result<Uuid, std::io::Error> {
+        let id = Uuid::new_v4();
+        self.map.insert(id, document.filename.clone());
+
+        let mut handler = try!(OpenOptions::new()
+            .read(false)
+            .write(true)
+            .create(true)
+            .open(format!("data/{}", id)));
+
+        try!(handler.write_all(document.payload.as_slice()));
+
+        Ok(id)
+    }
+
+    pub fn remove(&mut self, id: Uuid) -> Result<&str, std::io::Error> {
+        self.map.remove(&id);
+        try!(remove_file(format!("data/{}", id)));
+        Ok("Document deleted")
+    }
 }
 
 impl state_machine::StateMachine for DocumentStateMachine {
@@ -258,36 +310,16 @@ impl state_machine::StateMachine for DocumentStateMachine {
         let response = match message {
             Get(id) => self.query(new_value),
             Put(document) => {
-
-                let id = Uuid::new_v4();
-                self.map.insert(id, document.filename.clone());
-
-                let mut handler = OpenOptions::new()
-                    .read(false)
-                    .write(true)
-                    .create(true)
-                    .open(format!("data/{}", id));
-
-                let response = match handler {
-                    Ok(mut h) => {
-                        h.write_all(document.payload.as_slice());
-
-                        encode(&format!("{}", id), SizeLimit::Infinite)
-                    }
-                    Err(err) => encode(&err.description(), SizeLimit::Infinite),
-                };
-
-                response.unwrap()
+                match self.put(document) {
+                    Ok(id) => encode(&id, SizeLimit::Infinite).unwrap(),
+                    Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
+                }
             }
             Remove(id) => {
-                self.map.remove(&id);
-
-                let response = match remove_file(format!("data/{}", id)) {
-                    Ok(()) => encode(&"Document deleted!", SizeLimit::Infinite),
-                    Err(err) => encode(&err.description(), SizeLimit::Infinite),
-                };
-
-                response.unwrap()
+                match self.remove(id) {
+                    Ok(id) => encode(&id, SizeLimit::Infinite).unwrap(),
+                    Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
+                }
             }
         };
 
@@ -299,32 +331,11 @@ impl state_machine::StateMachine for DocumentStateMachine {
 
         let response = match message {
             Get(id) => {
-                let handler = File::open(format!("data/{}", id));
-
-                let response = match handler {
-                    Ok(mut h) => {
-                        let mut content: Vec<u8> = Vec::new();
-                        h.read_to_end(&mut content);
-
-                        match self.map.get(&id) {
-                            Some(name) => {
-                                let document = Document {
-                                    filename: name.clone(),
-                                    payload: content,
-                                };
-
-                                encode(&document, SizeLimit::Infinite)
-                            }
-                            None => encode(&"Entry not found in our hashmap", SizeLimit::Infinite), 
-                        }
-
-                    }
-                    Err(err) => encode(&"Entry not found", SizeLimit::Infinite),
-                };
-
-                response.unwrap()
-
-            } 
+                match self.get(id) {
+                    Ok(document) => encode(&document, SizeLimit::Infinite).unwrap(),
+                    Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
+                }
+            }
             _ => {
                 let response = encode(&"Wrong usage of .query()", SizeLimit::Infinite);
 
