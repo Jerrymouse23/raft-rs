@@ -83,6 +83,13 @@ RUST_LOG=raft=debug cargo run --example hashmap server 1 1 127.0.0.1:8080 2 127.
 RUST_LOG=raft=debug cargo run --example hashmap server 2 1 127.0.0.1:8080 2 127.0.0.1:8081
 ```
 
+** Document: **
+```bash
+RUST_LOG=raft=debug cargo run --example document server 3000 1 1 127.0.0.1:9000 2 127.0.0.1:9001
+
+RUST_LOG=raft=debug cargo run --example document server 3001  2 1 127.0.0.1:9000 2 127.0.0.1:9001
+```
+
 We'd love it if you contributed your own or expanded on ours!
 
 ## Testing ##
