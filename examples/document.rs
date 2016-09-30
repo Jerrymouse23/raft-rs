@@ -21,8 +21,10 @@ extern crate bincode;
 extern crate uuid;
 
 use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, Ipv4Addr};
-use bincode::rustc_serialize::{encode, decode};
+use bincode::rustc_serialize::{encode, decode, encode_into, decode_from};
 use bincode::SizeLimit;
+use rustc_serialize::json;
+use bincode::rustc_serialize::{EncodingError, DecodingError};
 use docopt::Docopt;
 
 use raft::{Client, state_machine, persistent_log, ServerId};
@@ -33,8 +35,6 @@ use std::fs::OpenOptions;
 use std::fs::remove_file;
 use std::io::Read;
 use std::io::Write;
-use std::error::Error;
-use std::io::ErrorKind;
 
 use Message::*;
 
@@ -43,6 +43,9 @@ use uuid::Uuid;
 use iron::prelude::*;
 use iron::status;
 use router::Router;
+
+use std::error::Error;
+use std::io::ErrorKind;
 
 static USAGE: &'static str = "
 A replicated document database.
@@ -61,8 +64,6 @@ Usage:
     document remove <doc-id> <node-address>
     document server <rest-port> <id> [<node-id> <node-address>]...
 ";
-
-static mut state_machine: Option<DocumentStateMachine> = None;
 
 #[derive(Debug,RustcDecodable,Clone)]
 struct Args {
@@ -112,21 +113,18 @@ fn main() {
             Iron::new(router).http(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), rest_port));
         });
 
-        // TODO refactor
         fn http_get(req: &mut Request) -> IronResult<Response> {
-            unsafe {
-                let sm = state_machine.clone().unwrap();
+            let ref fileId = req.extensions
+                .get::<Router>()
+                .unwrap()
+                .find("fileId")
+                .unwrap();
 
-                let ref fileId = req.extensions
-                    .get::<Router>()
-                    .unwrap()
-                    .find("fileId")
-                    .unwrap();
+            let document = _get(Uuid::parse_str(*fileId).unwrap()).unwrap();
 
-                let document = sm.get(Uuid::parse_str(*fileId).unwrap());
+            let encoded = json::encode(&document).unwrap();
 
-                Ok(Response::with((status::Ok, format!("{:?}", document))))
-            }
+            Ok(Response::with((status::Ok, encoded)))
         }
 
         fn http_post(req: &mut Request) -> IronResult<Response> {
@@ -162,15 +160,8 @@ fn server(args: &Args) {
 
     let addr = peers.remove(&id).unwrap();
 
-    unsafe {
-        state_machine = Some(DocumentStateMachine::new());
-        raft::Server::run(id,
-                          addr,
-                          peers,
-                          persistent_log,
-                          state_machine.clone().unwrap())
-            .unwrap();
-    }
+    let mut state_machine = DocumentStateMachine::new();
+    raft::Server::run(id, addr, peers, persistent_log, state_machine).unwrap();
 }
 
 fn get(args: &Args) {
@@ -250,56 +241,11 @@ fn parse_addr(addr: &str) -> SocketAddr {
 }
 
 #[derive(Debug,Clone)]
-pub struct DocumentStateMachine {
-    map: HashMap<Uuid, String>,
-}
+pub struct DocumentStateMachine;
 
 impl DocumentStateMachine {
     pub fn new() -> Self {
-        DocumentStateMachine { map: HashMap::new() }
-    }
-
-    pub fn get(&self, id: Uuid) -> Result<Document, std::io::Error> {
-        let mut handler = try!(File::open(format!("data/{}", id)));
-
-        let mut content: Vec<u8> = Vec::new();
-        try!(handler.read_to_end(&mut content));
-
-        let name = self.map.get(&id);
-
-        match name {
-            Some(name) => {
-                Ok(Document {
-                    filename: name.clone(),
-                    payload: content,
-                })
-            } 
-            None => {
-                Err(std::io::Error::new(ErrorKind::Other,
-                                        format!("No entry with the id \"{}\" found", id)))
-            }
-        }
-    }
-
-    pub fn put(&mut self, document: Document) -> Result<Uuid, std::io::Error> {
-        let id = Uuid::new_v4();
-        self.map.insert(id, document.filename.clone());
-
-        let mut handler = try!(OpenOptions::new()
-            .read(false)
-            .write(true)
-            .create(true)
-            .open(format!("data/{}", id)));
-
-        try!(handler.write_all(document.payload.as_slice()));
-
-        Ok(id)
-    }
-
-    pub fn remove(&mut self, id: Uuid) -> Result<&str, std::io::Error> {
-        self.map.remove(&id);
-        try!(remove_file(format!("data/{}", id)));
-        Ok("Document deleted")
+        DocumentStateMachine
     }
 }
 
@@ -310,13 +256,13 @@ impl state_machine::StateMachine for DocumentStateMachine {
         let response = match message {
             Get(id) => self.query(new_value),
             Put(document) => {
-                match self.put(document) {
+                match _put(document) {
                     Ok(id) => encode(&id, SizeLimit::Infinite).unwrap(),
                     Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
                 }
             }
             Remove(id) => {
-                match self.remove(id) {
+                match _remove(id) {
                     Ok(id) => encode(&id, SizeLimit::Infinite).unwrap(),
                     Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
                 }
@@ -331,7 +277,7 @@ impl state_machine::StateMachine for DocumentStateMachine {
 
         let response = match message {
             Get(id) => {
-                match self.get(id) {
+                match _get(id) {
                     Ok(document) => encode(&document, SizeLimit::Infinite).unwrap(),
                     Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
                 }
@@ -347,11 +293,37 @@ impl state_machine::StateMachine for DocumentStateMachine {
     }
 
     fn snapshot(&self) -> Vec<u8> {
-        encode(&self.map, SizeLimit::Infinite).unwrap()
+        unimplemented!()
     }
 
-    fn restore_snapshot(&mut self, snapshot_value: Vec<u8>) {
-        self.map = decode(&snapshot_value).unwrap();
-        ()
-    }
+    fn restore_snapshot(&mut self, snapshot_value: Vec<u8>) {}
+}
+
+fn _get(id: Uuid) -> Result<Document, DecodingError> {
+    let mut handler = try!(File::open(format!("data/{}", id)));
+
+    let mut decoded: Document = try!(decode_from(&mut handler, SizeLimit::Infinite));
+
+    Ok(decoded)
+}
+
+fn _put(document: Document) -> Result<Uuid, EncodingError> {
+    let id = Uuid::new_v4();
+
+    // TODO implement error-handling
+    let mut handler = OpenOptions::new()
+        .read(false)
+        .write(true)
+        .create(true)
+        .open(format!("data/{}", id))
+        .unwrap();
+
+    try!(encode_into(&document, &mut handler, SizeLimit::Infinite));
+
+    Ok(id)
+}
+
+fn _remove(id: Uuid) -> Result<String, std::io::Error> {
+    try!(remove_file(format!("data/{}", id)));
+    Ok("Document deleted".to_string())
 }
