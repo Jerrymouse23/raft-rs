@@ -7,6 +7,7 @@ extern crate raft;
 #[macro_use]
 extern crate iron;
 extern crate router;
+extern crate params;
 
 #[macro_use]
 extern crate log;
@@ -46,6 +47,8 @@ use router::Router;
 
 use std::error::Error;
 use std::io::ErrorKind;
+
+use params::{Params, Value};
 
 static USAGE: &'static str = "
 A replicated document database.
@@ -128,11 +131,42 @@ fn main() {
         }
 
         fn http_post(req: &mut Request) -> IronResult<Response> {
-            Ok(Response::with((status::Ok, "Ok")))
+
+            let map = req.get_ref::<Params>().unwrap();
+
+            match map.find(&["payload"]) {
+                Some(&Value::String(ref p)) => {
+                    let mut bytes = Vec::new();
+                    bytes.extend_from_slice(p.as_bytes());
+
+                    let document = Document {
+                        filename: "".to_string(),
+                        payload: bytes,
+                    };
+                    match _put(document) {
+                        Ok(id) => Ok(Response::with((status::Ok, format!("{}", id)))),
+                        Err(err) => {
+                            Ok(Response::with((status::InternalServerError, err.description())))
+                        }
+                    }
+                } 
+                _ => Ok(Response::with((status::InternalServerError, "No payload defined"))), 
+            }
         }
 
         fn http_delete(req: &mut Request) -> IronResult<Response> {
-            Ok(Response::with((status::Ok, "Ok")))
+            let ref fileId = req.extensions
+                .get::<Router>()
+                .unwrap()
+                .find("fileId")
+                .unwrap();
+
+            let res = match _remove(Uuid::parse_str(*fileId).unwrap()) {
+                Ok(_) => Response::with((status::Ok, "Ok")),
+                Err(err) => Response::with((status::InternalServerError, err.description())),
+            };
+
+            Ok(res)
         }
 
         server(&args);
