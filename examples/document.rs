@@ -5,13 +5,13 @@
 extern crate raft;
 
 #[macro_use]
+extern crate log;
+extern crate env_logger;
+
+#[macro_use]
 extern crate iron;
 extern crate router;
 extern crate params;
-
-#[macro_use]
-extern crate log;
-extern crate env_logger;
 
 extern crate scoped_log;
 
@@ -20,6 +20,8 @@ extern crate rustc_serialize;
 extern crate bincode;
 
 extern crate uuid;
+
+extern crate toml;
 
 use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, Ipv4Addr};
 use bincode::rustc_serialize::{encode, decode, encode_into, decode_from};
@@ -41,14 +43,15 @@ use Message::*;
 
 use uuid::Uuid;
 
-use iron::prelude::*;
-use iron::status;
-use router::Router;
-
 use std::error::Error;
 use std::io::ErrorKind;
 
-use params::{Params, Value};
+mod handler;
+mod http_handler;
+mod config;
+
+use handler::Handler;
+use config::Config;
 
 static USAGE: &'static str = "
 A replicated document database.
@@ -65,7 +68,8 @@ Usage:
     document get <doc-id> <node-address>
     document put <node-address> <filepath> <filename>
     document remove <doc-id> <node-address>
-    document server <rest-port> <id> [<node-id> <node-address>]...
+    document server <id> <addr> <rest-port> [<node-id> <node-address>]...
+    document server --config <config-path>
 ";
 
 #[derive(Debug,RustcDecodable,Clone)]
@@ -81,6 +85,9 @@ struct Args {
     arg_node_address: Vec<String>,
     arg_filepath: String,
     arg_rest_port: Option<u64>,
+    flag_config: bool,
+    arg_config_path: Option<String>,
+    arg_addr: Option<String>,
 }
 
 #[derive(RustcEncodable,RustcDecodable)]
@@ -105,72 +112,32 @@ fn main() {
 
     if args.cmd_server {
 
-        let mut router = Router::new();
-        router.get("/document/:fileId", http_get, "get_document");
-        router.post("/document/", http_post, "post_document");
-        router.delete("/document/:fileId", http_delete, "delete_document");
-
-        let rest_port = args.arg_rest_port.unwrap() as u16;
-
-        std::thread::spawn(move || {
-            Iron::new(router).http(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), rest_port));
-        });
-
-        fn http_get(req: &mut Request) -> IronResult<Response> {
-            let ref fileId = req.extensions
-                .get::<Router>()
-                .unwrap()
-                .find("fileId")
-                .unwrap();
-
-            let document = _get(Uuid::parse_str(*fileId).unwrap()).unwrap();
-
-            let encoded = json::encode(&document).unwrap();
-
-            Ok(Response::with((status::Ok, encoded)))
-        }
-
-        fn http_post(req: &mut Request) -> IronResult<Response> {
-
-            let map = req.get_ref::<Params>().unwrap();
-
-            match map.find(&["payload"]) {
-                Some(&Value::String(ref p)) => {
-                    let mut bytes = Vec::new();
-                    bytes.extend_from_slice(p.as_bytes());
-
-                    let document = Document {
-                        filename: "".to_string(),
-                        payload: bytes,
-                    };
-                    match _put(document) {
-                        Ok(id) => Ok(Response::with((status::Ok, format!("{}", id)))),
-                        Err(err) => {
-                            Ok(Response::with((status::InternalServerError, err.description())))
-                        }
-                    }
-                } 
-                _ => Ok(Response::with((status::InternalServerError, "No payload defined"))), 
-            }
-        }
-
-        fn http_delete(req: &mut Request) -> IronResult<Response> {
-            let ref fileId = req.extensions
-                .get::<Router>()
-                .unwrap()
-                .find("fileId")
-                .unwrap();
-
-            let res = match _remove(Uuid::parse_str(*fileId).unwrap()) {
-                Ok(_) => Response::with((status::Ok, "Ok")),
-                Err(err) => Response::with((status::InternalServerError, err.description())),
+        if args.flag_config {
+            let config = match Config::init(args.arg_config_path.unwrap()) {
+                Ok(config) => config,
+                Err(err) => panic!("{}", err),
             };
 
-            Ok(res)
+            let mut node_ids: Vec<u64> = Vec::new();
+            let mut node_addreses: Vec<String> = Vec::new();
+
+            for peer in config.peers {
+                node_ids.push(peer.node_id);
+                node_addreses.push(peer.node_address);
+            }
+
+            http_handler::init(config.server.rest_port as u16);
+            server(ServerId::from(config.server.node_id),
+                   parse_addr(&config.server.node_address),
+                   node_ids,
+                   node_addreses)
+        } else {
+            http_handler::init(args.arg_rest_port.unwrap() as u16);
+            server(ServerId::from(args.arg_id.unwrap()),
+                   parse_addr(&args.arg_addr.unwrap()),
+                   args.arg_node_id,
+                   args.arg_node_address);
         }
-
-        server(&args);
-
     } else if args.cmd_get {
         get(&args);
     } else if args.cmd_put {
@@ -180,22 +147,17 @@ fn main() {
     }
 }
 
-fn server(args: &Args) {
+fn server(serverId: ServerId, addr: SocketAddr, node_id: Vec<u64>, node_address: Vec<String>) {
 
     let persistent_log = persistent_log::doc::DocLog::new();
 
-    let id = ServerId::from(args.arg_id.unwrap());
-
-    let mut peers = args.arg_node_id
-        .iter()
-        .zip(args.arg_node_address.iter())
+    let mut peers = node_id.iter()
+        .zip(node_address.iter())
         .map(|(&id, addr)| (ServerId::from(id), parse_addr(&addr)))
         .collect::<HashMap<_, _>>();
 
-    let addr = peers.remove(&id).unwrap();
-
     let mut state_machine = DocumentStateMachine::new();
-    raft::Server::run(id, addr, peers, persistent_log, state_machine).unwrap();
+    raft::Server::run(serverId, addr, peers, persistent_log, state_machine).unwrap();
 }
 
 fn get(args: &Args) {
@@ -290,13 +252,13 @@ impl state_machine::StateMachine for DocumentStateMachine {
         let response = match message {
             Get(id) => self.query(new_value),
             Put(document) => {
-                match _put(document) {
+                match Handler::put(document) {
                     Ok(id) => encode(&id, SizeLimit::Infinite).unwrap(),
                     Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
                 }
             }
             Remove(id) => {
-                match _remove(id) {
+                match Handler::remove(id) {
                     Ok(id) => encode(&id, SizeLimit::Infinite).unwrap(),
                     Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
                 }
@@ -311,7 +273,7 @@ impl state_machine::StateMachine for DocumentStateMachine {
 
         let response = match message {
             Get(id) => {
-                match _get(id) {
+                match Handler::get(id) {
                     Ok(document) => encode(&document, SizeLimit::Infinite).unwrap(),
                     Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
                 }
@@ -331,33 +293,4 @@ impl state_machine::StateMachine for DocumentStateMachine {
     }
 
     fn restore_snapshot(&mut self, snapshot_value: Vec<u8>) {}
-}
-
-fn _get(id: Uuid) -> Result<Document, DecodingError> {
-    let mut handler = try!(File::open(format!("data/{}", id)));
-
-    let mut decoded: Document = try!(decode_from(&mut handler, SizeLimit::Infinite));
-
-    Ok(decoded)
-}
-
-fn _put(document: Document) -> Result<Uuid, EncodingError> {
-    let id = Uuid::new_v4();
-
-    // TODO implement error-handling
-    let mut handler = OpenOptions::new()
-        .read(false)
-        .write(true)
-        .create(true)
-        .open(format!("data/{}", id))
-        .unwrap();
-
-    try!(encode_into(&document, &mut handler, SizeLimit::Infinite));
-
-    Ok(id)
-}
-
-fn _remove(id: Uuid) -> Result<String, std::io::Error> {
-    try!(remove_file(format!("data/{}", id)));
-    Ok("Document deleted".to_string())
 }
