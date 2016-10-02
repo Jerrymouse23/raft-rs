@@ -50,10 +50,7 @@ pub fn init(rest_port: u16) {
                 let mut bytes = Vec::new();
                 bytes.extend_from_slice(p.as_bytes());
 
-                let document = Document {
-                    filename: "".to_string(),
-                    payload: bytes,
-                };
+                let document = Document { payload: bytes };
                 match Handler::put(document) {
                     Ok(id) => Ok(Response::with((status::Ok, format!("{}", id)))),
                     Err(err) => {

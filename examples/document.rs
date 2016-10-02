@@ -66,7 +66,7 @@ Commands:
 
 Usage:
     document get <doc-id> <node-address>
-    document put <node-address> <filepath> <filename>
+    document put <node-address> <filepath> 
     document remove <doc-id> <node-address>
     document server <id> <addr> <rest-port> [<node-id> <node-address>]...
     document server --config <config-path>
@@ -80,7 +80,6 @@ struct Args {
     cmd_remove: bool,
     arg_id: Option<u64>,
     arg_doc_id: Option<String>,
-    arg_filename: Option<String>,
     arg_node_id: Vec<u64>,
     arg_node_address: Vec<String>,
     arg_filepath: String,
@@ -99,7 +98,6 @@ pub enum Message {
 
 #[derive(RustcEncodable,RustcDecodable,Debug)]
 pub struct Document {
-    filename: String,
     payload: Vec<u8>,
 }
 
@@ -176,16 +174,7 @@ fn get(args: &Args) {
 
     let document: Document = decode(response.as_slice()).unwrap();
 
-    let mut handler = OpenOptions::new()
-        .read(false)
-        .write(true)
-        .create(true)
-        .open(&document.filename)
-        .unwrap();
-
-    handler.write_all(document.payload.as_slice());
-
-    println!("Written");
+    println!("{:?}", document);
 }
 
 fn put(args: &Args) {
@@ -193,16 +182,12 @@ fn put(args: &Args) {
 
     let mut client = Client::new(cluster);
 
-    let filename = (&args.arg_filename).clone().unwrap();
     let mut handler = File::open(&args.arg_filepath).unwrap();
     let mut buffer: Vec<u8> = Vec::new();
 
     handler.read_to_end(&mut buffer);
 
-    let document = Document {
-        filename: filename,
-        payload: buffer,
-    };
+    let document = Document { payload: buffer };
 
     let payload = encode(&Message::Put(document), SizeLimit::Infinite).unwrap();
 
