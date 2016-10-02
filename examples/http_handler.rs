@@ -17,6 +17,11 @@ use handler::Handler;
 
 use std::thread::spawn;
 
+#[derive(RustcDecodable,RustcEncodable)]
+struct http_Response {
+    payload: String,
+}
+
 pub fn init(rest_port: u16) {
     let mut router = Router::new();
     router.get("/document/:fileId", http_get, "get_document");
@@ -36,7 +41,9 @@ pub fn init(rest_port: u16) {
 
         let document = Handler::get(Uuid::parse_str(*fileId).unwrap()).unwrap();
 
-        let encoded = json::encode(&document).unwrap();
+        let http_doc = http_Response { payload: String::from_utf8(document.payload).unwrap() };
+
+        let encoded = json::encode(&http_doc).unwrap();
 
         Ok(Response::with((status::Ok, encoded)))
     }
