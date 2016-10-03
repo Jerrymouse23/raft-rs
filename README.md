@@ -1,20 +1,7 @@
 # Raft-rs #
 
-> Note: This project is of **alpha** quality. **APIs are still in some flux, but they are ready for you to play with them.** A stable version will be released when we feel it is ready.
-
 master: [![Build Status](https://travis-ci.org/paenko/PaenkoDb.svg?branch=master)](https://travis-ci.org/paenko/PaenkoDb)
 dev: [![Build Status](https://travis-ci.org/paenko/PaenkoDb.svg?branch=dev)](https://travis-ci.org/paenko/PaenkoDb)
-
-**[Development Updates](http://www.hoverbear.org/tag/raft/)**
-
-## Problem and Importance ##
-
-When building a distributed system one principal goal is often to build in *fault-tolerance*. That is, if one particular node in a network goes down, or if there is a network partition, the entire cluster does not fall over. The cluster of nodes taking part in a distributed consensus protocol must come to agreement regarding values, and once that decision is reached, that choice is final.
-
-Distributed Consensus Algorithms often take the form of a replicated state machine and log. Each state machine accepts inputs from its log, and represents the value(s) to be replicated, for example, a hash table. They allow a collection of machines to work as a coherent group that can survive the failures of some of its members.
-
-Two well known Distributed Consensus Algorithms are Paxos and Raft. Paxos is used in systems like [Chubby](http://research.google.com/archive/chubby.html) by Google, and Raft is used in things like [`etcd`](https://github.com/coreos/etcd/tree/master/raft). Raft is generally seen as a more understandable and simpler to implement than Paxos, and was chosen for this project for this reason.
-
 
 ## Documentation ##
 
@@ -62,48 +49,35 @@ cargo build
 
 > Note this is a library, so building won't necessarily produce anything useful for you unless you're developing.
 
-## Examples ##
+**Document**
 
-You can run a single-node `register` example like this:
-
-```bash
-RUST_LOG=raft=debug cargo run --example register server 1 1 127.0.0.1:8080
-```
-
-There are currently examples showing:
-
-* **Register:** A single shared, replicated buffer for storing some data. Uses `bincode`.
-* **Hashmap:** A replicated hash table that stores `json::Value` with `String`s as keys. Uses `serde`.
-
-For a multi-node example (`hashmap` shown for variety), make sure to include all the peers on all instances:
-```bash
-# Node 1
-RUST_LOG=raft=debug cargo run --example hashmap server 1 1 127.0.0.1:8080 2 127.0.0.1:8081
-# Node 2
-RUST_LOG=raft=debug cargo run --example hashmap server 2 1 127.0.0.1:8080 2 127.0.0.1:8081
-```
-
-** Document: **
 ```bash
 RUST_LOG=raft=debug cargo run --example document server 3000 1 1 127.0.0.1:9000 2 127.0.0.1:9001
 
 RUST_LOG=raft=debug cargo run --example document server 3001  2 1 127.0.0.1:9000 2 127.0.0.1:9001
 ```
 
-We'd love it if you contributed your own or expanded on ours!
+or start with a file
+
+```bash
+cd target/debug/examples
+RUST_LOG=raft=debug ./document server --config config.toml
+```
+
+> config.toml
+```toml
+  [server]
+  node_id = 1
+  node_address = "127.0.0.1:9000"
+  rest_port = 3000
+
+  [[peers]]
+  node_id = 2
+  node_address="127.0.0.1:9001"
+`
 
 ## Testing ##
-
-You can run the `raft` crate's full bank of tests with all debug output like so:
 
 ```bash
 RUST_BACKTRACE=1 RUST_LOG=raft=debug cargo test -- --nocapture
 ```
-
-For something more terse use `cargo test`.
-
-## Contributing ##
-
-**First timer with Git?** Check [this](https://github.com/hoverbear/rust-rosetta#contributing-1) out for some help!!
-
-We use [Homu](http://homu.io/q/Hoverbear/raft) for merging requests. **This means we cannot merge your code unless it passes tests!**
