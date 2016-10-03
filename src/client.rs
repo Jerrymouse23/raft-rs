@@ -129,7 +129,7 @@ impl Client {
                             let leader_str = try!(leader);
                             if !self.cluster.contains(&try!(SocketAddr::from_str(leader_str))) {
                                 scoped_debug!("cluster violation detected");
-                                return Err(RaftError::ClusterViolation.into(), leader_str); // Exit the function.
+                                return Err(RaftError::ClusterViolation.into());
                             }
                             let mut connection: TcpStream = try!(TcpStream::connect(leader_str));
                             let preamble = messages::client_connection_preamble(self.id);
