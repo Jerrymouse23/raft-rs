@@ -65,6 +65,7 @@ RUST_LOG=raft=debug ./document server --config config.toml
 ```
 
 > config.toml
+
 ```toml
   [server]
   node_id = 1
