@@ -138,7 +138,7 @@ wrapped_enum!{
     #[doc = "on `io::Error` or `capnp::Error` by using"]
     #[doc = "[`FromError`](https://doc.rust-lang.org/std/error/#the-fromerror-trait)."]
     #[derive(Debug)]
-    pub enum Error {
+    pub enum Error{
 /// An error originating from the [Cap'n Proto](https://github.com/dwrensha/capnproto-rust) library.
         CapnProto(capnp::Error),
 /// A specific error produced when a bad Cap'n proto message is discovered.
@@ -161,7 +161,7 @@ pub enum RaftError {
     /// A client reported an invalid client id
     InvalidClientId,
     /// A consensus module reported back a leader not in the cluster.
-    ClusterViolation,
+    ClusterViolation(String),
     /// A remote connection attempted to use an unknown connection type in the connection preamble
     UnknownConnectionType,
     /// An invalid peer in in the peer set. Returned Server::new().
