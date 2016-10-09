@@ -32,6 +32,7 @@ use docopt::Docopt;
 
 use raft::{Client, state_machine, persistent_log, ServerId};
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -46,6 +47,8 @@ use uuid::Uuid;
 use std::error::Error;
 use std::io::ErrorKind;
 
+use raft::RaftError;
+
 mod handler;
 mod http_handler;
 mod config;
@@ -58,11 +61,11 @@ A replicated document database.
 
 Commands:
 
-    get     Returns document
+    get     Return document
 
     put     Set document
 
-    server  Starts server
+    server  Start server
 
 Usage:
     document get <doc-id> <node-address>
@@ -137,11 +140,24 @@ fn main() {
                    args.arg_node_address);
         }
     } else if args.cmd_get {
-        get(&args);
+        let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
+            Ok(id) => id,
+            Err(err) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
+        };
+
+        get(args.arg_node_address.iter().map(|v| parse_addr(&v)).collect(),
+            id);
     } else if args.cmd_put {
-        put(&args);
+        put(args.arg_node_address.iter().map(|v| parse_addr(&v)).collect(),
+            &args.arg_filepath);
     } else if args.cmd_remove {
-        remove(&args);
+        let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
+            Ok(id) => id,
+            Err(err) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
+        };
+
+        remove(args.arg_node_address.iter().map(|v| parse_addr(&v)).collect(),
+               id);
     }
 }
 
@@ -158,31 +174,30 @@ fn server(serverId: ServerId, addr: SocketAddr, node_id: Vec<u64>, node_address:
     raft::Server::run(serverId, addr, peers, persistent_log, state_machine).unwrap();
 }
 
-fn get(args: &Args) {
-    let cluster = args.arg_node_address.iter().map(|v| parse_addr(&v)).collect();
+fn get(node_addr: HashSet<SocketAddr>, doc_id: Uuid) {
+    let mut client = Client::new(node_addr);
 
-    let mut client = Client::new(cluster);
+    let payload = encode(&Message::Get(doc_id), SizeLimit::Infinite).unwrap();
 
-    let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
-        Ok(id) => id,
-        Err(err) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
+    let response = match client.query(payload.as_slice()) {
+        Ok(res) => res,
+        Err(raft::Error::Raft(RaftError::ClusterViolation(ref leader_str))) => {
+            let mut cluster = HashSet::new();
+            cluster.insert(parse_addr(&leader_str));
+            return get(cluster, doc_id);
+        } 
+        Err(err) => panic!(err),
     };
-
-    let payload = encode(&Message::Get(id), SizeLimit::Infinite).unwrap();
-
-    let response = client.query(payload.as_slice()).unwrap();
 
     let document: Document = decode(response.as_slice()).unwrap();
 
     println!("{:?}", document);
 }
 
-fn put(args: &Args) {
-    let cluster = args.arg_node_address.iter().map(|v| parse_addr(&v)).collect();
+fn put(node_addr: HashSet<SocketAddr>, filepath: &str) {
+    let mut client = Client::new(node_addr);
 
-    let mut client = Client::new(cluster);
-
-    let mut handler = File::open(&args.arg_filepath).unwrap();
+    let mut handler = File::open(&filepath).unwrap();
     let mut buffer: Vec<u8> = Vec::new();
 
     handler.read_to_end(&mut buffer);
@@ -191,24 +206,33 @@ fn put(args: &Args) {
 
     let payload = encode(&Message::Put(document), SizeLimit::Infinite).unwrap();
 
-    let response = client.propose(payload.as_slice()).unwrap();
+    let response = match client.propose(payload.as_slice()) {
+        Ok(res) => res,
+        Err(raft::Error::Raft(RaftError::ClusterViolation(ref leader_str))) => {
+            let mut cluster = HashSet::new();
+            cluster.insert(parse_addr(&leader_str));
+            return put(cluster, filepath);
+        } 
+        Err(err) => panic!(err),
+    };
 
     println!("{}", String::from_utf8(response).unwrap())
 }
 
-fn remove(args: &Args) {
-    let cluster = args.arg_node_address.iter().map(|v| parse_addr(&v)).collect();
+fn remove(node_addr: HashSet<SocketAddr>, doc_id: Uuid) {
+    let mut client = Client::new(node_addr);
 
-    let mut client = Client::new(cluster);
+    let payload = encode(&Message::Remove(doc_id), SizeLimit::Infinite).unwrap();
 
-    let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
-        Ok(id) => id,
-        Err(err) => panic!("{} is not a valid id", &args.arg_doc_id.clone().unwrap()),
+    let response = match client.propose(payload.as_slice()) {
+        Ok(res) => res,
+        Err(raft::Error::Raft(RaftError::ClusterViolation(ref leader_str))) => {
+            let mut cluster = HashSet::new();
+            cluster.insert(parse_addr(&leader_str));
+            return remove(cluster, doc_id);
+        } 
+        Err(err) => panic!(err),
     };
-
-    let payload = encode(&Message::Remove(id), SizeLimit::Infinite).unwrap();
-
-    let response = client.propose(payload.as_slice()).unwrap();
 
     println!("{}", String::from_utf8(response).unwrap())
 }
