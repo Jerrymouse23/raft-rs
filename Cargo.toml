@@ -55,3 +55,4 @@ uuid = {version="*",features=["rustc-serialize","v4"]}
 wrapped_enum = "0.1"
 bincode = "*"
 rustc-serialize = "*"
+env_logger = "*"
