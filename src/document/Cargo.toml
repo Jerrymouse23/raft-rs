@@ -1,0 +1,19 @@
+[package]
+name = "document"
+version = "0.1.0"
+authors = ["kper <kevp.per@gmail.com>"]
+
+[dependencies]
+raft ={path="../.."} 
+env_logger = "*"
+rustc-serialize = "*"
+bincode ="*"
+capnp = "0.6"
+capnp-nonblock = "0.3"
+log = "0.3"
+uuid = {version="*",features=["rustc-serialize","v4"]}
+docopt ="*"
+iron ="*"
+router ="*"
+params ="*"
+toml ="*"

@@ -12,7 +12,7 @@ use bincode::rustc_serialize::{EncodingError, DecodingError};
 
 use std::io::Error as IoError;
 
-use Document;
+use document::Document;
 
 pub struct Handler;
 

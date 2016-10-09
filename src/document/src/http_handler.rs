@@ -10,7 +10,7 @@ use std::error::Error;
 
 use rustc_serialize::json;
 
-use Document;
+use document::Document;
 
 use handler;
 use handler::Handler;
