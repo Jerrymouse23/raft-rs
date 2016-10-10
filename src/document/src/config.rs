@@ -20,6 +20,7 @@ pub struct ServerConfig {
     pub rest_port: u64,
     pub node_id: u64,
     pub node_address: String,
+    pub community_string: String,
 }
 
 #[derive(Debug,RustcDecodable,Clone)]

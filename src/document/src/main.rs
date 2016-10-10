@@ -70,7 +70,7 @@ Usage:
     document get <doc-id> <node-address>
     document put <node-address> <filepath> 
     document remove <doc-id> <node-address>
-    document server <id> <addr> <rest-port> [<node-id> <node-address>]...
+    document server <id> <addr> <rest-port> --community <community> [<node-id> <node-address>]...
     document server --config <config-path>
 ";
 
@@ -89,6 +89,8 @@ struct Args {
     flag_config: bool,
     arg_config_path: Option<String>,
     arg_addr: Option<String>,
+    flag_community: bool,
+    arg_community: Option<String>,
 }
 fn main() {
     env_logger::init().unwrap();
@@ -117,13 +119,28 @@ fn main() {
             server(ServerId::from(config.server.node_id),
                    parse_addr(&config.server.node_address),
                    node_ids,
-                   node_addreses)
+                   node_addreses,
+                   config.server.community_string.to_string())
         } else {
             http_handler::init(args.arg_rest_port.unwrap() as u16);
+
+            let community_string = match args.flag_community {
+                true => {
+                    let c = match args.arg_community {
+                        Some(c) => c,
+                        None => "".to_string(),
+                    };
+
+                    c
+                }
+                false => "".to_string(),
+            };
+
             server(ServerId::from(args.arg_id.unwrap()),
                    parse_addr(&args.arg_addr.unwrap()),
                    args.arg_node_id,
-                   args.arg_node_address);
+                   args.arg_node_address,
+                   community_string);
         }
     } else if args.cmd_get {
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {

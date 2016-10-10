@@ -11,7 +11,10 @@ use messages_capnp::{client_request, client_response, connection_preamble, messa
 
 // ConnectionPreamble
 
-pub fn server_connection_preamble(id: ServerId, addr: &SocketAddr) -> Rc<Builder<HeapAllocator>> {
+pub fn server_connection_preamble(id: ServerId,
+                                  addr: &SocketAddr,
+                                  community_string: &str)
+                                  -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
         let mut server = message.init_root::<connection_preamble::Builder>()
@@ -19,6 +22,7 @@ pub fn server_connection_preamble(id: ServerId, addr: &SocketAddr) -> Rc<Builder
             .init_server();
         server.set_addr(&format!("{}", addr));
         server.set_id(id.as_u64());
+        server.set_community(community_string);
     }
     Rc::new(message)
 }

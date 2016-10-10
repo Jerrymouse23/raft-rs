@@ -196,12 +196,16 @@ impl Connection {
 
     /// Reconnects to the given peer ID and sends the preamble, advertising the
     /// given local address to the peer.
-    pub fn reconnect_peer(&mut self, id: ServerId, local_addr: &SocketAddr) -> Result<()> {
+    pub fn reconnect_peer(&mut self,
+                          id: ServerId,
+                          local_addr: &SocketAddr,
+                          community_string: String)
+                          -> Result<()> {
         scoped_assert!(self.kind.is_peer());
         scoped_trace!("{:?}: reconnect", self);
         self.stream = Some(MessageStream::new(try!(TcpStream::connect(&self.addr)),
                                               ReaderOptions::new()));
-        try!(self.send_message(messages::server_connection_preamble(id, local_addr)));
+        try!(self.send_message(messages::server_connection_preamble(id, local_addr,&community_string)));
         Ok(())
     }
 

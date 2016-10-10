@@ -26,8 +26,8 @@ struct Peer {
    id @0 :UInt64;
 
    addr @1 :Text;
-   # The address to use for reconnecting or to redirect clients to
-   # when not leader.
+
+   community @2 :Text;
 }
 
 struct Entry {

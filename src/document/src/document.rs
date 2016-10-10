@@ -33,7 +33,11 @@ pub struct Document {
     pub payload: Vec<u8>,
 }
 
-pub fn server(serverId: ServerId, addr: SocketAddr, node_id: Vec<u64>, node_address: Vec<String>) {
+pub fn server(serverId: ServerId,
+              addr: SocketAddr,
+              node_id: Vec<u64>,
+              node_address: Vec<String>,
+              community_string: String) {
 
     let persistent_log = DocLog::new();
 
@@ -43,7 +47,13 @@ pub fn server(serverId: ServerId, addr: SocketAddr, node_id: Vec<u64>, node_addr
         .collect::<HashMap<_, _>>();
 
     let mut state_machine = DocumentStateMachine::new();
-    Server::run(serverId, addr, peers, persistent_log, state_machine).unwrap();
+    Server::run(serverId,
+                addr,
+                peers,
+                persistent_log,
+                state_machine,
+                community_string)
+        .unwrap();
 }
 
 pub fn get(node_addr: HashSet<SocketAddr>, doc_id: Uuid) {

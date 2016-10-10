@@ -76,6 +76,9 @@ pub struct Server<L, M>
 
     /// Currently registered reconnection timeouts.
     reconnection_timeouts: HashMap<Token, TimeoutHandle>,
+
+    /// String to allow connecting to different peers
+    community_string: String,
 }
 
 /// The implementation of the Server.
@@ -89,7 +92,8 @@ impl<L, M> Server<L, M>
            addr: SocketAddr,
            peers: HashMap<ServerId, SocketAddr>,
            store: L,
-           state_machine: M)
+           state_machine: M,
+           community_string: String)
            -> Result<(Server<L, M>, EventLoop<Server<L, M>>)> {
         if peers.contains_key(&id) {
             return Err(Error::Raft(RaftError::InvalidPeerSet));
@@ -109,6 +113,7 @@ impl<L, M> Server<L, M>
             client_tokens: HashMap::new(),
             consensus_timeouts: HashMap::new(),
             reconnection_timeouts: HashMap::new(),
+            community_string: community_string.clone(),
         };
 
         for (peer_id, peer_addr) in peers {
@@ -120,7 +125,8 @@ impl<L, M> Server<L, M>
             try!(server.connections[token].register(&mut event_loop, token));
             server.send_message(&mut event_loop,
                                 token,
-                                messages::server_connection_preamble(id, &addr));
+                                messages::server_connection_preamble(id, &addr, &community_string));
+
         }
 
         Ok((server, event_loop))
@@ -139,9 +145,11 @@ impl<L, M> Server<L, M>
                addr: SocketAddr,
                peers: HashMap<ServerId, SocketAddr>,
                store: L,
-               state_machine: M)
+               state_machine: M,
+               community_string: String)
                -> Result<()> {
-        let (mut server, mut event_loop) = try!(Server::new(id, addr, peers, store, state_machine));
+        let (mut server, mut event_loop) =
+            try!(Server::new(id, addr, peers, store, state_machine, community_string));
         let actions = server.consensus.init();
         server.execute_actions(&mut event_loop, actions);
         event_loop.run(&mut server).map_err(From::from)
@@ -156,15 +164,17 @@ impl<L, M> Server<L, M>
     /// * `peers` - The ID and address of all peers in the Raft cluster.
     /// * `store` - The persistent log store.
     /// * `state_machine` - The client state machine to which client commands will be applied.
+    /// * `communinity_string` - To allow peers to connect to each other
     pub fn spawn(id: ServerId,
                  addr: SocketAddr,
                  peers: HashMap<ServerId, SocketAddr>,
                  store: L,
-                 state_machine: M)
+                 state_machine: M,
+                 community_string: String)
                  -> Result<JoinHandle<Result<()>>> {
         thread::Builder::new()
             .name(format!("raft::Server({})", id))
-            .spawn(move || Server::run(id, addr, peers, store, state_machine))
+            .spawn(move || Server::run(id, addr, peers, store, state_machine, community_string))
             .map_err(From::from)
     }
 
@@ -300,37 +310,45 @@ impl<L, M> Server<L, M>
                                           peer_id,
                                           peer_addr);
 
-                            self.connections[token].set_kind(ConnectionKind::Peer(peer_id));
-                            // Use the advertised address, not the remote's source
-                            // address, for future retries in this connection.
-                            self.connections[token].set_addr(peer_addr);
+                            if peer.get_community().unwrap() != self.community_string {
+                                scoped_debug!("peer with addr {:?} tried to connect with an \
+                                              invalid community_string",
+                                              peer_addr);
+                            } else {
 
-                            let prev_token = Some(self.peer_tokens
-                                .insert(peer_id, token)
-                                .expect("peer token not found"));
+                                self.connections[token].set_kind(ConnectionKind::Peer(peer_id));
+                                // Use the advertised address, not the remote's source
+                                // address, for future retries in this connection.
+                                self.connections[token].set_addr(peer_addr);
 
-                            // Close the existing connection, if any.
-                            // Currently, prev_token is never `None`; see above.
-                            // With config changes, this will have to be handled.
-                            match prev_token {
-                                Some(tok) => {
-                                    self.connections
-                                        .remove(tok)
-                                        .expect("peer connection not found");
+                                let prev_token = Some(self.peer_tokens
+                                    .insert(peer_id, token)
+                                    .expect("peer token not found"));
 
-                                    // Clear any timeouts associated with the existing connection.
-                                    self.reconnection_timeouts
-                                        .remove(&tok)
-                                        .map(|handle| {
-                                            scoped_assert!(event_loop.clear_timeout(handle))
-                                        });
+                                // Close the existing connection, if any.
+                                // Currently, prev_token is never `None`; see above.
+                                // With config changes, this will have to be handled.
+                                match prev_token {
+                                    Some(tok) => {
+                                        self.connections
+                                            .remove(tok)
+                                            .expect("peer connection not found");
+
+                                        // Clear any timeouts associated with the existing connection.
+                                        self.reconnection_timeouts
+                                            .remove(&tok)
+                                            .map(|handle| {
+                                                scoped_assert!(event_loop.clear_timeout(handle))
+                                            });
+                                    }
+                                    _ => unreachable!(),
                                 }
-                                _ => unreachable!(),
+                                // Notify consensus that the connection reset.
+                                let mut actions = Actions::new();
+                                self.consensus
+                                    .peer_connection_reset(peer_id, peer_addr, &mut actions);
+                                self.execute_actions(event_loop, actions);
                             }
-                            // Notify consensus that the connection reset.
-                            let mut actions = Actions::new();
-                            self.consensus.peer_connection_reset(peer_id, peer_addr, &mut actions);
-                            self.execute_actions(event_loop, actions);
                         }
                         connection_preamble::id::Which::Client(Ok(id)) => {
                             let client_id = try!(ClientId::from_bytes(id));
@@ -471,7 +489,7 @@ impl<L, M> Handler for Server<L, M>
                 };
                 let addr = self.connections[token].addr().clone();
                 self.connections[token]
-                    .reconnect_peer(self.id, &local_addr.unwrap())
+                    .reconnect_peer(self.id, &local_addr.unwrap(), self.community_string.clone())
                     .and_then(|_| self.connections[token].register(event_loop, token))
                     .map(|_| {
                         let mut actions = Actions::new();
