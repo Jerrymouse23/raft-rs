@@ -28,6 +28,9 @@ use state_machine::StateMachine;
 use persistent_log::Log;
 use connection::{Connection, ConnectionKind};
 
+use auth::Auth;
+use auth::file::FileAuth;
+
 const LISTENER: Token = Token(0);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -350,16 +353,33 @@ impl<L, M> Server<L, M>
                                 self.execute_actions(event_loop, actions);
                             }
                         }
-                        connection_preamble::id::Which::Client(Ok(id)) => {
-                            let client_id = try!(ClientId::from_bytes(id));
-                            scoped_debug!("received new client connection from {}", client_id);
-                            self.connections[token].set_kind(ConnectionKind::Client(client_id));
-                            let prev_token = self.client_tokens
-                                .insert(client_id, token);
-                            scoped_assert!(prev_token.is_none(),
-                                           "{:?}: two clients connected with the same id: {:?}",
-                                           self,
-                                           client_id);
+                        connection_preamble::id::Which::Client(Ok(client)) => {
+
+                            let client_id = try!(ClientId::from_bytes(client.get_data().unwrap()));
+                            let client_username = client.get_username().unwrap();
+                            let client_password = client.get_password().unwrap();
+
+                            let hashed = FileAuth::find(client_username);
+
+                            let isAuth =
+                                FileAuth::compare(&String::from_utf8(client_password.to_vec())
+                                                      .unwrap(),
+                                                  &hashed);
+
+                            if isAuth == false {
+                                scoped_debug!("Wrong username or password");
+                            } else {
+
+                                scoped_debug!("received new client connection from {}", client_id);
+                                self.connections[token].set_kind(ConnectionKind::Client(client_id));
+                                let prev_token = self.client_tokens
+                                    .insert(client_id, token);
+                                scoped_assert!(prev_token.is_none(),
+                                               "{:?}: two clients connected with the same id: \
+                                                {:?}",
+                                               self,
+                                               client_id);
+                            }
                         }
                         _ => {
                             return Err(Error::Raft(RaftError::UnknownConnectionType));

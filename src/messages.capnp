@@ -14,7 +14,7 @@ struct ConnectionPreamble {
         # further messages in the connection (in both directions) will be of
         # type Message.
 
-        client @1 :Data;
+        client @1 :Client;
         # Indicates that the connecting process is a client, and that all
         # further messages sent by the client will be of type ClientRequest, and
         # all replys from the server to the client will be of type
@@ -28,6 +28,13 @@ struct Peer {
    addr @1 :Text;
 
    community @2 :Text;
+}
+
+struct Client{
+  username @2 :Text;
+  password @0 :Data;
+
+  data @1 :Data;
 }
 
 struct Entry {
@@ -132,6 +139,7 @@ struct RequestVoteResponse {
 }
 
 struct ClientRequest {
+  
   union {
     ping @0 :PingRequest;
     proposal @1 :ProposalRequest;
@@ -140,6 +148,7 @@ struct ClientRequest {
 }
 
 struct ClientResponse {
+
   union {
     ping @0 :PingResponse;
     proposal @1 :CommandResponse;

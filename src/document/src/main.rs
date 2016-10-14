@@ -67,9 +67,9 @@ Commands:
     server  Start server
 
 Usage:
-    document get <doc-id> <node-address>
-    document put <node-address> <filepath> 
-    document remove <doc-id> <node-address>
+    document get <doc-id> <node-address> <username> <password>
+    document put <node-address> <filepath> <username> <password> 
+    document remove <doc-id> <node-address> <username> <password>
     document server <id> <addr> <rest-port> --community <community> [<node-id> <node-address>]...
     document server --config <config-path>
 ";
@@ -91,6 +91,8 @@ struct Args {
     arg_addr: Option<String>,
     flag_community: bool,
     arg_community: Option<String>,
+    arg_password: Option<String>,
+    arg_username: Option<String>,
 }
 fn main() {
     env_logger::init().unwrap();
@@ -149,10 +151,14 @@ fn main() {
         };
 
         get(args.arg_node_address.iter().map(|v| parse_addr(&v)).collect(),
-            id);
+            id,
+            args.arg_username.unwrap(),
+            args.arg_password.unwrap());
     } else if args.cmd_put {
         put(args.arg_node_address.iter().map(|v| parse_addr(&v)).collect(),
-            &args.arg_filepath);
+            &args.arg_filepath,
+            args.arg_username.unwrap(),
+            args.arg_password.unwrap());
     } else if args.cmd_remove {
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
             Ok(id) => id,
@@ -160,11 +166,11 @@ fn main() {
         };
 
         remove(args.arg_node_address.iter().map(|v| parse_addr(&v)).collect(),
-               id);
+               id,
+               args.arg_username.unwrap(),
+               args.arg_password.unwrap());
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {

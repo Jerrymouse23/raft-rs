@@ -18,6 +18,8 @@ use messages;
 use ClientId;
 use Result;
 use RaftError;
+use auth::Auth;
+use auth::file::FileAuth;
 
 const CLIENT_TIMEOUT: u64 = 1500;
 
@@ -31,15 +33,24 @@ pub struct Client {
     leader_connection: Option<BufStream<TcpStream>>,
     /// A lookup for the cluster's nodes.
     cluster: HashSet<SocketAddr>,
+    /// The hashed client password
+    password: String,
+    /// The username to access server
+    username: String,
 }
 
 impl Client {
     /// Creates a new client.
-    pub fn new(cluster: HashSet<SocketAddr>) -> Client {
+    pub fn new(cluster: HashSet<SocketAddr>, username: String, password: String) -> Client {
+
+        let hashed_password = FileAuth::generate(&password);
+
         Client {
             id: ClientId::new(),
             leader_connection: None,
             cluster: cluster,
+            password: hashed_password,
+            username: username,
         }
     }
 
@@ -78,7 +89,9 @@ impl Client {
                     let leader = try!(members.next().ok_or(RaftError::LeaderSearchExhausted));
                     scoped_debug!("connecting to potential leader {}", leader);
                     // Send the preamble.
-                    let preamble = messages::client_connection_preamble(self.id);
+                    let preamble = messages::client_connection_preamble(self.id,
+                                                                        self.username.as_str(),
+                                                                        self.password.as_bytes());
                     let mut stream = match TcpStream::connect(leader) {
                         Ok(stream) => {
                             let timeout = Some(Duration::from_millis(CLIENT_TIMEOUT));
@@ -133,7 +146,11 @@ impl Client {
                                     .into());
                             }
                             let mut connection: TcpStream = try!(TcpStream::connect(leader_str));
-                            let preamble = messages::client_connection_preamble(self.id);
+                            let preamble = messages::client_connection_preamble(self.id,
+                                                                                self.username
+                                                                                    .as_str(),
+                                                                                self.password
+                                                                                    .as_bytes());
                             if let Err(_) = serialize::write_message(&mut connection, &*preamble) {
                                 continue;
                             };

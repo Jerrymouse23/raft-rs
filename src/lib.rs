@@ -91,6 +91,7 @@ extern crate env_logger;
 extern crate serde;
 extern crate bincode;
 extern crate rustc_serialize;
+extern crate crypto;
 
 /// Prepares the environment testing. Should be called as the first line of every test with the
 /// name of the test as the only argument.
@@ -118,6 +119,7 @@ mod messages;
 mod consensus;
 mod server;
 mod state;
+mod auth;
 
 pub use server::Server;
 pub use state_machine::StateMachine;

@@ -27,12 +27,18 @@ pub fn server_connection_preamble(id: ServerId,
     Rc::new(message)
 }
 
-pub fn client_connection_preamble(id: ClientId) -> Rc<Builder<HeapAllocator>> {
+pub fn client_connection_preamble(id: ClientId,
+                                  username: &str,
+                                  password: &[u8])
+                                  -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        message.init_root::<connection_preamble::Builder>()
+        let mut client = message.init_root::<connection_preamble::Builder>()
             .init_id()
-            .set_client(id.as_bytes());
+            .init_client();
+        client.set_username(username);
+        client.set_password(password);
+        client.set_data(id.as_bytes());
     }
     Rc::new(message)
 }

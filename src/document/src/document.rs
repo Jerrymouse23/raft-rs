@@ -56,8 +56,8 @@ pub fn server(serverId: ServerId,
         .unwrap();
 }
 
-pub fn get(node_addr: HashSet<SocketAddr>, doc_id: Uuid) {
-    let mut client = Client::new(node_addr);
+pub fn get(node_addr: HashSet<SocketAddr>, doc_id: Uuid, username: String, password: String) {
+    let mut client = Client::new(node_addr, username.to_string(), password.to_string());
 
     let payload = encode(&Message::Get(doc_id), SizeLimit::Infinite).unwrap();
 
@@ -66,7 +66,7 @@ pub fn get(node_addr: HashSet<SocketAddr>, doc_id: Uuid) {
         Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
             let mut cluster = HashSet::new();
             cluster.insert(parse_addr(&leader_str));
-            return get(cluster, doc_id);
+            return get(cluster, doc_id, username, password);
         } 
         Err(err) => panic!(err),
     };
@@ -76,8 +76,8 @@ pub fn get(node_addr: HashSet<SocketAddr>, doc_id: Uuid) {
     println!("{:?}", document);
 }
 
-pub fn put(node_addr: HashSet<SocketAddr>, filepath: &str) {
-    let mut client = Client::new(node_addr);
+pub fn put(node_addr: HashSet<SocketAddr>, filepath: &str, username: String, password: String) {
+    let mut client = Client::new(node_addr, username.to_string(), password.to_string());
 
     let mut handler = File::open(&filepath).unwrap();
     let mut buffer: Vec<u8> = Vec::new();
@@ -93,7 +93,7 @@ pub fn put(node_addr: HashSet<SocketAddr>, filepath: &str) {
         Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
             let mut cluster = HashSet::new();
             cluster.insert(parse_addr(&leader_str));
-            return put(cluster, filepath);
+            return put(cluster, filepath, username, password);
         } 
         Err(err) => panic!(err),
     };
@@ -101,8 +101,8 @@ pub fn put(node_addr: HashSet<SocketAddr>, filepath: &str) {
     println!("{}", String::from_utf8(response).unwrap())
 }
 
-pub fn remove(node_addr: HashSet<SocketAddr>, doc_id: Uuid) {
-    let mut client = Client::new(node_addr);
+pub fn remove(node_addr: HashSet<SocketAddr>, doc_id: Uuid, username: String, password: String) {
+    let mut client = Client::new(node_addr, username.to_string(), password.to_string());
 
     let payload = encode(&Message::Remove(doc_id), SizeLimit::Infinite).unwrap();
 
@@ -111,7 +111,7 @@ pub fn remove(node_addr: HashSet<SocketAddr>, doc_id: Uuid) {
         Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
             let mut cluster = HashSet::new();
             cluster.insert(parse_addr(&leader_str));
-            return remove(cluster, doc_id);
+            return remove(cluster, doc_id, username, password);
         } 
         Err(err) => panic!(err),
     };
