@@ -354,8 +354,9 @@ impl<L, M> Server<L, M>
                             }
                         }
                         connection_preamble::id::Which::Client(Ok(client)) => {
+                            scoped_debug!("received new connection from a client");
 
-                            let client_id = try!(ClientId::from_bytes(client.get_data().unwrap()));
+                            let client_id = try!(ClientId::from_bytes(client.get_id().unwrap()));
                             let client_username = client.get_username().unwrap();
                             let client_password = client.get_password().unwrap();
 
@@ -370,7 +371,7 @@ impl<L, M> Server<L, M>
                                 scoped_debug!("Wrong username or password");
                             } else {
 
-                                scoped_debug!("received new client connection from {}", client_id);
+                                scoped_debug!("Username and password are okay");
                                 self.connections[token].set_kind(ConnectionKind::Client(client_id));
                                 let prev_token = self.client_tokens
                                     .insert(client_id, token);
@@ -568,7 +569,8 @@ mod tests {
                     SocketAddr::from_str("127.0.0.1:0").unwrap(),
                     peers,
                     MemLog::new(),
-                    NullStateMachine)
+                    NullStateMachine,
+                    "test".to_string())
     }
 
     /// Attempts to grab a local, unbound socket address for testing.
@@ -600,6 +602,7 @@ mod tests {
 
     /// Returns true if the server has an open connection with the client.
     fn client_connected(server: &TestServer, client: ClientId) -> bool {
+        println!("{:?}", server.client_tokens);
         server.client_tokens.contains_key(&client)
     }
 
@@ -695,7 +698,9 @@ mod tests {
         let fake_peer_addr = SocketAddr::from_str("192.168.0.1:12345").unwrap();
         // Send server the preamble message to the server.
         serialize::write_message(&mut out_stream,
-                                 &*messages::server_connection_preamble(peer_id, &fake_peer_addr))
+                                 &*messages::server_connection_preamble(peer_id,
+                                                                        &fake_peer_addr,
+                                                                        "test"))
             .unwrap();
         out_stream.flush().unwrap();
         event_loop.run_once(&mut server, None).unwrap();
@@ -727,10 +732,14 @@ mod tests {
 
         // Send the client preamble message to the server.
         serialize::write_message(&mut stream,
-                                 &*messages::client_connection_preamble(client_id))
+                                 &*messages::client_connection_preamble(client_id,
+                                                                        "username",
+                                                                        "password".as_bytes()))
             .unwrap();
         stream.flush().unwrap();
         event_loop.run_once(&mut server, None).unwrap();
+
+        println!("{}", client_id);
 
         // Check that the server holds on to the client connection.
         assert!(client_connected(&server, client_id));
@@ -814,7 +823,9 @@ mod tests {
 
         // Send the client preamble message to the server.
         serialize::write_message(&mut stream,
-                                 &*messages::client_connection_preamble(client_id))
+                                 &*messages::client_connection_preamble(client_id,
+                                                                        "username",
+                                                                        "password".as_bytes()))
             .unwrap();
         stream.flush().unwrap();
         event_loop.run_once(&mut server, None).unwrap();
@@ -868,7 +879,7 @@ mod tests {
         // Send a test message (the type is not important).
         let mut actions = Actions::new();
         actions.peer_messages
-            .push((peer_id, messages::server_connection_preamble(peer_id, &peer_addr)));
+            .push((peer_id, messages::server_connection_preamble(peer_id, &peer_addr, "test")));
         server.execute_actions(&mut event_loop, actions);
 
         assert_eq!(peer_id, read_server_preamble(&mut in_stream));

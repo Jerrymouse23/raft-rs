@@ -31,6 +31,7 @@ struct Peer {
 }
 
 struct Client{
+  id @3 :Data;
   username @2 :Text;
   password @0 :Data;
 

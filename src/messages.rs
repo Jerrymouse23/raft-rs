@@ -38,7 +38,7 @@ pub fn client_connection_preamble(id: ClientId,
             .init_client();
         client.set_username(username);
         client.set_password(password);
-        client.set_data(id.as_bytes());
+        client.set_id(id.as_bytes());
     }
     Rc::new(message)
 }

@@ -52,6 +52,7 @@ before_script:
 
 script:
     - travis-cargo build
+    - echo "password" > user_creds.creds
     - travis-cargo test
     - travis-cargo doc
     - cd src/document && travis-cargo build

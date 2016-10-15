@@ -15,6 +15,11 @@ impl Auth<String> for FileAuth {
     }
 
     fn compare(hash1: &str, hash2: &str) -> bool {
+
+        println!("{}", hash1);
+        println!("{}", hash2);
+
+
         if hash1.trim() == hash2.trim() {
             true
         } else {
@@ -23,7 +28,7 @@ impl Auth<String> for FileAuth {
     }
 
     fn find(user: &str) -> String {
-        let mut file = File::open("user_creds.creds").unwrap();
+        let mut file = File::open("user_creds.creds").expect("User creds file not found");
 
         let mut s = String::new();
 

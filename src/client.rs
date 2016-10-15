@@ -193,10 +193,15 @@ mod tests {
         let message = try!(serialize::read_message(connection, ReaderOptions::new()));
         let preamble = try!(message.get_root::<connection_preamble::Reader>());
         // Test to make sure preamble has the right id.
-        if let connection_preamble::id::Which::Client(Ok(id)) = try!(preamble.get_id().which()) {
-            Ok(Uuid::from_bytes(id).unwrap() == client_id)
-        } else {
-            Ok(false)
+        match try!(preamble.get_id().which()) {
+            connection_preamble::id::Which::Client(client) => {
+                let client = try!(client);
+
+                let id = Uuid::from_bytes(client.get_id().unwrap()).expect("valid bytes");
+
+                Ok(id == client_id)
+            } 
+            _ => Ok(false),
         }
     }
 
@@ -220,7 +225,7 @@ mod tests {
         let test_addr = test_server.local_addr().unwrap();
         cluster.insert(test_addr);
 
-        let mut client = Client::new(cluster);
+        let mut client = Client::new(cluster, "username".to_string(), "password".to_string());
         let client_id = client.id.0.clone();
         let to_propose = b"Bears";
 
@@ -256,7 +261,7 @@ mod tests {
         let test_addr = test_server.local_addr().unwrap();
         cluster.insert(test_addr);
 
-        let mut client = Client::new(cluster);
+        let mut client = Client::new(cluster, "username".to_string(), "password".to_string());
         let to_propose = b"Bears";
 
         // The client connects on the proposal.
@@ -291,7 +296,7 @@ mod tests {
         let second_addr = second_server.local_addr().unwrap();
         cluster.insert(second_addr);
 
-        let mut client = Client::new(cluster);
+        let mut client = Client::new(cluster, "username".to_string(), "password".to_string());
         let client_id = client.id.0.clone();
         let to_propose = b"Bears";
 
@@ -322,7 +327,8 @@ mod tests {
 
         // Workaround to set up rigged selection of servers.
         client.leader_connection = {
-            let preamble = messages::client_connection_preamble(client.id);
+            let preamble =
+                messages::client_connection_preamble(client.id, "username", "password".as_bytes());
             let mut stream = BufStream::new(TcpStream::connect(test_addr).unwrap());
             serialize::write_message(&mut stream, &*preamble).unwrap();
             Some(stream)
@@ -349,7 +355,7 @@ mod tests {
         let second_addr = second_server.local_addr().unwrap();
         // cluster.insert(second_addr); <--- NOT in cluster.
 
-        let mut client = Client::new(cluster);
+        let mut client = Client::new(cluster, "username".to_string(), "password".to_string());
         let client_id = client.id.0.clone();
         let to_propose = b"Bears";
 
@@ -372,7 +378,8 @@ mod tests {
 
         // Workaround to set up rigged selection of servers.
         client.leader_connection = {
-            let preamble = messages::client_connection_preamble(client.id);
+            let preamble =
+                messages::client_connection_preamble(client.id, "username", "password".as_bytes());
             let mut stream = BufStream::new(TcpStream::connect(test_addr).unwrap());
             serialize::write_message(&mut stream, &*preamble).unwrap();
             Some(stream)
