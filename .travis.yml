@@ -49,10 +49,10 @@ install:
 before_script:
     - pip install 'travis-cargo' --user
     - export PATH=$HOME/.local/bin:$PATH
+    - echo 'password' > user_creds.creds
 
 script:
     - travis-cargo build
-    - echo "password" > user_creds.creds
     - travis-cargo test
     - travis-cargo doc
     - cd src/document && travis-cargo build
