@@ -119,7 +119,7 @@ mod messages;
 mod consensus;
 mod server;
 mod state;
-mod auth;
+pub mod auth;
 
 pub use server::Server;
 pub use state_machine::StateMachine;

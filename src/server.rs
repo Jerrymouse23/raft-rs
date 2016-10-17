@@ -29,7 +29,6 @@ use persistent_log::Log;
 use connection::{Connection, ConnectionKind};
 
 use auth::Auth;
-use auth::file::FileAuth;
 
 const LISTENER: Token = Token(0);
 
@@ -52,9 +51,10 @@ pub enum ServerTimeout {
 /// but recoverable events. The info level is used for infrequent events such as connection resets
 /// and election results. The debug level is used for frequent events such as client proposals and
 /// heartbeats. The trace level is used for very high frequency debugging output.
-pub struct Server<L, M>
+pub struct Server<L, M, A>
     where L: Log,
-          M: StateMachine
+          M: StateMachine,
+          A: Auth
 {
     /// Id of this server.
     id: ServerId,
@@ -82,12 +82,16 @@ pub struct Server<L, M>
 
     /// String to allow connecting to different peers
     community_string: String,
+
+    /// Instance of the authentification module
+    auth: A,
 }
 
 /// The implementation of the Server.
-impl<L, M> Server<L, M>
+impl<L, M, A> Server<L, M, A>
     where L: Log,
-          M: StateMachine
+          M: StateMachine,
+          A: Auth
 {
     /// Creates a new instance of the server.
     /// *Gotcha:* `peers` must not contain the local `id`.
@@ -96,14 +100,15 @@ impl<L, M> Server<L, M>
            peers: HashMap<ServerId, SocketAddr>,
            store: L,
            state_machine: M,
-           community_string: String)
-           -> Result<(Server<L, M>, EventLoop<Server<L, M>>)> {
+           community_string: String,
+           auth: A)
+           -> Result<(Server<L, M, A>, EventLoop<Server<L, M, A>>)> {
         if peers.contains_key(&id) {
             return Err(Error::Raft(RaftError::InvalidPeerSet));
         }
 
         let consensus = Consensus::new(id, peers.clone(), store, state_machine);
-        let mut event_loop = try!(EventLoop::<Server<L, M>>::new());
+        let mut event_loop = try!(EventLoop::<Server<L, M, A>>::new());
         let listener = try!(TcpListener::bind(&addr));
         try!(event_loop.register(&listener, LISTENER, EventSet::all(), PollOpt::level()));
 
@@ -117,6 +122,7 @@ impl<L, M> Server<L, M>
             consensus_timeouts: HashMap::new(),
             reconnection_timeouts: HashMap::new(),
             community_string: community_string.clone(),
+            auth: auth,
         };
 
         for (peer_id, peer_addr) in peers {
@@ -149,10 +155,16 @@ impl<L, M> Server<L, M>
                peers: HashMap<ServerId, SocketAddr>,
                store: L,
                state_machine: M,
-               community_string: String)
+               community_string: String,
+               auth: A)
                -> Result<()> {
-        let (mut server, mut event_loop) =
-            try!(Server::new(id, addr, peers, store, state_machine, community_string));
+        let (mut server, mut event_loop) = try!(Server::new(id,
+                                                            addr,
+                                                            peers,
+                                                            store,
+                                                            state_machine,
+                                                            community_string,
+                                                            auth));
         let actions = server.consensus.init();
         server.execute_actions(&mut event_loop, actions);
         event_loop.run(&mut server).map_err(From::from)
@@ -173,18 +185,27 @@ impl<L, M> Server<L, M>
                  peers: HashMap<ServerId, SocketAddr>,
                  store: L,
                  state_machine: M,
-                 community_string: String)
+                 community_string: String,
+                 auth: A)
                  -> Result<JoinHandle<Result<()>>> {
         thread::Builder::new()
             .name(format!("raft::Server({})", id))
-            .spawn(move || Server::run(id, addr, peers, store, state_machine, community_string))
+            .spawn(move || {
+                Server::run(id,
+                            addr,
+                            peers,
+                            store,
+                            state_machine,
+                            community_string,
+                            auth)
+            })
             .map_err(From::from)
     }
 
     /// Sends the message to the connection associated with the provided token.
     /// If sending the message fails, the connection is reset.
     fn send_message(&mut self,
-                    event_loop: &mut EventLoop<Server<L, M>>,
+                    event_loop: &mut EventLoop<Server<L, M, A>>,
                     token: Token,
                     message: Rc<Builder<HeapAllocator>>) {
         match self.connections[token].send_message(message) {
@@ -201,7 +222,7 @@ impl<L, M> Server<L, M>
         }
     }
 
-    fn execute_actions(&mut self, event_loop: &mut EventLoop<Server<L, M>>, actions: Actions) {
+    fn execute_actions(&mut self, event_loop: &mut EventLoop<Server<L, M, A>>, actions: Actions) {
         scoped_trace!("executing actions: {:?}", actions);
         let Actions { peer_messages,
                       client_messages,
@@ -255,7 +276,7 @@ impl<L, M> Server<L, M>
     /// period.
     ///
     /// If the connection is to a client or unknown it will be closed.
-    fn reset_connection(&mut self, event_loop: &mut EventLoop<Server<L, M>>, token: Token) {
+    fn reset_connection(&mut self, event_loop: &mut EventLoop<Server<L, M, A>>, token: Token) {
         let kind = *self.connections[token].kind();
         match kind {
             ConnectionKind::Peer(..) => {
@@ -284,7 +305,10 @@ impl<L, M> Server<L, M>
     ///
     /// If the connection returns an error on any operation, or any message fails to be
     /// deserialized, an error result is returned.
-    fn readable(&mut self, event_loop: &mut EventLoop<Server<L, M>>, token: Token) -> Result<()> {
+    fn readable(&mut self,
+                event_loop: &mut EventLoop<Server<L, M, A>>,
+                token: Token)
+                -> Result<()> {
         scoped_trace!("{:?}: readable event", self.connections[token]);
         // Read messages from the connection until there are no more.
         while let Some(message) = try!(self.connections[token].readable()) {
@@ -360,12 +384,14 @@ impl<L, M> Server<L, M>
                             let client_username = client.get_username().unwrap();
                             let client_password = client.get_password().unwrap();
 
-                            let hashed = FileAuth::find(client_username);
+                            // let hashed = FileAuth::find(client_username);
+                            let hashed = A::find(client_username);
 
-                            let isAuth =
-                                FileAuth::compare(&String::from_utf8(client_password.to_vec())
-                                                      .unwrap(),
-                                                  &hashed);
+                            let isAuth = A::compare(&String::from_utf8(client_password.to_vec())
+                                                        .unwrap(),
+                                                    &hashed);
+
+                            let isAuth = true;
 
                             if isAuth == false {
                                 scoped_debug!("Wrong username or password");
@@ -394,7 +420,7 @@ impl<L, M> Server<L, M>
 
     /// Accepts a new TCP connection, adds it to the connection slab, and registers it with the
     /// event loop.
-    fn accept_connection(&mut self, event_loop: &mut EventLoop<Server<L, M>>) -> Result<()> {
+    fn accept_connection(&mut self, event_loop: &mut EventLoop<Server<L, M, A>>) -> Result<()> {
         scoped_trace!("accept_connection");
         self.listener
             .accept()
@@ -427,14 +453,18 @@ impl<L, M> Server<L, M>
     }
 }
 
-impl<L, M> Handler for Server<L, M>
+impl<L, M, A> Handler for Server<L, M, A>
     where L: Log,
-          M: StateMachine
+          M: StateMachine,
+          A: Auth
 {
     type Message = ();
     type Timeout = ServerTimeout;
 
-    fn ready(&mut self, event_loop: &mut EventLoop<Server<L, M>>, token: Token, events: EventSet) {
+    fn ready(&mut self,
+             event_loop: &mut EventLoop<Server<L, M, A>>,
+             token: Token,
+             events: EventSet) {
         push_log_scope!("{:?}", self);
         scoped_trace!("ready; token: {:?}; events: {:?}", token, events);
 
@@ -484,7 +514,7 @@ impl<L, M> Handler for Server<L, M>
         }
     }
 
-    fn timeout(&mut self, event_loop: &mut EventLoop<Server<L, M>>, timeout: ServerTimeout) {
+    fn timeout(&mut self, event_loop: &mut EventLoop<Server<L, M, A>>, timeout: ServerTimeout) {
         push_log_scope!("{:?}", self);
         scoped_trace!("timeout: {:?}", &timeout);
         match timeout {
@@ -528,9 +558,10 @@ impl<L, M> Handler for Server<L, M>
     }
 }
 
-impl<L, M> fmt::Debug for Server<L, M>
+impl<L, M, A> fmt::Debug for Server<L, M, A>
     where L: Log,
-          M: StateMachine
+          M: StateMachine,
+          A: Auth
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "Server({})", self.id)

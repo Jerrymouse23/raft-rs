@@ -19,7 +19,7 @@ use ClientId;
 use Result;
 use RaftError;
 use auth::Auth;
-use auth::file::FileAuth;
+use auth::null::NullAuth;
 
 const CLIENT_TIMEOUT: u64 = 1500;
 
@@ -41,9 +41,13 @@ pub struct Client {
 
 impl Client {
     /// Creates a new client.
-    pub fn new(cluster: HashSet<SocketAddr>, username: String, password: String) -> Client {
+    pub fn new<A: Auth>(cluster: HashSet<SocketAddr>,
+                        username: String,
+                        password: String)
+                        -> Client {
 
-        let hashed_password = FileAuth::generate(&password);
+        // let hashed_password = Auth::generate(&password);
+        let hashed_password = A::generate(&password);
 
         Client {
             id: ClientId::new(),

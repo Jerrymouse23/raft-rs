@@ -17,6 +17,8 @@ use server::{Server, ServerTimeout};
 use state_machine::StateMachine;
 use persistent_log::Log;
 
+use auth::Auth;
+
 fn poll_opt() -> PollOpt {
     PollOpt::edge() | PollOpt::oneshot()
 }
@@ -163,12 +165,13 @@ impl Connection {
     }
 
     /// Registers the connection with the event loop.
-    pub fn register<L, M>(&mut self,
-                          event_loop: &mut EventLoop<Server<L, M>>,
-                          token: Token)
-                          -> Result<()>
+    pub fn register<L, M, A>(&mut self,
+                             event_loop: &mut EventLoop<Server<L, M, A>>,
+                             token: Token)
+                             -> Result<()>
         where L: Log,
-              M: StateMachine
+              M: StateMachine,
+              A: Auth
     {
         scoped_trace!("{:?}: register", self);
         event_loop.register(self.stream().inner(), token, self.events(), poll_opt())
@@ -179,12 +182,13 @@ impl Connection {
     }
 
     /// Reregisters the connection with the event loop.
-    pub fn reregister<L, M>(&mut self,
-                            event_loop: &mut EventLoop<Server<L, M>>,
-                            token: Token)
-                            -> Result<()>
+    pub fn reregister<L, M, A>(&mut self,
+                               event_loop: &mut EventLoop<Server<L, M, A>>,
+                               token: Token)
+                               -> Result<()>
         where L: Log,
-              M: StateMachine
+              M: StateMachine,
+              A: Auth
     {
         scoped_trace!("{:?}: reregister", self);
         event_loop.reregister(self.stream().inner(), token, self.events(), poll_opt())
@@ -210,12 +214,13 @@ impl Connection {
     }
 
     /// Resets a peer connection.
-    pub fn reset_peer<L, M>(&mut self,
-                            event_loop: &mut EventLoop<Server<L, M>>,
-                            token: Token)
-                            -> Result<(ServerTimeout, TimeoutHandle)>
+    pub fn reset_peer<L, M, A>(&mut self,
+                               event_loop: &mut EventLoop<Server<L, M, A>>,
+                               token: Token)
+                               -> Result<(ServerTimeout, TimeoutHandle)>
         where L: Log,
-              M: StateMachine
+              M: StateMachine,
+              A: Auth
     {
         scoped_assert!(self.kind.is_peer());
         self.stream = None;

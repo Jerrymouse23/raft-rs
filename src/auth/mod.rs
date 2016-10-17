@@ -1,9 +1,10 @@
 use std::fmt::Debug;
+use std::boxed::Box;
 
-pub mod file;
+pub mod null;
 
 /// A trait to do authentification
-pub trait Auth<T>: Clone + Debug + Send + 'static {
+pub trait Auth: Clone + Debug + Send + 'static {
     /// Generates hash of type T
     fn generate(plain: &str) -> String;
 

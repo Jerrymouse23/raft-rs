@@ -11,7 +11,8 @@ use raft::persistent_log::doc::DocLog;
 use bincode::rustc_serialize::{encode, encode_into, decode, decode_from};
 use bincode::SizeLimit;
 use std::collections::HashSet;
-use std::cell::RefCell;
+
+use raft::auth::null::NullAuth;
 
 #[derive(RustcEncodable,RustcDecodable)]
 pub enum Message {
@@ -30,9 +31,9 @@ impl Handler {
     }
 
     fn new_client(addr: SocketAddr, username: &str, password: &str) -> Client {
-        Client::new(Self::to_hashset(addr),
-                    username.to_string(),
-                    password.to_string())
+        Client::new::<NullAuth>(Self::to_hashset(addr),
+                                username.to_string(),
+                                password.to_string())
     }
 
     pub fn get(addr: SocketAddr, username: &str, plain_password: &str, id: Uuid) -> Document {

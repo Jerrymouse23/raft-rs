@@ -57,6 +57,9 @@ use document::*;
 use config::*;
 use handler::Handler;
 
+use raft::auth::null::NullAuth;
+use raft::auth::Auth;
+
 static USAGE: &'static str = "
 A replicated document database.
 
@@ -173,7 +176,8 @@ fn server(serverId: ServerId,
                 peers,
                 persistent_log,
                 state_machine,
-                community_string)
+                community_string,
+                NullAuth)
         .unwrap();
 }
 
