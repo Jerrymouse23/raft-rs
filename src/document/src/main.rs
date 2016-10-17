@@ -60,6 +60,8 @@ use handler::Handler;
 use raft::auth::null::NullAuth;
 use raft::auth::Auth;
 
+use http_handler::*;
+
 static USAGE: &'static str = "
 A replicated document database.
 
@@ -128,7 +130,8 @@ fn main() {
                local_addr,
                node_ids,
                node_addresses,
-               config.server.community_string.to_string());
+               config.server.community_string.to_string(),
+               parse_addr(&config.server.binding_addr));
     } else if args.cmd_get {
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
             Ok(id) => id,
@@ -161,7 +164,8 @@ fn server(serverId: ServerId,
           addr: SocketAddr,
           node_id: Vec<u64>,
           node_address: Vec<String>,
-          community_string: String) {
+          community_string: String,
+          binding_addr: SocketAddr) {
 
     let persistent_log = DocLog::new();
 
@@ -171,6 +175,14 @@ fn server(serverId: ServerId,
         .collect::<HashMap<_, _>>();
 
     let mut state_machine = DocumentStateMachine::new();
+
+    let node_addr = match parse_addr(&node_address[0]) {
+        SocketAddr::V4(b) => b,
+        _ => panic!("The node_address must be IPv4"),
+    };
+
+    init(binding_addr, node_addr);
+
     Server::run(serverId,
                 addr,
                 peers,

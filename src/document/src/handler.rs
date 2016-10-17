@@ -36,7 +36,11 @@ impl Handler {
                                 password.to_string())
     }
 
-    pub fn get(addr: SocketAddr, username: &str, plain_password: &str, id: Uuid) -> Document {
+    pub fn get(addr: SocketAddr,
+               username: &str,
+               plain_password: &str,
+               id: Uuid)
+               -> Result<Document> {
         let mut client = Self::new_client(addr, username, plain_password);
 
         let payload = encode(&Message::Get(id), SizeLimit::Infinite).unwrap();
@@ -51,7 +55,7 @@ impl Handler {
 
         let document: Document = decode(response.as_slice()).unwrap();
 
-        document
+        Ok(document)
     }
 
     pub fn post(addr: SocketAddr,

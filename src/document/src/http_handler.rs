@@ -9,6 +9,8 @@ use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, Ipv4Addr};
 use std::error::Error;
 
 use rustc_serialize::json;
+use rustc_serialize::base64::{self, ToBase64, FromBase64, STANDARD};
+use rustc_serialize::hex::{ToHex, FromHex};
 
 use document::*;
 use handler::Handler;
@@ -35,7 +37,7 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
     router.get("/document/:fileId",
                move |request: &mut Request| http_get(request, &context),
                "get_document");
-    router.post("/document/",
+    router.post("/document",
                 move |request: &mut Request| http_post(request, &context),
                 "post_document");
     router.delete("/document/:fileId",
@@ -45,6 +47,10 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
     spawn(move || {
         Iron::new(router).http(binding_addr);
     });
+
+    fn test(req: &mut Request) -> IronResult<Response> {
+        Ok(Response::with((status::Ok, "I am runnnig :D")))
+    }
 
     fn http_get(req: &mut Request, context: &Context) -> IronResult<Response> {
         let ref fileId = req.extensions
@@ -59,9 +65,10 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
         let document = Handler::get(SocketAddr::V4(context.node_addr),
                                     username,
                                     password,
-                                    Uuid::parse_str(*fileId).unwrap());
+                                    Uuid::parse_str(*fileId).unwrap())
+            .unwrap();
 
-        let http_doc = http_Response { payload: String::from_utf8(document.payload).unwrap() };
+        let http_doc = http_Response { payload: document.payload.as_slice().to_base64(STANDARD) };
 
         let encoded = json::encode(&http_doc).unwrap();
 
@@ -77,8 +84,8 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
 
         match map.find(&["payload"]) {
             Some(&Value::String(ref p)) => {
-                let mut bytes = Vec::new();
-                bytes.extend_from_slice(p.as_bytes());
+
+                let bytes = p.from_base64().expect("Payload is not base64");
 
                 let document = Document { payload: bytes };
                 match Handler::post(SocketAddr::V4(context.node_addr),
