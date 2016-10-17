@@ -591,8 +591,10 @@ mod tests {
     use state_machine::NullStateMachine;
     use persistent_log::MemLog;
     use super::*;
+    use auth::Auth;
+    use auth::null::NullAuth;
 
-    type TestServer = Server<MemLog, NullStateMachine>;
+    type TestServer = Server<MemLog, NullStateMachine, NullAuth>;
 
     fn new_test_server(peers: HashMap<ServerId, SocketAddr>)
                        -> Result<(TestServer, EventLoop<TestServer>)> {
@@ -601,7 +603,8 @@ mod tests {
                     peers,
                     MemLog::new(),
                     NullStateMachine,
-                    "test".to_string())
+                    "test".to_string(),
+                    NullAuth)
     }
 
     /// Attempts to grab a local, unbound socket address for testing.
