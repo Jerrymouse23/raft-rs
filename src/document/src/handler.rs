@@ -1,48 +1,93 @@
+use document::*;
+use std::net::SocketAddr;
 use uuid::Uuid;
-use std::fs::File;
-use std::fs::OpenOptions;
-use std::fs::remove_file;
-use std::io::Read;
-use std::io::Write;
-
-use bincode::rustc_serialize::{encode, decode, encode_into, decode_from};
+use raft::Result;
+use raft::Client;
+use raft::Error as RError;
+use raft::state_machine;
+use raft::RaftError;
+use raft::ServerId;
+use raft::persistent_log::doc::DocLog;
+use bincode::rustc_serialize::{encode, encode_into, decode, decode_from};
 use bincode::SizeLimit;
-use rustc_serialize::json;
-use bincode::rustc_serialize::{EncodingError, DecodingError};
+use std::collections::HashSet;
+use std::cell::RefCell;
 
-use std::io::Error as IoError;
-
-use document::Document;
+#[derive(RustcEncodable,RustcDecodable)]
+pub enum Message {
+    Get(Uuid),
+    Post(Document),
+    Remove(Uuid),
+}
 
 pub struct Handler;
 
 impl Handler {
-    pub fn get(id: Uuid) -> Result<Document, DecodingError> {
-        let mut handler = try!(File::open(format!("data/{}", id)));
-
-        let mut decoded: Document = try!(decode_from(&mut handler, SizeLimit::Infinite));
-
-        Ok(decoded)
+    fn to_hashset(addr: SocketAddr) -> HashSet<SocketAddr> {
+        let mut hashset: HashSet<SocketAddr> = HashSet::new();
+        hashset.insert(addr);
+        hashset
     }
 
-    pub fn put(document: Document) -> Result<Uuid, EncodingError> {
-        let id = Uuid::new_v4();
-
-        // TODO implement error-handling
-        let mut handler = OpenOptions::new()
-            .read(false)
-            .write(true)
-            .create(true)
-            .open(format!("data/{}", id))
-            .unwrap();
-
-        try!(encode_into(&document, &mut handler, SizeLimit::Infinite));
-
-        Ok(id)
+    fn new_client(addr: SocketAddr, username: &str, password: &str) -> Client {
+        Client::new(Self::to_hashset(addr),
+                    username.to_string(),
+                    password.to_string())
     }
 
-    pub fn remove(id: Uuid) -> Result<String, IoError> {
-        try!(remove_file(format!("data/{}", id)));
-        Ok("Document deleted".to_string())
+    pub fn get(addr: SocketAddr, username: &str, plain_password: &str, id: Uuid) -> Document {
+        let mut client = Self::new_client(addr, username, plain_password);
+
+        let payload = encode(&Message::Get(id), SizeLimit::Infinite).unwrap();
+
+        let response = match client.query(payload.as_slice()) {
+            Ok(res) => res,
+            Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
+                return Handler::get(parse_addr(&leader_str), username, plain_password, id);
+            } 
+            Err(err) => panic!(err),
+        };
+
+        let document: Document = decode(response.as_slice()).unwrap();
+
+        document
+    }
+
+    pub fn post(addr: SocketAddr,
+                username: &str,
+                plain_password: &str,
+                document: Document)
+                -> Result<Uuid> {
+        let mut client = Self::new_client(addr, username, plain_password);
+
+        let payload = encode(&Message::Post(document.clone()), SizeLimit::Infinite).unwrap();
+
+        let response = match client.propose(payload.as_slice()) {
+            Ok(res) => res,
+            Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
+                return Handler::post(parse_addr(&leader_str), username, plain_password, document);
+            } 
+            Err(err) => panic!(err),
+        };
+
+        let uid: Uuid = decode(response.as_slice()).unwrap();
+
+        Ok(uid)
+    }
+
+    pub fn remove(addr: SocketAddr, username: &str, plain_password: &str, id: Uuid) -> Result<()> {
+        let mut client = Self::new_client(addr, username, plain_password);
+
+        let payload = encode(&Message::Remove(id), SizeLimit::Infinite).unwrap();
+
+        let response = match client.propose(payload.as_slice()) {
+            Ok(res) => res,
+            Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
+                return Handler::remove(parse_addr(&leader_str), username, plain_password, id);
+            } 
+            Err(err) => panic!(err),
+        };
+
+        Ok(())
     }
 }

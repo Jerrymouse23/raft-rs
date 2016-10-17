@@ -22,8 +22,9 @@ extern crate uuid;
 extern crate toml;
 
 pub mod document;
-pub mod handler;
+pub mod io_handler;
 pub mod http_handler;
+pub mod handler;
 pub mod config;
 
 use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, Ipv4Addr};
@@ -48,12 +49,13 @@ use uuid::Uuid;
 use std::error::Error;
 use std::io::ErrorKind;
 
+use raft::Server;
 use raft::RaftError;
+use raft::persistent_log::doc::DocLog;
 
-use handler::Handler;
 use document::*;
 use config::*;
-
+use handler::Handler;
 
 static USAGE: &'static str = "
 A replicated document database.
@@ -68,29 +70,24 @@ Commands:
 
 Usage:
     document get <doc-id> <node-address> <username> <password>
-    document put <node-address> <filepath> <username> <password> 
+    document post <node-address> <filepath> <username> <password> 
     document remove <doc-id> <node-address> <username> <password>
-    document server <id> <addr> <rest-port> --community <community> [<node-id> <node-address>]...
-    document server --config <config-path>
+    document server  <config-path>
 ";
 
 #[derive(Debug,RustcDecodable,Clone)]
 struct Args {
     cmd_server: bool,
     cmd_get: bool,
-    cmd_put: bool,
+    cmd_post: bool,
     cmd_remove: bool,
     arg_id: Option<u64>,
     arg_doc_id: Option<String>,
     arg_node_id: Vec<u64>,
-    arg_node_address: Vec<String>,
+    arg_node_address: Option<String>,
     arg_filepath: String,
-    arg_rest_port: Option<u64>,
-    flag_config: bool,
     arg_config_path: Option<String>,
     arg_addr: Option<String>,
-    flag_community: bool,
-    arg_community: Option<String>,
     arg_password: Option<String>,
     arg_username: Option<String>,
 }
@@ -103,73 +100,105 @@ fn main() {
 
     if args.cmd_server {
 
-        if args.flag_config {
-            let config = match Config::init(args.arg_config_path.unwrap()) {
-                Ok(config) => config,
-                Err(err) => panic!("{}", err),
-            };
+        let config = match Config::init(args.arg_config_path.unwrap()) {
+            Ok(config) => config,
+            Err(err) => panic!("{}", err),
+        };
 
-            let mut node_ids: Vec<u64> = Vec::new();
-            let mut node_addreses: Vec<String> = Vec::new();
+        let mut node_ids: Vec<u64> = Vec::new();
+        let mut node_addresses: Vec<String> = Vec::new();
 
-            for peer in config.peers {
-                node_ids.push(peer.node_id);
-                node_addreses.push(peer.node_address);
-            }
-
-            http_handler::init(config.server.rest_port as u16);
-            server(ServerId::from(config.server.node_id),
-                   parse_addr(&config.server.node_address),
-                   node_ids,
-                   node_addreses,
-                   config.server.community_string.to_string())
-        } else {
-            http_handler::init(args.arg_rest_port.unwrap() as u16);
-
-            let community_string = match args.flag_community {
-                true => {
-                    let c = match args.arg_community {
-                        Some(c) => c,
-                        None => "".to_string(),
-                    };
-
-                    c
-                }
-                false => "".to_string(),
-            };
-
-            server(ServerId::from(args.arg_id.unwrap()),
-                   parse_addr(&args.arg_addr.unwrap()),
-                   args.arg_node_id,
-                   args.arg_node_address,
-                   community_string);
+        for peer in config.peers {
+            node_ids.push(peer.node_id);
+            node_addresses.push(peer.node_address);
         }
+
+        let local_addr = parse_addr(&config.server.node_address);
+
+        let node_addr = match parse_addr(&config.server.node_address) {
+            SocketAddr::V4(v) => v,
+            _ => panic!("The node address given must be IPv4"),
+        };
+
+        http_handler::init(parse_addr(&config.server.binding_addr), node_addr);
+        server(ServerId::from(config.server.node_id),
+               local_addr,
+               node_ids,
+               node_addresses,
+               config.server.community_string.to_string());
     } else if args.cmd_get {
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
             Ok(id) => id,
             Err(err) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
         };
 
-        get(args.arg_node_address.iter().map(|v| parse_addr(&v)).collect(),
+        get(parse_addr(&args.arg_node_address.unwrap()),
             id,
             args.arg_username.unwrap(),
             args.arg_password.unwrap());
-    } else if args.cmd_put {
-        put(args.arg_node_address.iter().map(|v| parse_addr(&v)).collect(),
-            &args.arg_filepath,
-            args.arg_username.unwrap(),
-            args.arg_password.unwrap());
+    } else if args.cmd_post {
+        post(parse_addr(&args.arg_node_address.unwrap()),
+             &args.arg_filepath,
+             args.arg_username.unwrap(),
+             args.arg_password.unwrap());
     } else if args.cmd_remove {
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
             Ok(id) => id,
             Err(err) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
         };
 
-        remove(args.arg_node_address.iter().map(|v| parse_addr(&v)).collect(),
+        remove(parse_addr(&args.arg_node_address.unwrap()),
                id,
                args.arg_username.unwrap(),
                args.arg_password.unwrap());
     }
+}
+
+fn server(serverId: ServerId,
+          addr: SocketAddr,
+          node_id: Vec<u64>,
+          node_address: Vec<String>,
+          community_string: String) {
+
+    let persistent_log = DocLog::new();
+
+    let mut peers = node_id.iter()
+        .zip(node_address.iter())
+        .map(|(&id, addr)| (ServerId::from(id), parse_addr(&addr)))
+        .collect::<HashMap<_, _>>();
+
+    let mut state_machine = DocumentStateMachine::new();
+    Server::run(serverId,
+                addr,
+                peers,
+                persistent_log,
+                state_machine,
+                community_string)
+        .unwrap();
+}
+
+fn get(addr: SocketAddr, doc_id: Uuid, username: String, password: String) {
+    let document = Handler::get(addr, &username, &password, doc_id);
+    println!("{:?}", document);
+}
+
+fn post(addr: SocketAddr, filepath: &str, username: String, password: String) {
+    let mut handler = File::open(&filepath).expect(&format!("Could not find file {}", filepath));
+    let mut buffer: Vec<u8> = Vec::new();
+
+    handler.read_to_end(&mut buffer);
+
+    let document = Document { payload: buffer };
+
+    let id = Handler::post(addr, &username, &password, document).unwrap();
+
+    println!("{}", id);
+}
+
+fn remove(addr: SocketAddr, doc_id: Uuid, username: String, password: String) {
+    Handler::remove(addr, &username, &password, doc_id).unwrap();
+
+    println!("Ok");
 }
 
 #[cfg(test)]
