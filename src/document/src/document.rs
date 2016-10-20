@@ -35,11 +35,13 @@ pub fn parse_addr(addr: &str) -> SocketAddr {
 }
 
 #[derive(Debug,Clone)]
-pub struct DocumentStateMachine;
+pub struct DocumentStateMachine {
+    volume: String,
+}
 
 impl DocumentStateMachine {
-    pub fn new() -> Self {
-        DocumentStateMachine
+    pub fn new(volume: String) -> Self {
+        DocumentStateMachine { volume: volume }
     }
 }
 
@@ -50,13 +52,13 @@ impl state_machine::StateMachine for DocumentStateMachine {
         let response = match message {
             Message::Get(id) => self.query(new_value),
             Message::Post(document) => {
-                match Handler::post(document) {
+                match Handler::post(document, &self.volume) {
                     Ok(id) => encode(&id, SizeLimit::Infinite).unwrap(),
                     Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
                 }
             }
             Message::Remove(id) => {
-                match Handler::remove(id) {
+                match Handler::remove(id, &self.volume) {
                     Ok(id) => encode(&id, SizeLimit::Infinite).unwrap(),
                     Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
                 }
@@ -71,7 +73,7 @@ impl state_machine::StateMachine for DocumentStateMachine {
 
         let response = match message {
             Message::Get(id) => {
-                match Handler::get(id) {
+                match Handler::get(id, &self.volume) {
                     Ok(document) => encode(&document, SizeLimit::Infinite).unwrap(),
                     Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
                 }

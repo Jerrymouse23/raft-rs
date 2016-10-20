@@ -17,15 +17,25 @@ use document::Document;
 pub struct ioHandler;
 
 impl ioHandler {
-    pub fn get(id: Uuid) -> Result<Document, DecodingError> {
-        let mut handler = try!(File::open(format!("data/{}", id)));
+    /// Decodes document from file by given id
+    /// # Arguments
+    ///
+    /// * `id` - The uuid of the document in order to find the document
+    /// * `volume` - The folder where the documents are saved
+    pub fn get(id: Uuid, volume: &str) -> Result<Document, DecodingError> {
+        let mut handler = try!(File::open(format!("{}/{}", volume, id)));
 
         let mut decoded: Document = try!(decode_from(&mut handler, SizeLimit::Infinite));
 
         Ok(decoded)
     }
 
-    pub fn post(document: Document) -> Result<Uuid, EncodingError> {
+    /// Encodes a document and writes it into a file
+    /// # Arguments
+    ///
+    /// * `document` - The document which will be encoded
+    /// * `volume` - The folder where the documents are saved
+    pub fn post(document: Document, volume: &str) -> Result<Uuid, EncodingError> {
         let id = Uuid::new_v4();
 
         // TODO implement error-handling
@@ -33,7 +43,7 @@ impl ioHandler {
             .read(false)
             .write(true)
             .create(true)
-            .open(format!("data/{}", id))
+            .open(format!("{}/{}", volume, id))
             .unwrap();
 
         try!(encode_into(&document, &mut handler, SizeLimit::Infinite));
@@ -41,8 +51,13 @@ impl ioHandler {
         Ok(id)
     }
 
-    pub fn remove(id: Uuid) -> Result<String, IoError> {
-        try!(remove_file(format!("data/{}", id)));
+    /// Deletes a document
+    /// # Arguments
+    ///
+    /// * `id` - The uuid of the document in order to find the document
+    /// * `volume` - The folder where the documents are saved
+    pub fn remove(id: Uuid, volume: &str) -> Result<String, IoError> {
+        try!(remove_file(format!("{}/{}", volume, id)));
         Ok("Document deleted".to_string())
     }
 }

@@ -113,7 +113,7 @@ fn main() {
         let mut node_ids: Vec<u64> = Vec::new();
         let mut node_addresses: Vec<String> = Vec::new();
 
-        for peer in config.peers {
+        for peer in config.peers.clone() {
             node_ids.push(peer.node_id);
             node_addresses.push(peer.node_address);
         }
@@ -131,7 +131,8 @@ fn main() {
                node_ids,
                node_addresses,
                config.server.community_string.to_string(),
-               parse_addr(&config.server.binding_addr));
+               parse_addr(&config.server.binding_addr),
+               &config);
     } else if args.cmd_get {
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
             Ok(id) => id,
@@ -165,7 +166,8 @@ fn server(serverId: ServerId,
           node_id: Vec<u64>,
           node_address: Vec<String>,
           community_string: String,
-          binding_addr: SocketAddr) {
+          binding_addr: SocketAddr,
+          config: &Config) {
 
     let persistent_log = DocLog::new();
 
@@ -174,7 +176,7 @@ fn server(serverId: ServerId,
         .map(|(&id, addr)| (ServerId::from(id), parse_addr(&addr)))
         .collect::<HashMap<_, _>>();
 
-    let mut state_machine = DocumentStateMachine::new();
+    let mut state_machine = DocumentStateMachine::new(config.server.volume.clone());
 
     let node_addr = match parse_addr(&node_address[0]) {
         SocketAddr::V4(b) => b,

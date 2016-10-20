@@ -22,6 +22,7 @@ pub struct ServerConfig {
     pub node_address: String,
     pub community_string: String,
     pub binding_addr: String,
+    pub volume: String,
 }
 
 #[derive(Debug,RustcDecodable,Clone)]
