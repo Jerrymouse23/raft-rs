@@ -180,6 +180,7 @@ mod test {
 
         encode_into(&term, &mut f, SizeLimit::Infinite).unwrap();
 
+        f.flush();
         f.seek(SeekFrom::Start(0));
 
         let decoded_term: Term = decode_from(&mut f, SizeLimit::Infinite).unwrap();
@@ -198,6 +199,7 @@ mod test {
 
         encode_into(&voted_for, &mut f, SizeLimit::Infinite).unwrap();
 
+        f.flush();
         f.seek(SeekFrom::Start(0));
 
         let decoded_voted_for: ServerId = decode_from(&mut f, SizeLimit::Infinite).unwrap();
