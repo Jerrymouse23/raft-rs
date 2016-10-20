@@ -11,6 +11,7 @@ use rustc_serialize::json;
 use bincode::rustc_serialize::{EncodingError, DecodingError};
 
 use std::io::Error as IoError;
+use std::io::{Seek, SeekFrom};
 
 use document::Document;
 
@@ -57,5 +58,24 @@ impl ioHandler {
     pub fn remove(id: Uuid, volume: &str) -> Result<String, IoError> {
         try!(remove_file(format!("{}/{}", volume, id)));
         Ok("Document deleted".to_string())
+    }
+
+    pub fn put(id: Uuid, payload: &[u8], volume: &str) -> Result<String, IoError> {
+        let mut handler = try!(OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(false)
+            .open(format!("{}/{}", volume, id)));
+
+        let mut document: Document = decode_from(&mut handler, SizeLimit::Infinite)
+            .expect(&format!("Cannot find file {}/{}", volume, id));
+
+        handler.seek(SeekFrom::Start(0));
+
+        document.put(payload.to_vec());
+
+        encode_into(&document, &mut handler, SizeLimit::Infinite);
+
+        Ok("Documented updated".to_string())
     }
 }

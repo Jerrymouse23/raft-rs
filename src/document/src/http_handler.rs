@@ -22,6 +22,7 @@ use std::boxed::Box;
 #[derive(RustcDecodable,RustcEncodable)]
 struct http_Response {
     payload: String,
+    version: usize,
 }
 
 #[derive(Clone,Copy)]
@@ -43,6 +44,9 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
     router.delete("/document/:fileId",
                   move |request: &mut Request| http_delete(request, &context),
                   "delete_document");
+    router.put("/document",
+               move |request: &mut Request| http_put(request, &context),
+               "put_document");
 
     spawn(move || {
         Iron::new(router).http(binding_addr);
@@ -68,7 +72,10 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
                                     Uuid::parse_str(*fileId).unwrap())
             .unwrap();
 
-        let http_doc = http_Response { payload: document.payload.as_slice().to_base64(STANDARD) };
+        let http_doc = http_Response {
+            version: document.version,
+            payload: document.payload.as_slice().to_base64(STANDARD),
+        };
 
         let encoded = json::encode(&http_doc).unwrap();
 
@@ -92,6 +99,7 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
                 let document = Document {
                     id: id,
                     payload: bytes,
+                    version: 1,
                 };
                 match Handler::post(SocketAddr::V4(context.node_addr),
                                     username,
@@ -130,5 +138,42 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
         };
 
         Ok(res)
+    }
+
+    fn http_put(req: &mut Request, context: &Context) -> IronResult<Response> {
+        let map = req.get_ref::<Params>().unwrap();
+
+        println!("{:?}", map);
+
+        let username = "username";
+        let password = "password";
+
+        match map.find(&["payload"]) {
+            Some(&Value::String(ref p)) => {
+                match map.find(&["id"]) {
+                    Some(&Value::String(ref id)) => {
+                        let bytes = p.from_base64().expect("Payload is not base64");
+
+                        let res = match Handler::put(SocketAddr::V4(context.node_addr),
+                                                     username,
+                                                     password,
+                                                     Uuid::parse_str(&id).unwrap(),
+                                                     bytes) {
+                            Ok(()) => Response::with((status::Ok, "Ok")),
+                            Err(err) => {
+                                Response::with((status::InternalServerError,
+                                                "An error occured when updating document"))
+                            }
+                        };
+                        Ok(res)
+
+                    } 
+                    _ => Ok(Response::with((status::InternalServerError, "No id defined"))), 
+                }
+            } 
+            _ => Ok(Response::with((status::InternalServerError, "No payload defined"))), 
+        }
+
+
     }
 }

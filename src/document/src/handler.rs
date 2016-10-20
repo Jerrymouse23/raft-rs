@@ -19,6 +19,7 @@ pub enum Message {
     Get(Uuid),
     Post(Document),
     Remove(Uuid),
+    Put(Uuid, Vec<u8>),
 }
 
 pub struct Handler;
@@ -89,6 +90,32 @@ impl Handler {
             Ok(res) => res,
             Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
                 return Handler::remove(parse_addr(&leader_str), username, plain_password, id);
+            } 
+            Err(err) => panic!(err),
+        };
+
+        Ok(())
+    }
+
+    pub fn put(addr: SocketAddr,
+               username: &str,
+               plain_password: &str,
+               id: Uuid,
+               new_payload: Vec<u8>)
+               -> Result<()> {
+
+        let mut client = Self::new_client(addr, username, plain_password);
+
+        let payload = encode(&Message::Put(id, new_payload.clone()), SizeLimit::Infinite).unwrap();
+
+        let response = match client.propose(payload.as_slice()) {
+            Ok(res) => res,
+            Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
+                return Handler::put(parse_addr(&leader_str),
+                                    username,
+                                    plain_password,
+                                    id,
+                                    new_payload);
             } 
             Err(err) => panic!(err),
         };

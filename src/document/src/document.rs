@@ -26,7 +26,17 @@ use io_handler::ioHandler as Handler;
 pub struct Document {
     pub id: Uuid,
     pub payload: Vec<u8>,
+    pub version: usize,
 }
+
+impl Document {
+    pub fn put(&mut self, new_payload: Vec<u8>) {
+        self.payload = new_payload;
+
+        self.version += 1;
+    }
+}
+
 pub fn parse_addr(addr: &str) -> SocketAddr {
     addr.to_socket_addrs()
         .ok()
@@ -60,6 +70,12 @@ impl state_machine::StateMachine for DocumentStateMachine {
             }
             Message::Remove(id) => {
                 match Handler::remove(id, &self.volume) {
+                    Ok(id) => encode(&id, SizeLimit::Infinite).unwrap(),
+                    Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
+                }
+            }
+            Message::Put(id, new_payload) => {
+                match Handler::put(id, new_payload.as_slice(), &self.volume) {
                     Ok(id) => encode(&id, SizeLimit::Infinite).unwrap(),
                     Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
                 }

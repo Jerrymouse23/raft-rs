@@ -75,6 +75,7 @@ Commands:
 
 Usage:
     document get <doc-id> <node-address> <username> <password>
+    document put <doc-id> <node-address> <filepath> <username> <password>
     document post <node-address> <filepath> <username> <password> 
     document remove <doc-id> <node-address> <username> <password>
     document server  <config-path>
@@ -86,6 +87,7 @@ struct Args {
     cmd_get: bool,
     cmd_post: bool,
     cmd_remove: bool,
+    cmd_put: bool,
     arg_id: Option<u64>,
     arg_doc_id: Option<String>,
     arg_node_id: Vec<u64>,
@@ -158,6 +160,18 @@ fn main() {
                id,
                args.arg_username.unwrap(),
                args.arg_password.unwrap());
+    } else if args.cmd_put {
+
+        let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
+            Ok(id) => id,
+            Err(err) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
+        };
+
+        put(parse_addr(&args.arg_node_address.unwrap()),
+            id,
+            args.arg_filepath,
+            args.arg_username.unwrap(),
+            args.arg_password.unwrap());
     }
 }
 
@@ -211,11 +225,21 @@ fn post(addr: SocketAddr, filepath: &str, username: String, password: String) {
     let document = Document {
         id: id,
         payload: buffer,
+        version: 1,
     };
 
     let id = Handler::post(addr, &username, &password, document).unwrap();
 
     println!("{}", id);
+}
+
+fn put(addr: SocketAddr, doc_id: Uuid, filepath: String, username: String, password: String) {
+    let mut handler = File::open(&filepath).expect(&format!("Could not find file {}", filepath));
+    let mut buffer: Vec<u8> = Vec::new();
+
+    handler.read_to_end(&mut buffer);
+
+    Handler::put(addr, &username, &password, doc_id, buffer);
 }
 
 fn remove(addr: SocketAddr, doc_id: Uuid, username: String, password: String) {
