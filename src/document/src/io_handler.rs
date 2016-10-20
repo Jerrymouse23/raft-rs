@@ -36,19 +36,17 @@ impl ioHandler {
     /// * `document` - The document which will be encoded
     /// * `volume` - The folder where the documents are saved
     pub fn post(document: Document, volume: &str) -> Result<Uuid, EncodingError> {
-        let id = Uuid::new_v4();
-
         // TODO implement error-handling
         let mut handler = OpenOptions::new()
             .read(false)
             .write(true)
             .create(true)
-            .open(format!("{}/{}", volume, id))
+            .open(format!("{}/{}", volume, &document.id))
             .unwrap();
 
         try!(encode_into(&document, &mut handler, SizeLimit::Infinite));
 
-        Ok(id)
+        Ok(document.id)
     }
 
     /// Deletes a document

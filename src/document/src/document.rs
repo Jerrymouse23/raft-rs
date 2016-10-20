@@ -24,6 +24,7 @@ use io_handler::ioHandler as Handler;
 
 #[derive(RustcEncodable,RustcDecodable,Debug,Clone)]
 pub struct Document {
+    pub id: Uuid,
     pub payload: Vec<u8>,
 }
 pub fn parse_addr(addr: &str) -> SocketAddr {

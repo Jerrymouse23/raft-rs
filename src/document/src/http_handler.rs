@@ -87,7 +87,12 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
 
                 let bytes = p.from_base64().expect("Payload is not base64");
 
-                let document = Document { payload: bytes };
+                let id = Uuid::new_v4();
+
+                let document = Document {
+                    id: id,
+                    payload: bytes,
+                };
                 match Handler::post(SocketAddr::V4(context.node_addr),
                                     username,
                                     password,

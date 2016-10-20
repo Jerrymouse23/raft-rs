@@ -206,7 +206,12 @@ fn post(addr: SocketAddr, filepath: &str, username: String, password: String) {
 
     handler.read_to_end(&mut buffer);
 
-    let document = Document { payload: buffer };
+    let id = Uuid::new_v4();
+
+    let document = Document {
+        id: id,
+        payload: buffer,
+    };
 
     let id = Handler::post(addr, &username, &password, document).unwrap();
 
