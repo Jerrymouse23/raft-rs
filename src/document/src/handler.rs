@@ -125,13 +125,16 @@ impl Handler {
 }
 
 mod tests {
+    extern crate mio;
+    extern crate capnp;
+
     use raft::{Server, ServerId};
     use raft::Log;
     use raft::state_machine::NullStateMachine;
     use raft::auth::Auth;
     use raft::auth::null::NullAuth;
     use raft::persistent_log::MemLog;
-    use mio::EventLoop;
+    use self::mio::EventLoop;
     use std::net::{SocketAddr, TcpListener, TcpStream};
     use std::collections::HashMap;
     use handler::Handler;
@@ -139,8 +142,8 @@ mod tests {
     use uuid::Uuid;
     use raft::Result;
     use std::str::FromStr;
-    use capnp::message::ReaderOptions;
-    use capnp::serialize;
+    use self::capnp::message::ReaderOptions;
+    use self::capnp::serialize;
     use raft::messages_capnp::connection_preamble;
     use std::io::{Write, Read};
 
