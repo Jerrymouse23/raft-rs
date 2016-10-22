@@ -124,7 +124,9 @@ impl Handler {
     }
 }
 
+#[cfg(test)]
 mod tests {
+
     extern crate mio;
     extern crate capnp;
 

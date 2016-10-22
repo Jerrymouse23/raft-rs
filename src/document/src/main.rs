@@ -18,7 +18,6 @@ extern crate rustc_serialize;
 extern crate bincode;
 
 extern crate uuid;
-
 extern crate toml;
 
 pub mod document;
@@ -26,6 +25,7 @@ pub mod io_handler;
 pub mod http_handler;
 pub mod handler;
 pub mod config;
+
 
 use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, Ipv4Addr};
 use bincode::rustc_serialize::{encode, decode, encode_into, decode_from};
