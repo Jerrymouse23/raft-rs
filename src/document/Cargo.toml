@@ -17,3 +17,7 @@ iron ="*"
 router ="*"
 params ="*"
 toml ="*"
+
+[dev-dependencies]
+mio = "0.5"
+capnp = "0.6"

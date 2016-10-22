@@ -143,8 +143,6 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
     fn http_put(req: &mut Request, context: &Context) -> IronResult<Response> {
         let map = req.get_ref::<Params>().unwrap();
 
-        println!("{:?}", map);
-
         let username = "username";
         let password = "password";
 
@@ -173,7 +171,5 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
             } 
             _ => Ok(Response::with((status::InternalServerError, "No payload defined"))), 
         }
-
-
     }
 }

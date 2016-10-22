@@ -123,3 +123,130 @@ impl Handler {
         Ok(())
     }
 }
+
+mod tests {
+    use raft::{Server, ServerId};
+    use raft::Log;
+    use raft::state_machine::NullStateMachine;
+    use raft::auth::Auth;
+    use raft::auth::null::NullAuth;
+    use raft::persistent_log::MemLog;
+    use mio::EventLoop;
+    use std::net::{SocketAddr, TcpListener, TcpStream};
+    use std::collections::HashMap;
+    use handler::Handler;
+    use document::Document;
+    use uuid::Uuid;
+    use raft::Result;
+    use std::str::FromStr;
+    use capnp::message::ReaderOptions;
+    use capnp::serialize;
+    use raft::messages_capnp::connection_preamble;
+    use std::io::{Write, Read};
+
+    type TestServer = Server<MemLog, NullStateMachine, NullAuth>;
+
+    static USERNAME: &str = "username";
+    static PASSWORD: &str = "password";
+
+    fn new_test_server(peers: HashMap<ServerId, SocketAddr>)
+                       -> Result<(TestServer, EventLoop<TestServer>)> {
+        Server::new(ServerId::from(0),
+                    SocketAddr::from_str("127.0.0.1:0").unwrap(),
+                    peers,
+                    MemLog::new(),
+                    NullStateMachine,
+                    "test".to_string(),
+                    NullAuth)
+    }
+
+    fn read_server_preamble<R>(read: &mut R) -> ServerId
+        where R: Read
+    {
+        let message = serialize::read_message(read, ReaderOptions::new()).unwrap();
+        let preamble = message.get_root::<connection_preamble::Reader>().unwrap();
+
+        match preamble.get_id().which().unwrap() {
+            connection_preamble::id::Which::Server(peer) => ServerId::from(peer.unwrap().get_id()),
+            _ => panic!("unexpected preamble id"),
+        }
+    }
+
+    #[ignore]
+    #[test]
+    // FIXME
+    fn test_get() {
+        let mut peers = HashMap::new();
+        let (mut server, mut event_loop) = new_test_server(peers).unwrap();
+
+        let doc = Document {
+            id: Uuid::new_v4(),
+            payload: b"Hello world!".to_vec(),
+            version: 0,
+        };
+
+        let id = Handler::post(server.get_local_addr(), USERNAME, PASSWORD, doc.clone()).unwrap();
+
+        let doc2 = Handler::get(server.get_local_addr(), USERNAME, PASSWORD, id).unwrap();
+
+        assert_eq!(doc, doc2);
+    }
+
+    #[ignore]
+    #[test]
+    // FIXME
+    fn test_post() {
+        let mut peers = HashMap::new();
+        let (mut server, mut event_loop) = new_test_server(peers).unwrap();
+
+        let doc = Document {
+            id: Uuid::new_v4(),
+            payload: b"Hello world!".to_vec(),
+            version: 0,
+        };
+
+        let id = Handler::post(server.get_local_addr(), USERNAME, PASSWORD, doc.clone()).unwrap();
+    }
+
+    #[ignore]
+    #[test]
+    // FIXME
+    fn test_put() {
+        let mut peers = HashMap::new();
+        let (mut server, mut event_loop) = new_test_server(peers).unwrap();
+
+        let doc = Document {
+            id: Uuid::new_v4(),
+            payload: b"Hello world!".to_vec(),
+            version: 0,
+        };
+
+        let id = Handler::post(server.get_local_addr(), USERNAME, PASSWORD, doc.clone()).unwrap();
+
+        let new_payload = b"This is updated! :P".to_vec();
+
+        Handler::put(server.get_local_addr(), USERNAME, PASSWORD, id, new_payload).unwrap();
+
+        let doc2 = Handler::get(server.get_local_addr(), USERNAME, PASSWORD, id).unwrap();
+
+        assert_eq!(doc2.payload, b"This is updated! :P".to_vec());
+    }
+
+    #[ignore]
+    #[test]
+    // FIXME
+    fn test_remove() {
+        let mut peers = HashMap::new();
+        let (mut server, mut event_loop) = new_test_server(peers).unwrap();
+
+        let doc = Document {
+            id: Uuid::new_v4(),
+            payload: b"Hello world!".to_vec(),
+            version: 0,
+        };
+
+        let id = Handler::post(server.get_local_addr(), USERNAME, PASSWORD, doc.clone()).unwrap();
+
+        Handler::remove(server.get_local_addr(), USERNAME, PASSWORD, doc.id.clone()).unwrap();
+    }
+}

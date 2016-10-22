@@ -21,6 +21,11 @@ extern crate uuid;
 
 extern crate toml;
 
+#[cfg(test)]
+extern crate mio;
+#[cfg(test)]
+extern crate capnp;
+
 pub mod document;
 pub mod io_handler;
 pub mod http_handler;

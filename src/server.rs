@@ -95,14 +95,14 @@ impl<L, M, A> Server<L, M, A>
 {
     /// Creates a new instance of the server.
     /// *Gotcha:* `peers` must not contain the local `id`.
-    fn new(id: ServerId,
-           addr: SocketAddr,
-           peers: HashMap<ServerId, SocketAddr>,
-           store: L,
-           state_machine: M,
-           community_string: String,
-           auth: A)
-           -> Result<(Server<L, M, A>, EventLoop<Server<L, M, A>>)> {
+    pub fn new(id: ServerId,
+               addr: SocketAddr,
+               peers: HashMap<ServerId, SocketAddr>,
+               store: L,
+               state_machine: M,
+               community_string: String,
+               auth: A)
+               -> Result<(Server<L, M, A>, EventLoop<Server<L, M, A>>)> {
         if peers.contains_key(&id) {
             return Err(Error::Raft(RaftError::InvalidPeerSet));
         }
@@ -450,6 +450,10 @@ impl<L, M, A> Server<L, M, A>
                     })
                     .map(|_| scoped_debug!("new connection accepted from {}",
                                            self.connections[token].addr())))
+    }
+
+    pub fn get_local_addr(&self) -> SocketAddr {
+        self.listener.local_addr().unwrap()
     }
 }
 

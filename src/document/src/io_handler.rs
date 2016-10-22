@@ -79,3 +79,104 @@ impl ioHandler {
         Ok("Documented updated".to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use document::Document;
+    use uuid::Uuid;
+    use std::fs::{create_dir, remove_dir, File, metadata};
+    use io_handler::ioHandler;
+
+    static VOLUME: &str = "test_dir";
+
+    struct Setup;
+
+    impl Setup {
+        pub fn init_dir(&self) {
+            create_dir(VOLUME);
+        }
+    }
+
+    #[test]
+    fn test_post() {
+        let setup = Setup;
+        setup.init_dir();
+
+        let doc = Document {
+            id: Uuid::new_v4(),
+            payload: Vec::new(),
+            version: 0,
+        };
+
+        ioHandler::post(doc, VOLUME).unwrap();
+    }
+
+    #[test]
+    fn test_get() {
+        let setup = Setup;
+
+        let id = Uuid::new_v4();
+        let bytes = b"Hello world".to_vec();
+
+        let doc = Document {
+            id: id,
+            payload: bytes,
+            version: 0,
+        };
+
+        ioHandler::post(doc.clone(), VOLUME).unwrap();
+
+        let doc2 = ioHandler::get(id, VOLUME).unwrap();
+
+        assert_eq!(doc, doc2);
+    }
+
+    #[test]
+    fn test_put() {
+        let setup = Setup;
+
+        let id = Uuid::new_v4();
+        let bytes = b"Hello world".to_vec();
+
+        let doc = Document {
+            id: id,
+            payload: bytes,
+            version: 0,
+        };
+
+        ioHandler::post(doc.clone(), VOLUME).unwrap();
+
+        let updated_payload = b"This is updated! :P";
+
+        ioHandler::put(id.clone(), updated_payload, VOLUME).unwrap();
+
+        let doc2 = ioHandler::get(id, VOLUME).unwrap();
+
+        assert_eq!(doc2.payload, b"This is updated! :P");
+    }
+
+    #[test]
+    fn test_remove() {
+        let setup = Setup;
+
+        let id = Uuid::new_v4();
+        let bytes = b"Hello world".to_vec();
+
+        let doc = Document {
+            id: id,
+            payload: bytes,
+            version: 0,
+        };
+
+        ioHandler::post(doc.clone(), VOLUME).unwrap();
+
+        ioHandler::remove(id, VOLUME).unwrap();
+
+        match metadata(format!("{}/{}", VOLUME, id)) {
+            Ok(ref attr) if attr.is_file() == true => {
+                assert!(false);
+            } 
+            _ => assert!(true),
+        }
+    }
+}

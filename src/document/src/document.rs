@@ -22,7 +22,7 @@ use raft::persistent_log::doc::DocLog;
 use handler::Message;
 use io_handler::ioHandler as Handler;
 
-#[derive(RustcEncodable,RustcDecodable,Debug,Clone)]
+#[derive(RustcEncodable,RustcDecodable,Debug,Clone,Eq,PartialEq)]
 pub struct Document {
     pub id: Uuid,
     pub payload: Vec<u8>,
