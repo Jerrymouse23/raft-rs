@@ -114,6 +114,7 @@ mod tests {
     #[test]
     fn test_get() {
         let setup = Setup;
+        setup.init_dir();
 
         let id = Uuid::new_v4();
         let bytes = b"Hello world".to_vec();
@@ -134,6 +135,7 @@ mod tests {
     #[test]
     fn test_put() {
         let setup = Setup;
+        setup.init_dir();
 
         let id = Uuid::new_v4();
         let bytes = b"Hello world".to_vec();
@@ -158,6 +160,7 @@ mod tests {
     #[test]
     fn test_remove() {
         let setup = Setup;
+        setup.init_dir();
 
         let id = Uuid::new_v4();
         let bytes = b"Hello world".to_vec();
