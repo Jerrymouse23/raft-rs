@@ -55,7 +55,17 @@ struct Message {
         appendEntriesResponse @1 :AppendEntriesResponse;
         requestVoteResponse @2 :RequestVoteResponse;
         requestVoteRequest @3 :RequestVoteRequest;
+        transactionBegin @4 :TransactionBegin;
+        transactionEnd @5 :TransactionEnd;
     }
+}
+
+struct TransactionBegin{
+  session @0 :Data;
+}
+
+struct TransactionEnd{
+
 }
 
 struct AppendEntriesRequest {
@@ -145,7 +155,18 @@ struct ClientRequest {
     ping @0 :PingRequest;
     proposal @1 :ProposalRequest;
     query @2 :QueryRequest;
+    transactionBegin @3 :CliTransactionBegin;
+    transactionEnd @4 :CliTransactionEnd;
   }
+}
+
+struct CliTransactionBegin{
+  from @0 :Data;
+  session @1 :Data;
+}
+
+struct CliTransactionEnd{
+
 }
 
 struct ClientResponse {
@@ -154,10 +175,12 @@ struct ClientResponse {
     ping @0 :PingResponse;
     proposal @1 :CommandResponse;
     query @2 :CommandResponse;
+    transaction @3 :CommandResponse;
   }
 }
 
 struct PingRequest {
+  session @0 :Data;
 }
 
 struct PingResponse {
@@ -179,6 +202,7 @@ struct PingResponse {
 struct ProposalRequest {
   entry @0 :Data;
   # An entry to append.
+  session @1 :Data;
 }
 
 struct QueryRequest {
@@ -189,7 +213,7 @@ struct QueryRequest {
 struct CommandResponse {
   union {
     success @0 :Data;
-    # The proposal succeeded.
+    # The request succeeded.
 
     unknownLeader @1 :Void;
     # The proposal failed because the Raft node is not the leader, and does
@@ -198,5 +222,7 @@ struct CommandResponse {
     notLeader @2 :Text;
     # The client request failed because the Raft node is not the leader.
     # The value returned may be the address of the current leader.
+
+    failure @3 :Data;
   }
 }

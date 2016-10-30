@@ -14,7 +14,8 @@ use mio::tcp::TcpListener;
 use mio::util::Slab;
 use mio::{EventLoop, EventSet, Handler, PollOpt, Token};
 use mio::Timeout as TimeoutHandle;
-use capnp::message::{Builder, HeapAllocator};
+use capnp::serialize::{self, OwnedSegments};
+use capnp::message::{Builder, Allocator, HeapAllocator, Reader, ReaderOptions};
 
 use ClientId;
 use Result;
@@ -27,6 +28,7 @@ use consensus::{Consensus, Actions, ConsensusTimeout};
 use state_machine::StateMachine;
 use persistent_log::Log;
 use connection::{Connection, ConnectionKind};
+use std::io::Cursor;
 
 use auth::Auth;
 
@@ -85,6 +87,8 @@ pub struct Server<L, M, A>
 
     /// Instance of the authentification module
     auth: A,
+
+    requests_in_queue: Vec<(ClientId, Builder<HeapAllocator>)>,
 }
 
 /// The implementation of the Server.
@@ -123,6 +127,7 @@ impl<L, M, A> Server<L, M, A>
             reconnection_timeouts: HashMap::new(),
             community_string: community_string.clone(),
             auth: auth,
+            requests_in_queue: Vec::new(),
         };
 
         for (peer_id, peer_addr) in peers {
@@ -228,7 +233,9 @@ impl<L, M, A> Server<L, M, A>
                       client_messages,
                       timeouts,
                       clear_timeouts,
-                      clear_peer_messages } = actions;
+                      clear_peer_messages,
+                      peer_messages_broadcast,
+                      transaction_queue } = actions;
 
         if clear_peer_messages {
             for &token in self.peer_tokens.values() {
@@ -244,6 +251,22 @@ impl<L, M, A> Server<L, M, A>
                 self.send_message(event_loop, token, message);
             }
         }
+
+        if transaction_queue.len() > 0 {
+            scoped_debug!("Messages appended to queue {}", transaction_queue.len());
+            for i in transaction_queue {
+                self.requests_in_queue.push(i);
+            }
+        }
+
+        for message in peer_messages_broadcast {
+            let tokens = self.peer_tokens.clone().into_iter().collect::<Vec<_>>();
+
+            for (server, t) in tokens {
+                self.send_message(event_loop, t, message.clone());
+            }
+        }
+
         if clear_timeouts {
             for (timeout, &handle) in &self.consensus_timeouts {
                 scoped_assert!(event_loop.clear_timeout(handle),
@@ -309,6 +332,16 @@ impl<L, M, A> Server<L, M, A>
                 event_loop: &mut EventLoop<Server<L, M, A>>,
                 token: Token)
                 -> Result<()> {
+
+        if !self.consensus.transaction.isActive {
+            for (client, builder) in self.requests_in_queue.pop() {
+                let mut actions = Actions::new();
+                self.consensus
+                    .apply_client_message(client, &Self::into_reader(&builder), &mut actions);
+                self.execute_actions(event_loop, actions);
+            }
+        }
+
         scoped_trace!("{:?}: readable event", self.connections[token]);
         // Read messages from the connection until there are no more.
         while let Some(message) = try!(self.connections[token].readable()) {
@@ -454,6 +487,16 @@ impl<L, M, A> Server<L, M, A>
 
     pub fn get_local_addr(&self) -> SocketAddr {
         self.listener.local_addr().unwrap()
+    }
+
+    pub fn into_reader<C>(message: &Builder<C>) -> Reader<OwnedSegments>
+        where C: Allocator
+    {
+        let mut buf = Cursor::new(Vec::new());
+
+        serialize::write_message(&mut buf, message).unwrap();
+        buf.set_position(0);
+        serialize::read_message(&mut buf, ReaderOptions::new()).unwrap()
     }
 }
 

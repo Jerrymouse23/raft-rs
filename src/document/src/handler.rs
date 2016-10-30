@@ -11,6 +11,7 @@ use raft::persistent_log::doc::DocLog;
 use bincode::rustc_serialize::{encode, encode_into, decode, decode_from};
 use bincode::SizeLimit;
 use std::collections::HashSet;
+use std::str::from_utf8;
 
 use raft::auth::null::NullAuth;
 
@@ -121,6 +122,26 @@ impl Handler {
         };
 
         Ok(())
+    }
+
+    pub fn begin_transaction(addr: SocketAddr,
+                             username: &str,
+                             password: &str,
+                             session: Uuid)
+                             -> Result<String> {
+        let mut client = Self::new_client(addr, username, password);
+
+        let res = client.begin_transaction(session.as_bytes());
+
+        Ok(Uuid::from_bytes(res.unwrap().as_slice()).unwrap().hyphenated().to_string())
+    }
+
+    pub fn end_transaction(addr: SocketAddr, username: &str, password: &str) -> Result<String> {
+        let mut client = Self::new_client(addr, username, password);
+
+        let res = client.end_transaction();
+
+        Ok(from_utf8(res.unwrap().as_slice()).unwrap().to_string())
     }
 }
 

@@ -20,8 +20,8 @@ use Result;
 use RaftError;
 use auth::Auth;
 use auth::null::NullAuth;
-
-const CLIENT_TIMEOUT: u64 = 1500;
+use uuid::Uuid;
+use Error;
 
 /// The representation of a Client connection to the cluster.
 pub struct Client {
@@ -63,7 +63,7 @@ impl Client {
     /// Returns `Error` when the entire cluster has an unknown leader. Try proposing again later.
     pub fn propose(&mut self, entry: &[u8]) -> Result<Vec<u8>> {
         scoped_trace!("{:?}: propose", self);
-        let mut message = messages::proposal_request(entry);
+        let mut message = messages::proposal_request(Uuid::new_v4().as_bytes(), entry);
         self.send_message(&mut message)
     }
 
@@ -72,6 +72,16 @@ impl Client {
     pub fn query(&mut self, query: &[u8]) -> Result<Vec<u8>> {
         scoped_trace!("{:?}: query", self);
         let mut message = messages::query_request(query);
+        self.send_message(&mut message)
+    }
+
+    pub fn begin_transaction(&mut self, session: &[u8]) -> Result<Vec<u8>> {
+        let mut message = messages::client_transaction_begin(session);
+        self.send_message(&mut message)
+    }
+
+    pub fn end_transaction(&mut self) -> Result<Vec<u8>> {
+        let mut message = messages::client_transaction_end();
         self.send_message(&mut message)
     }
 
@@ -97,13 +107,7 @@ impl Client {
                                                                         self.username.as_str(),
                                                                         self.password.as_bytes());
                     let mut stream = match TcpStream::connect(leader) {
-                        Ok(stream) => {
-                            let timeout = Some(Duration::from_millis(CLIENT_TIMEOUT));
-                            if let Err(_) = stream.set_read_timeout(timeout) {
-                                continue;
-                            }
-                            BufStream::new(stream)
-                        }
+                        Ok(stream) => BufStream::new(stream),
                         Err(_) => continue,
                     };
                     scoped_debug!("connected");
@@ -136,6 +140,51 @@ impl Client {
                             self.leader_connection = Some(connection);
                             return data.map(Vec::from)
                                 .map_err(|e| e.into()); // Exit the function.
+                        }
+                        Ok(command_response::Which::UnknownLeader(())) => {
+                            scoped_debug!("received response UnknownLeader");
+                            () // Keep looping.
+                        }
+                        Ok(command_response::Which::NotLeader(leader)) => {
+                            scoped_debug!("received response NotLeader");
+                            let leader_str = try!(leader);
+                            if !self.cluster.contains(&try!(SocketAddr::from_str(leader_str))) {
+                                scoped_debug!("cluster violation detected");
+                                return Err(RaftError::ClusterViolation(leader_str.to_string())
+                                    .into());
+                            }
+                            let mut connection: TcpStream = try!(TcpStream::connect(leader_str));
+                            let preamble = messages::client_connection_preamble(self.id,
+                                                                                self.username
+                                                                                    .as_str(),
+                                                                                self.password
+                                                                                    .as_bytes());
+                            if let Err(_) = serialize::write_message(&mut connection, &*preamble) {
+                                continue;
+                            };
+                            self.leader_connection = Some(BufStream::new(connection));
+                        }
+                        Ok(command_response::Which::Failure(data)) => {
+                            scoped_debug!("received response failure");
+                            return Err(Error::Raft(RaftError::Other(String::from_utf8(data.unwrap()
+                                    .to_vec())
+                                .unwrap())));
+                        }
+
+                        Err(_) => continue,
+                    }
+                }
+                Ok(client_response::Which::Transaction(Ok(status))) => {
+                    match status.which() {
+                        Ok(command_response::Which::Success(data)) => {
+                            scoped_debug!("received response Success");
+                            self.leader_connection = Some(connection);
+                            return data.map(Vec::from)
+                                .map_err(|e| e.into()); // Exit the function.
+                        }
+                        Ok(command_response::Which::Failure(data)) => {
+                            scoped_debug!("received response failure");
+                            return Err(Error::Raft(RaftError::TransactionError(String::from_utf8(data.unwrap().to_vec()).unwrap())));
                         }
                         Ok(command_response::Which::UnknownLeader(())) => {
                             scoped_debug!("received response UnknownLeader");

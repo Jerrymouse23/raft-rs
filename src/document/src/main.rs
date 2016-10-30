@@ -79,6 +79,8 @@ Usage:
     document post <node-address> <filepath> <username> <password> 
     document remove <doc-id> <node-address> <username> <password>
     document server  <config-path>
+    document begintrans <node-address> <username> <password>
+    document endtrans <node-address> <username> <password>
 ";
 
 #[derive(Debug,RustcDecodable,Clone)]
@@ -88,6 +90,8 @@ struct Args {
     cmd_post: bool,
     cmd_remove: bool,
     cmd_put: bool,
+    cmd_begintrans: bool,
+    cmd_endtrans: bool,
     arg_id: Option<u64>,
     arg_doc_id: Option<String>,
     arg_node_id: Vec<u64>,
@@ -172,6 +176,18 @@ fn main() {
             args.arg_filepath,
             args.arg_username.unwrap(),
             args.arg_password.unwrap());
+    } else if args.cmd_begintrans {
+        let res = Handler::begin_transaction(parse_addr(&args.arg_node_address.unwrap()),
+                                             &args.arg_username.unwrap(),
+                                             &args.arg_password.unwrap(),
+                                             Uuid::new_v4());
+
+        println!("{}", res.unwrap());
+    } else if args.cmd_endtrans {
+        let res = Handler::end_transaction(parse_addr(&args.arg_node_address.unwrap()),
+                                           &args.arg_username.unwrap(),
+                                           &args.arg_password.unwrap());
+        println!("{}", res.unwrap());
     }
 }
 

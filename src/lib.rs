@@ -120,6 +120,7 @@ mod consensus;
 mod server;
 mod state;
 pub mod auth;
+mod transaction;
 
 pub use server::Server;
 pub use state_machine::StateMachine;
@@ -172,6 +173,8 @@ pub enum RaftError {
     ConnectionRegisterFailed,
     /// Failed to find a leader in the cluster. Try again later.
     LeaderSearchExhausted,
+    TransactionError(String),
+    Other(String),
 }
 
 impl fmt::Display for Error {

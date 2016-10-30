@@ -194,11 +194,12 @@ pub fn request_vote_response_internal_error(term: Term, error: &str) -> Rc<Build
 
 // Ping
 
-pub fn ping_request() -> Builder<HeapAllocator> {
+pub fn ping_request(session: &[u8]) -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
-        message.init_root::<client_request::Builder>()
+        let mut request = message.init_root::<client_request::Builder>()
             .init_ping();
+        request.set_session(session);
     }
     message
 }
@@ -208,9 +209,9 @@ pub fn ping_request() -> Builder<HeapAllocator> {
 pub fn query_request(entry: &[u8]) -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
-        message.init_root::<client_request::Builder>()
-            .init_query()
-            .set_query(entry);
+        let mut request = message.init_root::<client_request::Builder>()
+            .init_query();
+        request.set_query(entry);
     }
     message
 }
@@ -218,12 +219,13 @@ pub fn query_request(entry: &[u8]) -> Builder<HeapAllocator> {
 
 // Proposal
 
-pub fn proposal_request(entry: &[u8]) -> Builder<HeapAllocator> {
+pub fn proposal_request(session: &[u8], entry: &[u8]) -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
-        message.init_root::<client_request::Builder>()
-            .init_proposal()
-            .set_entry(entry);
+        let mut request = message.init_root::<client_request::Builder>()
+            .init_proposal();
+        request.set_entry(entry);
+        request.set_session(session);
     }
     message
 }
@@ -256,6 +258,66 @@ pub fn command_response_not_leader(leader_hint: &SocketAddr) -> Rc<Builder<HeapA
         message.init_root::<client_response::Builder>()
             .init_proposal()
             .set_not_leader(&format!("{}", leader_hint));
+    }
+    Rc::new(message)
+}
+
+// Transaction
+
+pub fn transaction_begin(session: &[u8]) -> Rc<Builder<HeapAllocator>> {
+    let mut message = Builder::new_default();
+    {
+        message.init_root::<message::Builder>()
+            .init_transaction_begin()
+            .set_session(session);
+    }
+    Rc::new(message)
+}
+
+pub fn transaction_end() -> Rc<Builder<HeapAllocator>> {
+    let mut message = Builder::new_default();
+    {
+        message.init_root::<message::Builder>()
+            .init_transaction_end();
+    }
+    Rc::new(message)
+}
+
+pub fn client_transaction_begin(session: &[u8]) -> Builder<HeapAllocator> {
+    let mut message = Builder::new_default();
+    {
+        let mut request = message.init_root::<client_request::Builder>()
+            .init_transaction_begin();
+        request.set_session(session);
+    }
+    message
+}
+
+pub fn client_transaction_end() -> Builder<HeapAllocator> {
+    let mut message = Builder::new_default();
+    {
+        message.init_root::<client_request::Builder>()
+            .init_transaction_end();
+    }
+    message
+}
+
+pub fn command_transaction_success(data: &[u8]) -> Rc<Builder<HeapAllocator>> {
+    let mut message = Builder::new_default();
+    {
+        message.init_root::<client_response::Builder>()
+            .init_proposal()
+            .set_success(data);
+    }
+    Rc::new(message)
+}
+
+pub fn command_transaction_failure(data: &[u8]) -> Rc<Builder<HeapAllocator>> {
+    let mut message = Builder::new_default();
+    {
+        message.init_root::<client_response::Builder>()
+            .init_transaction()
+            .set_failure(data);
     }
     Rc::new(message)
 }

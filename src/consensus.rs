@@ -26,7 +26,10 @@ use messages_capnp::{append_entries_request, append_entries_response, client_req
                      request_vote_response};
 use state::{ConsensusState, LeaderState, CandidateState, FollowerState};
 use state_machine::StateMachine;
+use uuid::Uuid;
+use transaction::Transaction;
 use persistent_log::Log;
+use std::boxed::Box;
 
 const ELECTION_MIN: u64 = 1500;
 const ELECTION_MAX: u64 = 3000;
@@ -66,8 +69,11 @@ pub struct Actions {
     pub timeouts: Vec<ConsensusTimeout>,
     /// Whether to clear outbound peer message queues.
     pub clear_peer_messages: bool,
+    pub peer_messages_broadcast: Vec<Rc<Builder<HeapAllocator>>>,
+    pub transaction_queue: Vec<(ClientId, Builder<HeapAllocator>)>,
 }
 
+// TODO add transaction_queue
 impl fmt::Debug for Actions {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         let peer_messages: Vec<ServerId> = self.peer_messages
@@ -98,6 +104,8 @@ impl Actions {
             clear_timeouts: false,
             timeouts: vec![],
             clear_peer_messages: false,
+            peer_messages_broadcast: vec![],
+            transaction_queue: vec![],
         }
     }
 }
@@ -128,6 +136,7 @@ pub struct Consensus<L, M> {
     candidate_state: CandidateState,
     /// State necessary while a `Follower`. Should not be used otherwise.
     follower_state: FollowerState,
+    pub transaction: Transaction,
 }
 
 impl<L, M> Consensus<L, M>
@@ -153,6 +162,7 @@ impl<L, M> Consensus<L, M>
             leader_state: leader_state,
             candidate_state: CandidateState::new(),
             follower_state: FollowerState::new(),
+            transaction: Transaction::new(),
         }
     }
 
@@ -190,6 +200,12 @@ impl<L, M> Consensus<L, M>
             message::Which::RequestVoteResponse(Ok(response)) => {
                 self.request_vote_response(from, response, actions)
             }
+            message::Which::TransactionBegin(Ok(response)) => {
+                self.transaction.begin(Uuid::from_bytes(response.get_session().unwrap()).unwrap());
+            }
+            message::Which::TransactionEnd(Ok(response)) => {
+                self.transaction.end();
+            }
             _ => panic!("cannot handle message"),
         };
     }
@@ -203,11 +219,78 @@ impl<L, M> Consensus<L, M>
     {
         push_log_scope!("{:?}", self);
         let reader = message.get_root::<client_request::Reader>().unwrap().which().unwrap();
+
         match reader {
             client_request::Which::Proposal(Ok(request)) => {
-                self.proposal_request(from, request, actions)
+                if self.is_leader() {
+                    if self.transaction.isActive &&
+                       !self.transaction
+                        .compare(Uuid::from_bytes(request.get_session().unwrap()).unwrap()) {
+
+                        // TODO reader to builder
+                        let session = request.get_session().unwrap();
+                        let entry = request.get_entry().unwrap();
+
+                        let message = messages::proposal_request(session, entry);
+
+                        actions.transaction_queue.push((from, message));
+
+                        self.transaction.count_up();
+                    } else {
+                        self.proposal_request(from, request, actions)
+                    }
+
+                } else {
+                    self.proposal_request(from, request, actions)
+                }
             }
-            client_request::Which::Query(Ok(query)) => self.query_request(from, query, actions),
+            client_request::Which::Query(Ok(query)) => {
+                if self.transaction.isActive {
+                    let query = query.get_query().unwrap();
+                    let message = messages::query_request(query);
+
+                    actions.transaction_queue.push((from, message));
+                } else {
+                    self.query_request(from, query, actions);
+                }
+            }
+            client_request::Which::TransactionBegin(Ok(request)) => {
+                if self.is_leader() {
+                    self.transaction
+                        .begin(Uuid::from_bytes(request.get_session().unwrap()).unwrap());
+                    self.transaction.broadcast_begin(actions);
+
+                    let message = messages::command_transaction_success(request.get_session()
+                        .unwrap());
+
+                    actions.client_messages.push((from, message));
+                } else {
+                    let message =
+                        messages::command_response_not_leader(&self.peers[&self.follower_state
+                            .leader
+                            .unwrap()]);
+                    actions.client_messages.push((from, message));
+                }
+            }
+            client_request::Which::TransactionEnd(Ok(request)) => {
+                if self.is_leader() {
+                    self.transaction.end();
+                    self.transaction.broadcast_end(actions);
+
+                    let message = messages::command_transaction_success("Transaction has been \
+                                                                         stopped"
+                        .as_bytes());
+
+                    actions.client_messages.push((from, message));
+
+                } else {
+                    let message =
+                        messages::command_response_not_leader(&self.peers[&self.follower_state
+                            .leader
+                            .unwrap()]);
+                    actions.client_messages.push((from, message));
+                }
+            }
             _ => panic!("cannot handle message"),
         }
     }
@@ -595,10 +678,11 @@ impl<L, M> Consensus<L, M>
     }
 
     /// Applies a client proposal to the consensus state machine.
-    fn proposal_request(&mut self,
-                        from: ClientId,
-                        request: proposal_request::Reader,
-                        actions: &mut Actions) {
+    pub fn proposal_request(&mut self,
+                            from: ClientId,
+                            request: proposal_request::Reader,
+                            actions: &mut Actions) {
+
         if self.is_candidate() || (self.is_follower() && self.follower_state.leader.is_none()) {
             actions.client_messages.push((from, messages::command_response_unknown_leader()));
         } else if self.is_follower() {
@@ -638,19 +722,14 @@ impl<L, M> Consensus<L, M>
     }
 
     /// Applies a client query to the state machine.
-    fn query_request(&mut self,
-                     from: ClientId,
-                     request: query_request::Reader,
-                     actions: &mut Actions) {
+    pub fn query_request(&mut self,
+                         from: ClientId,
+                         request: query_request::Reader,
+                         actions: &mut Actions) {
         scoped_trace!("query from Client({})", from);
 
         if self.is_candidate() || (self.is_follower() && self.follower_state.leader.is_none()) {
             actions.client_messages.push((from, messages::command_response_unknown_leader()));
-        } else if self.is_follower() {
-            let message = messages::command_response_not_leader(&self.peers[&self.follower_state
-                .leader
-                .unwrap()]);
-            actions.client_messages.push((from, message));
         } else {
             // TODO: This is probably not exactly safe.
             let query = request.get_query().unwrap();
@@ -800,7 +879,7 @@ impl<L, M> Consensus<L, M>
     }
 
     /// Returns whether the consensus state machine is currently a Leader.
-    fn is_leader(&self) -> bool {
+    pub fn is_leader(&self) -> bool {
         self.state == ConsensusState::Leader
     }
 
@@ -887,6 +966,7 @@ mod tests {
     use consensus::{Actions, Consensus, ConsensusTimeout};
     use state_machine::NullStateMachine;
     use persistent_log::{MemLog, Log};
+    use uuid::Uuid;
 
     type TestPeer = Consensus<MemLog, NullStateMachine>;
 
@@ -1103,7 +1183,8 @@ mod tests {
             elect_leader(leader, &mut peers);
 
             let value: &[u8] = b"foo";
-            let proposal = into_reader(&messages::proposal_request(value));
+            let proposal = into_reader(&messages::proposal_request(Uuid::new_v4().as_bytes(),
+                                                                   value));
             let mut actions = Actions::new();
 
             let client = ClientId::new();
@@ -1172,7 +1253,7 @@ mod tests {
         elect_leader(leader, &mut peers);
 
         let value: &[u8] = b"foo";
-        let proposal = into_reader(&messages::proposal_request(value));
+        let proposal = into_reader(&messages::proposal_request(Uuid::new_v4().as_bytes(), value));
         let client = ClientId::new();
 
 
