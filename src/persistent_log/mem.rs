@@ -102,6 +102,10 @@ impl Log for MemLog {
         self.entries.truncate((from - 1).as_u64() as usize);
         Ok(self.entries.extend(entries.iter().map(|&(term, command)| (term, command.to_vec()))))
     }
+
+    fn rollback(&mut self, lo: LogIndex) -> result::Result<(), Error> {
+        Ok(self.entries.truncate(lo.as_u64() as usize))
+    }
 }
 
 #[cfg(test)]

@@ -5,8 +5,8 @@
 //!
 //! *Note:* Your consuming application should not necessarily interface with this data. It is meant
 //! for internal use by the library, we simply chose not to be opinionated about how data is stored.
-mod mem;
-pub mod doc;
+pub mod mem;
+// pub mod doc;
 
 use std::error;
 use std::fmt::Debug;
@@ -64,4 +64,6 @@ pub trait Log: Clone + Debug + Send + 'static {
                       from: LogIndex,
                       entries: &[(Term, &[u8])])
                       -> result::Result<(), Self::Error>;
+
+    fn rollback(&mut self, lo: LogIndex) -> result::Result<(), Self::Error>;
 }

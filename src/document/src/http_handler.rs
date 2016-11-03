@@ -101,10 +101,14 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
                     payload: bytes,
                     version: 1,
                 };
+
+                let session = Uuid::new_v4();
+
                 match Handler::post(SocketAddr::V4(context.node_addr),
                                     username,
                                     password,
-                                    document) {
+                                    document,
+                                    session) {
                     Ok(id) => Ok(Response::with((status::Ok, format!("{}", id)))),
                     Err(err) => {
                         Ok(Response::with((status::InternalServerError,
@@ -126,10 +130,13 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
         let username = "username";
         let password = "password";
 
+        let session = Uuid::new_v4();
+
         let res = match Handler::remove(SocketAddr::V4(context.node_addr),
                                         username,
                                         password,
-                                        Uuid::parse_str(*fileId).unwrap()) {
+                                        Uuid::parse_str(*fileId).unwrap(),
+                                        session) {
             Ok(()) => Response::with((status::Ok, "Ok")),
             Err(err) => {
                 Response::with((status::InternalServerError,

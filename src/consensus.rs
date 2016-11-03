@@ -201,10 +201,22 @@ impl<L, M> Consensus<L, M>
                 self.request_vote_response(from, response, actions)
             }
             message::Which::TransactionBegin(Ok(response)) => {
-                self.transaction.begin(Uuid::from_bytes(response.get_session().unwrap()).unwrap());
+                let session = Uuid::from_bytes(response.get_session().unwrap()).unwrap();
+                self.transaction.begin(session,
+                                       self.commit_index,
+                                       self.last_applied,
+                                       Some(self.follower_state.min_index));
             }
             message::Which::TransactionEnd(Ok(response)) => {
                 self.transaction.end();
+            }
+            message::Which::TransactionRollback(Ok(response)) => {
+                scoped_debug!("Rollback");
+                let (commit_index, last_applied, follower_state_min) = self.transaction.rollback();
+                self.follower_state.min_index = follower_state_min.unwrap();
+                self.commit_index = commit_index;
+                self.last_applied = last_applied;
+                self.log.rollback(commit_index);
             }
             _ => panic!("cannot handle message"),
         };
@@ -256,8 +268,9 @@ impl<L, M> Consensus<L, M>
             }
             client_request::Which::TransactionBegin(Ok(request)) => {
                 if self.is_leader() {
+                    let session = Uuid::from_bytes(request.get_session().unwrap()).unwrap();
                     self.transaction
-                        .begin(Uuid::from_bytes(request.get_session().unwrap()).unwrap());
+                        .begin(session, self.commit_index, self.last_applied, None);
                     self.transaction.broadcast_begin(actions);
 
                     let message = messages::command_transaction_success(request.get_session()
@@ -283,6 +296,29 @@ impl<L, M> Consensus<L, M>
 
                     actions.client_messages.push((from, message));
 
+                } else {
+                    let message =
+                        messages::command_response_not_leader(&self.peers[&self.follower_state
+                            .leader
+                            .unwrap()]);
+                    actions.client_messages.push((from, message));
+                }
+            }
+            client_request::Which::TransactionRollback(Ok(request)) => {
+                if self.is_leader() {
+                    let (commit_index, last_applied, follower_state) = self.transaction.rollback();
+                    self.commit_index = commit_index;
+                    self.last_applied = last_applied;
+                    self.log.rollback(commit_index);
+                    self.transaction.broadcast_rollback(actions);
+
+                    let message = messages::command_transaction_success("".as_bytes());
+
+                    for &peer in self.peers.keys() {
+                        self.leader_state.set_next_index(peer, commit_index + 1);
+                    }
+
+                    actions.client_messages.push((from, message));
                 } else {
                     let message =
                         messages::command_response_not_leader(&self.peers[&self.follower_state
@@ -384,12 +420,18 @@ impl<L, M> Consensus<L, M>
                     let leader_prev_log_term = Term(request.get_prev_log_term());
 
                     let latest_log_index = self.latest_log_index();
+
+                    scoped_debug!("LATEST_LOG_INDEX: {} und LEADER INDEX: {}",
+                                  latest_log_index,
+                                  leader_prev_log_index);
+
                     if latest_log_index < leader_prev_log_index {
                         // If the previous entries index was not the same we'd leave a gap! Reply failure.
                         scoped_debug!("AppendEntriesRequest: inconsistent previous log index: \
                                       leader: {}, local: {}",
                                       leader_prev_log_index,
                                       latest_log_index);
+
                         messages::append_entries_response_inconsistent_prev_entry(
                             self.current_term(), leader_prev_log_index)
                     } else {
@@ -409,14 +451,17 @@ impl<L, M> Consensus<L, M>
                             messages::append_entries_response_inconsistent_prev_entry(self.current_term(),
                                 leader_prev_log_index)
                         } else {
+                            scoped_debug!("Everything ok");
                             if let Ok(entries) = request.get_entries() {
                                 let num_entries: u32 = entries.len();
                                 let new_latest_log_index = leader_prev_log_index +
                                                            num_entries as u64;
+
                                 if new_latest_log_index < self.follower_state.min_index {
                                     // Stale entry; ignore. This guards against overwriting a
                                     // possibly committed part of the log if messages get
                                     // rearranged; see ktoso/akka-raft#66.
+                                    scoped_debug!("RETURNED");
                                     return;
                                 }
                                 scoped_debug!("AppendEntriesRequest: {} entries from leader: {}",
@@ -520,7 +565,8 @@ impl<L, M> Consensus<L, M>
                 scoped_trace!("AppendEntriesResponse from peer {}: success", from);
                 scoped_assert!(self.is_leader());
                 let follower_latest_log_index = LogIndex::from(follower_latest_log_index);
-                scoped_assert!(follower_latest_log_index <= local_latest_log_index);
+                // scoped_assert!(follower_latest_log_index <= local_latest_log_index);
+                scoped_debug!("Follower_log_index {}", follower_latest_log_index);
                 self.leader_state.set_match_index(from, follower_latest_log_index);
                 self.advance_commit_index(actions);
             }
@@ -854,7 +900,10 @@ impl<L, M> Consensus<L, M>
         let mut results = HashMap::new();
         while self.last_applied < self.commit_index {
             // Unwrap justified here since we know there is an entry here.
-            let (_, entry) = self.log.entry(self.last_applied + 1).unwrap();
+            let (_, entry) = match self.log.entry(self.last_applied + 1) {
+                Ok(e) => e,
+                Err(err) => break,
+            };
 
             if !entry.is_empty() {
                 let result = self.state_machine.apply(entry);

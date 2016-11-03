@@ -61,9 +61,9 @@ impl Client {
     /// Proposes an entry to be appended to the replicated log. This will only
     /// return once the entry has been durably committed.
     /// Returns `Error` when the entire cluster has an unknown leader. Try proposing again later.
-    pub fn propose(&mut self, entry: &[u8]) -> Result<Vec<u8>> {
+    pub fn propose(&mut self, session: &[u8], entry: &[u8]) -> Result<Vec<u8>> {
         scoped_trace!("{:?}: propose", self);
-        let mut message = messages::proposal_request(Uuid::new_v4().as_bytes(), entry);
+        let mut message = messages::proposal_request(session, entry);
         self.send_message(&mut message)
     }
 
@@ -82,6 +82,11 @@ impl Client {
 
     pub fn end_transaction(&mut self) -> Result<Vec<u8>> {
         let mut message = messages::client_transaction_end();
+        self.send_message(&mut message)
+    }
+
+    pub fn rollback_transaction(&mut self) -> Result<Vec<u8>> {
+        let mut message = messages::client_transaction_rollback();
         self.send_message(&mut message)
     }
 

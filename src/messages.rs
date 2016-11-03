@@ -267,9 +267,10 @@ pub fn command_response_not_leader(leader_hint: &SocketAddr) -> Rc<Builder<HeapA
 pub fn transaction_begin(session: &[u8]) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        message.init_root::<message::Builder>()
-            .init_transaction_begin()
-            .set_session(session);
+        let mut request = message.init_root::<message::Builder>()
+            .init_transaction_begin();
+
+        request.set_session(session);
     }
     Rc::new(message)
 }
@@ -302,6 +303,15 @@ pub fn client_transaction_end() -> Builder<HeapAllocator> {
     message
 }
 
+pub fn client_transaction_rollback() -> Builder<HeapAllocator> {
+    let mut message = Builder::new_default();
+    {
+        message.init_root::<client_request::Builder>()
+            .init_transaction_rollback();
+    }
+    message
+}
+
 pub fn command_transaction_success(data: &[u8]) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
@@ -318,6 +328,15 @@ pub fn command_transaction_failure(data: &[u8]) -> Rc<Builder<HeapAllocator>> {
         message.init_root::<client_response::Builder>()
             .init_transaction()
             .set_failure(data);
+    }
+    Rc::new(message)
+}
+
+pub fn transaction_rollback() -> Rc<Builder<HeapAllocator>> {
+    let mut message = Builder::new_default();
+    {
+        let mut request = message.init_root::<message::Builder>()
+            .init_transaction_rollback();
     }
     Rc::new(message)
 }

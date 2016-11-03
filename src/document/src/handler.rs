@@ -7,7 +7,7 @@ use raft::Error as RError;
 use raft::state_machine;
 use raft::RaftError;
 use raft::ServerId;
-use raft::persistent_log::doc::DocLog;
+use raft::persistent_log::mem::MemLog;
 use bincode::rustc_serialize::{encode, encode_into, decode, decode_from};
 use bincode::SizeLimit;
 use std::collections::HashSet;
@@ -63,16 +63,21 @@ impl Handler {
     pub fn post(addr: SocketAddr,
                 username: &str,
                 plain_password: &str,
-                document: Document)
+                document: Document,
+                session: Uuid)
                 -> Result<Uuid> {
         let mut client = Self::new_client(addr, username, plain_password);
 
         let payload = encode(&Message::Post(document.clone()), SizeLimit::Infinite).unwrap();
 
-        let response = match client.propose(payload.as_slice()) {
+        let response = match client.propose(session.as_bytes(), payload.as_slice()) {
             Ok(res) => res,
             Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
-                return Handler::post(parse_addr(&leader_str), username, plain_password, document);
+                return Handler::post(parse_addr(&leader_str),
+                                     username,
+                                     plain_password,
+                                     document,
+                                     session);
             } 
             Err(err) => panic!(err),
         };
@@ -82,15 +87,24 @@ impl Handler {
         Ok(uid)
     }
 
-    pub fn remove(addr: SocketAddr, username: &str, plain_password: &str, id: Uuid) -> Result<()> {
+    pub fn remove(addr: SocketAddr,
+                  username: &str,
+                  plain_password: &str,
+                  id: Uuid,
+                  session: Uuid)
+                  -> Result<()> {
         let mut client = Self::new_client(addr, username, plain_password);
 
         let payload = encode(&Message::Remove(id), SizeLimit::Infinite).unwrap();
 
-        let response = match client.propose(payload.as_slice()) {
+        let response = match client.propose(session.as_bytes(), payload.as_slice()) {
             Ok(res) => res,
             Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
-                return Handler::remove(parse_addr(&leader_str), username, plain_password, id);
+                return Handler::remove(parse_addr(&leader_str),
+                                       username,
+                                       plain_password,
+                                       id,
+                                       session);
             } 
             Err(err) => panic!(err),
         };
@@ -109,7 +123,7 @@ impl Handler {
 
         let payload = encode(&Message::Put(id, new_payload.clone()), SizeLimit::Infinite).unwrap();
 
-        let response = match client.propose(payload.as_slice()) {
+        let response = match client.propose(Uuid::new_v4().as_bytes(), payload.as_slice()) {
             Ok(res) => res,
             Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
                 return Handler::put(parse_addr(&leader_str),
@@ -140,6 +154,17 @@ impl Handler {
         let mut client = Self::new_client(addr, username, password);
 
         let res = client.end_transaction();
+
+        Ok(from_utf8(res.unwrap().as_slice()).unwrap().to_string())
+    }
+
+    pub fn rollback_transaction(addr: SocketAddr,
+                                username: &str,
+                                password: &str)
+                                -> Result<String> {
+        let mut client = Self::new_client(addr, username, password);
+
+        let res = client.rollback_transaction();
 
         Ok(from_utf8(res.unwrap().as_slice()).unwrap().to_string())
     }

@@ -18,7 +18,7 @@ use raft::Client;
 use raft::ServerId;
 use raft::Server;
 
-use raft::persistent_log::doc::DocLog;
+use raft::persistent_log::mem::MemLog;
 use handler::Message;
 use io_handler::ioHandler as Handler;
 
