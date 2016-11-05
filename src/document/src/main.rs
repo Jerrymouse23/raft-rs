@@ -26,7 +26,6 @@ pub mod http_handler;
 pub mod handler;
 pub mod config;
 
-
 use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, Ipv4Addr};
 use bincode::rustc_serialize::{encode, decode, encode_into, decode_from};
 use bincode::SizeLimit;
@@ -51,6 +50,7 @@ use std::io::ErrorKind;
 
 use raft::Server;
 use raft::RaftError;
+use raft::state_machine::StateMachine;
 use raft::persistent_log::mem::MemLog;
 
 use document::*;
@@ -240,6 +240,18 @@ fn server(serverId: ServerId,
         .collect::<HashMap<_, _>>();
 
     let mut state_machine = DocumentStateMachine::new(config.server.volume.clone());
+
+    match File::open("./snapshot") {
+        Ok(mut handler) => {
+            let mut buffer: Vec<u8> = Vec::new();
+            handler.read_to_end(&mut buffer);
+
+            state_machine.restore_snapshot(buffer);
+        }
+        Err(_) => {
+            println!("No snapshot found! Start from the beginning");
+        }
+    }
 
     let node_addr = match parse_addr(&node_address[0]) {
         SocketAddr::V4(b) => b,

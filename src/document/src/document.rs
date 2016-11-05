@@ -99,6 +99,8 @@ impl state_machine::StateMachine for DocumentStateMachine {
                                                                   &self.volume,
                                                                   &id.to_string()),
                                                           ActionType::Post));
+                        self.snapshot();
+
                         encode(&id, SizeLimit::Infinite).unwrap()
                     }
                     Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
@@ -110,6 +112,8 @@ impl state_machine::StateMachine for DocumentStateMachine {
                         self.map.push(DocumentRecord::new(Uuid::parse_str(&id.clone()).unwrap(),
                                                           format!("{}/{}", &self.volume, &id),
                                                           ActionType::Remove));
+
+                        self.snapshot();
 
                         encode(&id, SizeLimit::Infinite).unwrap()
                     }
@@ -123,6 +127,7 @@ impl state_machine::StateMachine for DocumentStateMachine {
                         self.map.push(DocumentRecord::new(Uuid::parse_str(&id.clone()).unwrap(),
                                                           format!("{}/{}", &self.volume, &id),
                                                           ActionType::Remove));
+                        self.snapshot();
 
 
                         encode(&id, SizeLimit::Infinite).unwrap()
@@ -156,7 +161,20 @@ impl state_machine::StateMachine for DocumentStateMachine {
     }
 
     fn snapshot(&self) -> Vec<u8> {
-        encode(&self.map, SizeLimit::Infinite).unwrap()
+        let encoded = encode(&self.map, SizeLimit::Infinite).unwrap();
+
+        let mut file = OpenOptions::new()
+            .read(false)
+            .write(true)
+            .create(true)
+            .open("./snapshot")
+            .unwrap();
+
+        file.write_all(&encoded);
+
+        let v: Vec<u8> = Vec::new();
+
+        v
     }
 
     fn restore_snapshot(&mut self, snapshot_value: Vec<u8>) {
