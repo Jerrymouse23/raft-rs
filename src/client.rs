@@ -308,7 +308,8 @@ mod tests {
 
         // Propose. It's a marriage made in heaven! :)
         // Should be ok
-        assert_eq!(client.propose(to_propose).unwrap(), b"Foxes");
+        assert_eq!(client.propose(Uuid::new_v4().as_bytes(), to_propose).unwrap(),
+                   b"Foxes");
         assert!(client.leader_connection.is_some());
 
         child.join().unwrap();
@@ -342,7 +343,7 @@ mod tests {
         });
 
         // Propose. It's a marriage made in heaven! :)
-        assert!(client.propose(to_propose).is_err());
+        assert!(client.propose(Uuid::new_v4().as_bytes(), to_propose).is_err());
 
         child.join().unwrap();
     }
@@ -399,7 +400,8 @@ mod tests {
         };
 
         // Should be ok, change leader connection.
-        assert_eq!(client.propose(to_propose).unwrap(), b"Foxes");
+        assert_eq!(client.propose(Uuid::new_v4().as_bytes(), to_propose).unwrap(),
+                   b"Foxes");
         assert!(client.leader_connection.is_some());
 
         child.join().unwrap();
@@ -451,7 +453,7 @@ mod tests {
         };
 
         // Should be err, change leader connection but to wrong ip..
-        assert!(client.propose(to_propose).is_err());
+        assert!(client.propose(Uuid::new_v4().as_bytes(), to_propose).is_err());
         assert!(client.leader_connection.is_none());
 
         child.join().unwrap();
