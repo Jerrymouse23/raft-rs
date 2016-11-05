@@ -236,7 +236,12 @@ mod tests {
             version: 0,
         };
 
-        let id = Handler::post(server.get_local_addr(), USERNAME, PASSWORD, doc.clone()).unwrap();
+        let id = Handler::post(server.get_local_addr(),
+                               USERNAME,
+                               PASSWORD,
+                               doc.clone(),
+                               Uuid::new_v4())
+            .unwrap();
 
         let doc2 = Handler::get(server.get_local_addr(), USERNAME, PASSWORD, id).unwrap();
 
@@ -256,7 +261,12 @@ mod tests {
             version: 0,
         };
 
-        let id = Handler::post(server.get_local_addr(), USERNAME, PASSWORD, doc.clone()).unwrap();
+        let id = Handler::post(server.get_local_addr(),
+                               USERNAME,
+                               PASSWORD,
+                               doc.clone(),
+                               Uuid::new_v4())
+            .unwrap();
     }
 
     #[ignore]
@@ -272,7 +282,12 @@ mod tests {
             version: 0,
         };
 
-        let id = Handler::post(server.get_local_addr(), USERNAME, PASSWORD, doc.clone()).unwrap();
+        let id = Handler::post(server.get_local_addr(),
+                               USERNAME,
+                               PASSWORD,
+                               doc.clone(),
+                               Uuid::new_v4())
+            .unwrap();
 
         let new_payload = b"This is updated! :P".to_vec();
 
@@ -296,8 +311,18 @@ mod tests {
             version: 0,
         };
 
-        let id = Handler::post(server.get_local_addr(), USERNAME, PASSWORD, doc.clone()).unwrap();
+        let id = Handler::post(server.get_local_addr(),
+                               USERNAME,
+                               PASSWORD,
+                               doc.clone(),
+                               Uuid::new_v4())
+            .unwrap();
 
-        Handler::remove(server.get_local_addr(), USERNAME, PASSWORD, doc.id.clone()).unwrap();
+        Handler::remove(server.get_local_addr(),
+                        USERNAME,
+                        PASSWORD,
+                        doc.id.clone(),
+                        Uuid::new_v4())
+            .unwrap();
     }
 }
