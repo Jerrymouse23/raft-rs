@@ -72,8 +72,11 @@ impl Log for MemLog {
         Ok(self.voted_for)
     }
 
-    fn set_voted_for(&mut self, address: ServerId) -> result::Result<(), Error> {
-        Ok(self.voted_for = Some(address))
+    fn set_voted_for(&mut self, address: Option<ServerId>) -> result::Result<(), Error> {
+        match address {
+            Some(a) => Ok(self.voted_for = Some(a)),
+            None => Ok(self.voted_for = None),
+        }
     }
 
     fn latest_log_index(&self) -> result::Result<LogIndex, Error> {
@@ -103,8 +106,12 @@ impl Log for MemLog {
         Ok(self.entries.extend(entries.iter().map(|&(term, command)| (term, command.to_vec()))))
     }
 
-    fn rollback(&mut self, lo: LogIndex) -> result::Result<(), Error> {
+    fn truncate(&mut self, lo: LogIndex) -> result::Result<(), Error> {
         Ok(self.entries.truncate(lo.as_u64() as usize))
+    }
+
+    fn rollback(&mut self, lo: LogIndex) -> result::Result<(Vec<(Term, Vec<u8>)>), Error> {
+        Ok(self.entries[(lo.as_u64() as usize)..].to_vec())
     }
 }
 
@@ -121,7 +128,7 @@ mod test {
     fn test_current_term() {
         let mut store = MemLog::new();
         assert_eq!(Term(0), store.current_term().unwrap());
-        store.set_voted_for(ServerId::from(0)).unwrap();
+        store.set_voted_for(Some(ServerId::from(0))).unwrap();
         store.set_current_term(Term(42)).unwrap();
         assert_eq!(None, store.voted_for().unwrap());
         assert_eq!(Term(42), store.current_term().unwrap());
@@ -134,7 +141,7 @@ mod test {
         let mut store = MemLog::new();
         assert_eq!(None, store.voted_for().unwrap());
         let id = ServerId::from(0);
-        store.set_voted_for(id).unwrap();
+        store.set_voted_for(Some(id)).unwrap();
         assert_eq!(Some(id), store.voted_for().unwrap());
     }
 

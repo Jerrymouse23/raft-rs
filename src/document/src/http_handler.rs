@@ -163,7 +163,8 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
                                                      username,
                                                      password,
                                                      Uuid::parse_str(&id).unwrap(),
-                                                     bytes) {
+                                                     bytes,
+                                                     Uuid::new_v4()) {
                             Ok(()) => Response::with((status::Ok, "Ok")),
                             Err(err) => {
                                 Response::with((status::InternalServerError,

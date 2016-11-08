@@ -25,6 +25,7 @@ pub mod io_handler;
 pub mod http_handler;
 pub mod handler;
 pub mod config;
+pub mod doclog;
 
 use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, Ipv4Addr};
 use bincode::rustc_serialize::{encode, decode, encode_into, decode_from};
@@ -51,11 +52,11 @@ use std::io::ErrorKind;
 use raft::Server;
 use raft::RaftError;
 use raft::state_machine::StateMachine;
-use raft::persistent_log::mem::MemLog;
 
 use document::*;
 use config::*;
 use handler::Handler;
+use doclog::DocLog;
 
 use raft::auth::null::NullAuth;
 use raft::auth::Auth;
@@ -84,6 +85,7 @@ Usage:
     document rollback <node-address> <username> <password>
     document transpost <node-address> <filepath> <username> <password> <transid>
     document transremove <node-address> <filepath> <username> <password> <transid>
+    document transput <node-address> <doc-id> <filepath> <username> <password> <transid>
 ";
 
 #[derive(Debug,RustcDecodable,Clone)]
@@ -98,6 +100,7 @@ struct Args {
     cmd_rollback: bool,
     cmd_transpost: bool,
     cmd_transremove: bool,
+    cmd_transput: bool,
     arg_id: Option<u64>,
     arg_doc_id: Option<String>,
     arg_node_id: Vec<u64>,
@@ -184,7 +187,8 @@ fn main() {
             id,
             args.arg_filepath,
             args.arg_username.unwrap(),
-            args.arg_password.unwrap());
+            args.arg_password.unwrap(),
+            Uuid::new_v4());
     } else if args.cmd_begintrans {
         let res = Handler::begin_transaction(parse_addr(&args.arg_node_address.unwrap()),
                                              &args.arg_username.unwrap(),
@@ -221,6 +225,18 @@ fn main() {
                args.arg_username.unwrap(),
                args.arg_password.unwrap(),
                Uuid::parse_str(&args.arg_transid.unwrap()).unwrap());
+    } else if args.cmd_transput {
+        let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
+            Ok(id) => id,
+            Err(err) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
+        };
+
+        put(parse_addr(&args.arg_node_address.unwrap()),
+            id,
+            args.arg_filepath,
+            args.arg_username.unwrap(),
+            args.arg_password.unwrap(),
+            Uuid::parse_str(&args.arg_transid.unwrap()).unwrap());
     }
 }
 
@@ -232,7 +248,7 @@ fn server(serverId: ServerId,
           binding_addr: SocketAddr,
           config: &Config) {
 
-    let persistent_log = MemLog::new();
+    let persistent_log = DocLog::new();
 
     let mut peers = node_id.iter()
         .zip(node_address.iter())
@@ -294,13 +310,18 @@ fn post(addr: SocketAddr, filepath: &str, username: String, password: String, se
     println!("{}", id);
 }
 
-fn put(addr: SocketAddr, doc_id: Uuid, filepath: String, username: String, password: String) {
+fn put(addr: SocketAddr,
+       doc_id: Uuid,
+       filepath: String,
+       username: String,
+       password: String,
+       session: Uuid) {
     let mut handler = File::open(&filepath).expect(&format!("Could not find file {}", filepath));
     let mut buffer: Vec<u8> = Vec::new();
 
     handler.read_to_end(&mut buffer);
 
-    Handler::put(addr, &username, &password, doc_id, buffer);
+    Handler::put(addr, &username, &password, doc_id, buffer, session);
 }
 
 fn remove(addr: SocketAddr, doc_id: Uuid, username: String, password: String, session: Uuid) {

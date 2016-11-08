@@ -7,7 +7,6 @@ use raft::Error as RError;
 use raft::state_machine;
 use raft::RaftError;
 use raft::ServerId;
-use raft::persistent_log::mem::MemLog;
 use bincode::rustc_serialize::{encode, encode_into, decode, decode_from};
 use bincode::SizeLimit;
 use std::collections::HashSet;
@@ -15,7 +14,7 @@ use std::str::from_utf8;
 
 use raft::auth::null::NullAuth;
 
-#[derive(RustcEncodable,RustcDecodable)]
+#[derive(Debug,RustcEncodable,RustcDecodable)]
 pub enum Message {
     Get(Uuid),
     Post(Document),
@@ -116,21 +115,23 @@ impl Handler {
                username: &str,
                plain_password: &str,
                id: Uuid,
-               new_payload: Vec<u8>)
+               new_payload: Vec<u8>,
+               session: Uuid)
                -> Result<()> {
 
         let mut client = Self::new_client(addr, username, plain_password);
 
         let payload = encode(&Message::Put(id, new_payload.clone()), SizeLimit::Infinite).unwrap();
 
-        let response = match client.propose(Uuid::new_v4().as_bytes(), payload.as_slice()) {
+        let response = match client.propose(session.as_bytes(), payload.as_slice()) {
             Ok(res) => res,
             Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
                 return Handler::put(parse_addr(&leader_str),
                                     username,
                                     plain_password,
                                     id,
-                                    new_payload);
+                                    new_payload,
+                                    session);
             } 
             Err(err) => panic!(err),
         };
@@ -291,7 +292,13 @@ mod tests {
 
         let new_payload = b"This is updated! :P".to_vec();
 
-        Handler::put(server.get_local_addr(), USERNAME, PASSWORD, id, new_payload).unwrap();
+        Handler::put(server.get_local_addr(),
+                     USERNAME,
+                     PASSWORD,
+                     id,
+                     new_payload,
+                     Uuid::new_v4())
+            .unwrap();
 
         let doc2 = Handler::get(server.get_local_addr(), USERNAME, PASSWORD, id).unwrap();
 

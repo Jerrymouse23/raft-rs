@@ -37,4 +37,6 @@ pub trait StateMachine: Debug + Send + 'static {
 
     /// Restore a snapshot of the state machine.
     fn restore_snapshot(&mut self, snapshot: Vec<u8>) -> ();
+
+    fn revert(&mut self, command: &[u8]) -> ();
 }

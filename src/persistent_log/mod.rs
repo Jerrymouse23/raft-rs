@@ -5,14 +5,14 @@
 //!
 //! *Note:* Your consuming application should not necessarily interface with this data. It is meant
 //! for internal use by the library, we simply chose not to be opinionated about how data is stored.
+
 pub mod mem;
-// pub mod doc;
+
+pub use persistent_log::mem::{MemLog, Error};
 
 use std::error;
 use std::fmt::Debug;
 use std::result;
-
-pub use persistent_log::mem::{MemLog, Error};
 
 use LogIndex;
 use Term;
@@ -36,7 +36,7 @@ pub trait Log: Clone + Debug + Send + 'static {
     fn voted_for(&self) -> result::Result<Option<ServerId>, Self::Error>;
 
     /// Sets the candidate id voted for in the current term.
-    fn set_voted_for(&mut self, server: ServerId) -> result::Result<(), Self::Error>;
+    fn set_voted_for(&mut self, server: Option<ServerId>) -> result::Result<(), Self::Error>;
 
     /// Returns the index of the latest persisted log entry (0 if the log is empty).
     fn latest_log_index(&self) -> result::Result<LogIndex, Self::Error>;
@@ -65,5 +65,6 @@ pub trait Log: Clone + Debug + Send + 'static {
                       entries: &[(Term, &[u8])])
                       -> result::Result<(), Self::Error>;
 
-    fn rollback(&mut self, lo: LogIndex) -> result::Result<(), Self::Error>;
+    fn truncate(&mut self, lo: LogIndex) -> result::Result<(), Self::Error>;
+    fn rollback(&mut self, lo: LogIndex) -> result::Result<(Vec<(Term, Vec<u8>)>), Self::Error>;
 }

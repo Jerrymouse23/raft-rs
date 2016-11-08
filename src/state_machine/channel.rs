@@ -37,6 +37,10 @@ impl StateMachine for ChannelStateMachine {
     fn restore_snapshot(&mut self, _snapshot: Vec<u8>) -> () {
         ()
     }
+
+    fn revert(&mut self, _command: &[u8]) -> () {
+        unimplemented!()
+    }
 }
 
 impl Debug for ChannelStateMachine {

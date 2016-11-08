@@ -18,7 +18,6 @@ use raft::Client;
 use raft::ServerId;
 use raft::Server;
 
-use raft::persistent_log::mem::MemLog;
 use handler::Message;
 use io_handler::ioHandler as Handler;
 
@@ -58,6 +57,7 @@ struct DocumentRecord {
     id: Uuid,
     path: String,
     method: ActionType,
+    old: Option<Vec<u8>>,
 }
 
 impl DocumentRecord {
@@ -66,7 +66,12 @@ impl DocumentRecord {
             id: id,
             path: path,
             method: method,
+            old: None,
         }
+    }
+
+    pub fn set_old_payload(&mut self, old: Vec<u8>) {
+        self.old = Some(old);
     }
 }
 
@@ -109,9 +114,17 @@ impl state_machine::StateMachine for DocumentStateMachine {
             Message::Remove(id) => {
                 match Handler::remove(id, &self.volume) {
                     Ok(id) => {
-                        self.map.push(DocumentRecord::new(Uuid::parse_str(&id.clone()).unwrap(),
-                                                          format!("{}/{}", &self.volume, &id),
-                                                          ActionType::Remove));
+                        let mut record = DocumentRecord::new(Uuid::parse_str(&id.clone()).unwrap(),
+
+                                                             format!("{}/{}", &self.volume, &id),
+                                                             ActionType::Remove);
+
+                        let mut document = File::open(format!("{}/{}", &self.volume, &id)).unwrap();
+
+                        record.set_old_payload(decode_from(&mut document, SizeLimit::Infinite)
+                            .unwrap());
+
+                        self.map.push(record);
 
                         self.snapshot();
 
@@ -124,11 +137,17 @@ impl state_machine::StateMachine for DocumentStateMachine {
             Message::Put(id, new_payload) => {
                 match Handler::put(id, new_payload.as_slice(), &self.volume) {
                     Ok(id) => {
-                        self.map.push(DocumentRecord::new(Uuid::parse_str(&id.clone()).unwrap(),
-                                                          format!("{}/{}", &self.volume, &id),
-                                                          ActionType::Remove));
-                        self.snapshot();
+                        let mut record = DocumentRecord::new(Uuid::parse_str(&id.clone()).unwrap(),
+                                                             format!("{}/{}", &self.volume, &id),
+                                                             ActionType::Remove);
 
+                        let mut document = File::open(format!("{}/{}", &self.volume, &id)).unwrap();
+
+                        record.set_old_payload(decode_from(&mut document, SizeLimit::Infinite)
+                            .unwrap());
+
+                        self.map.push(record);
+                        self.snapshot();
 
                         encode(&id, SizeLimit::Infinite).unwrap()
                     }
@@ -178,6 +197,80 @@ impl state_machine::StateMachine for DocumentStateMachine {
     }
 
     fn restore_snapshot(&mut self, snapshot_value: Vec<u8>) {
-        self.map = decode(&snapshot_value).unwrap();
+        let map: Vec<DocumentRecord> = match decode(&snapshot_value) {
+            Ok(m) => m,
+            Err(_) => Vec::new(),
+        };
+
+        self.map = map;
+    }
+
+    fn revert(&mut self, command: &[u8]) {
+        let message = decode(&command).unwrap();
+
+        match message {
+            Message::Get(id) => return, //cannot revert
+            Message::Post(document) => {
+                match Handler::remove(document.id, &self.volume) {
+                    Ok(_) => {
+                        let mut record =
+                            DocumentRecord::new(document.id,
+                                                format!("{}/{}", &self.volume, &document.id),
+                                                ActionType::Remove);
+
+                        record.set_old_payload(encode(&document, SizeLimit::Infinite).unwrap());
+
+                        self.snapshot();
+                    }
+                    Err(_) => panic!(),
+                }
+            }
+            Message::Remove(id) => {
+                for record in self.map.clone().iter().rev() {
+                    if record.id == id {
+                        match Handler::post(decode(&mut record.clone().old.unwrap()).unwrap(),
+                                            &self.volume) {
+                            Ok(id) => {
+                                let mut new_record =
+                                    DocumentRecord::new(record.id.clone(),
+                                                        format!("{}/{}", &self.volume, &record.id),
+                                                        ActionType::Post);
+
+                                new_record.set_old_payload(record.clone().old.unwrap());
+
+                                self.map.push(new_record);
+
+                                self.snapshot();
+
+                            }
+                            Err(err) => panic!(),
+                        }
+                    }
+                }
+            }
+            Message::Put(id, new_payload) => {
+                for record in self.map.clone().iter().rev() {
+                    if record.id == id {
+                        match Handler::put(id,
+                                           record.clone().old.unwrap().as_slice(),
+                                           &self.volume) {
+                            Ok(_) => {
+                                let mut new_record =
+                                    DocumentRecord::new(record.id.clone(),
+                                                        format!("{}/{}", &self.volume, &record.id),
+                                                        ActionType::Put);
+
+                                new_record.set_old_payload(new_payload.clone());
+
+                                self.map.push(new_record);
+
+                                self.snapshot();
+                            } 
+                            Err(_) => panic!(),
+                        }
+                    }
+                }
+            }
+        }
     }
 }

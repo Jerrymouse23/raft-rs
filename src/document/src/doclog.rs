@@ -5,15 +5,13 @@ use bincode::SizeLimit;
 use bincode::rustc_serialize::{encode_into, encode, decode, decode_from};
 use std::fs::OpenOptions;
 
-use persistent_log::Log;
-use LogIndex;
-use ServerId;
-use Term;
+use raft::persistent_log::Log;
+use raft::LogIndex;
+use raft::ServerId;
+use raft::Term;
 
 #[derive(Clone, Debug)]
 pub struct DocLog {
-    current_term: Term,
-    voted_for: Option<ServerId>,
     entries: Vec<(Term, Vec<u8>)>,
 }
 
@@ -40,23 +38,24 @@ impl error::Error for Error {
 
 impl DocLog {
     pub fn new() -> Self {
-        let mut d = DocLog {
-            current_term: Term(0),
-            voted_for: None,
-            entries: Vec::new(),
-        };
+        let mut d = DocLog { entries: Vec::new() };
 
-        d.set_current_term(Term(0));
+        d.set_current_term(Term::from(0));
 
         d
     }
 }
 
+// TODO error handling for IO
 impl Log for DocLog {
     type Error = Error;
 
     fn current_term(&self) -> result::Result<Term, Error> {
-        Ok(self.current_term)
+        let mut term_handler = File::open("term").expect("Could not find term file");
+
+        let term: Term = decode_from(&mut term_handler, SizeLimit::Infinite).unwrap();
+
+        Ok(term)
     }
 
     fn set_current_term(&mut self, term: Term) -> result::Result<(), Error> {
@@ -69,22 +68,28 @@ impl Log for DocLog {
 
         encode_into(&term, &mut term_handler, SizeLimit::Infinite);
 
-        self.voted_for = None;
-        Ok(self.current_term = term)
+        self.set_voted_for(None);
+
+        Ok(())
     }
 
     fn inc_current_term(&mut self) -> result::Result<Term, Error> {
-        self.voted_for = None;
-        let new_term = self.current_term + 1;
+        self.set_voted_for(None);
+        let new_term = self.current_term().unwrap() + 1;
         self.set_current_term(new_term);
         self.current_term()
     }
 
     fn voted_for(&self) -> result::Result<Option<ServerId>, Error> {
-        Ok(self.voted_for)
+        let mut voted_for_handler = File::open("voted_for").expect("Could not find voted_for file");
+
+        let voted_for: Option<ServerId> = decode_from(&mut voted_for_handler, SizeLimit::Infinite)
+            .unwrap();
+
+        Ok(voted_for)
     }
 
-    fn set_voted_for(&mut self, address: ServerId) -> result::Result<(), Error> {
+    fn set_voted_for(&mut self, address: Option<ServerId>) -> result::Result<(), Error> {
         let mut voted_for_handler = OpenOptions::new()
             .read(true)
             .write(true)
@@ -94,11 +99,11 @@ impl Log for DocLog {
 
         encode_into(&address, &mut voted_for_handler, SizeLimit::Infinite);
 
-        Ok(self.voted_for = Some(address))
+        Ok(())
     }
 
     fn latest_log_index(&self) -> result::Result<LogIndex, Error> {
-        Ok(LogIndex(self.entries.len() as u64))
+        Ok(LogIndex::from(self.entries.len() as u64))
     }
 
     fn latest_log_term(&self) -> result::Result<Term, Error> {
@@ -123,16 +128,24 @@ impl Log for DocLog {
         self.entries.truncate((from - 1).as_u64() as usize);
         Ok(self.entries.extend(entries.iter().map(|&(term, command)| (term, command.to_vec()))))
     }
+
+    fn truncate(&mut self, lo: LogIndex) -> result::Result<(), Error> {
+        Ok(self.entries.truncate(lo.as_u64() as usize))
+    }
+
+    fn rollback(&mut self, lo: LogIndex) -> result::Result<(Vec<(Term, Vec<u8>)>), Error> {
+        Ok(self.entries[(lo.as_u64() as usize)..].to_vec())
+    }
 }
 
 #[cfg(test)]
 mod test {
 
     use super::*;
-    use LogIndex;
-    use ServerId;
-    use Term;
-    use persistent_log::Log;
+    use raft::LogIndex;
+    use raft::ServerId;
+    use raft::Term;
+    use raft::persistent_log::Log;
     use std::fs::File;
     use bincode::SizeLimit;
     use bincode::rustc_serialize::{encode_into, encode, decode, decode_from};
@@ -143,13 +156,13 @@ mod test {
     #[test]
     fn test_current_term() {
         let mut store = DocLog::new();
-        assert_eq!(Term(0), store.current_term().unwrap());
-        store.set_voted_for(ServerId::from(0)).unwrap();
-        store.set_current_term(Term(42)).unwrap();
+        assert_eq!(Term::from(0), store.current_term().unwrap());
+        store.set_voted_for(Some(ServerId::from(0))).unwrap();
+        store.set_current_term(Term::from(42)).unwrap();
         assert_eq!(None, store.voted_for().unwrap());
-        assert_eq!(Term(42), store.current_term().unwrap());
+        assert_eq!(Term::from(42), store.current_term().unwrap());
         store.inc_current_term().unwrap();
-        assert_eq!(Term(43), store.current_term().unwrap());
+        assert_eq!(Term::from(43), store.current_term().unwrap());
     }
 
     #[test]
@@ -157,7 +170,7 @@ mod test {
         let mut store = DocLog::new();
         assert_eq!(None, store.voted_for().unwrap());
         let id = ServerId::from(0);
-        store.set_voted_for(id).unwrap();
+        store.set_voted_for(Some(id)).unwrap();
         assert_eq!(Some(id), store.voted_for().unwrap());
     }
 
@@ -168,7 +181,7 @@ mod test {
         assert_eq!(Term::from(0), store.latest_log_term().unwrap());
 
         // [0.1, 0.2, 0.3, 1.4]
-        store.append_entries(LogIndex(1),
+        store.append_entries(LogIndex::from(1),
                             &[(Term::from(0), &[1]),
                               (Term::from(0), &[2]),
                               (Term::from(0), &[3]),
@@ -187,7 +200,7 @@ mod test {
 
         // [0.1, 0.2, 0.3]
         store.append_entries(LogIndex::from(4), &[]).unwrap();
-        assert_eq!(LogIndex(3), store.latest_log_index().unwrap());
+        assert_eq!(LogIndex::from(3), store.latest_log_index().unwrap());
         assert_eq!(Term::from(0), store.latest_log_term().unwrap());
         assert_eq!((Term::from(0), &*vec![1u8]),
                    store.entry(LogIndex::from(1)).unwrap());
@@ -197,8 +210,10 @@ mod test {
                    store.entry(LogIndex::from(3)).unwrap());
 
         // [0.1, 0.2, 2.3, 3.4]
-        store.append_entries(LogIndex::from(3), &[(Term(2), &[3]), (Term(3), &[4])]).unwrap();
-        assert_eq!(LogIndex(4), store.latest_log_index().unwrap());
+        store.append_entries(LogIndex::from(3),
+                            &[(Term::from(2), &[3]), (Term::from(3), &[4])])
+            .unwrap();
+        assert_eq!(LogIndex::from(4), store.latest_log_index().unwrap());
         assert_eq!(Term::from(3), store.latest_log_term().unwrap());
         assert_eq!((Term::from(0), &*vec![1u8]),
                    store.entry(LogIndex::from(1)).unwrap());

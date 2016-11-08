@@ -216,7 +216,16 @@ impl<L, M> Consensus<L, M>
                 self.follower_state.min_index = follower_state_min.unwrap();
                 self.commit_index = commit_index;
                 self.last_applied = last_applied;
-                self.log.rollback(commit_index);
+
+                {
+                    let entries_failed = self.log.rollback(commit_index).unwrap();
+
+                    for (term, command) in entries_failed {
+                        self.state_machine.revert(command.as_slice());
+                    }
+                }
+
+                self.log.truncate(commit_index);
             }
             _ => panic!("cannot handle message"),
         };
@@ -317,6 +326,16 @@ impl<L, M> Consensus<L, M>
                     for &peer in self.peers.keys() {
                         self.leader_state.set_next_index(peer, commit_index + 1);
                     }
+
+                    {
+                        let entries_failed = self.log.rollback(commit_index).unwrap();
+
+                        for (term, command) in entries_failed {
+                            self.state_machine.revert(command.as_slice());
+                        }
+                    }
+
+                    self.log.truncate(commit_index);
 
                     actions.client_messages.push((from, message));
                 } else {
@@ -673,7 +692,7 @@ impl<L, M> Consensus<L, M>
         } else {
             match self.log.voted_for().unwrap() {
                 None => {
-                    self.log.set_voted_for(candidate).unwrap();
+                    self.log.set_voted_for(Some(candidate)).unwrap();
                     messages::request_vote_response_granted(new_local_term)
                 }
                 Some(voted_for) if voted_for == candidate => {
@@ -811,7 +830,7 @@ impl<L, M> Consensus<L, M>
             scoped_assert!(self.is_follower());
             scoped_assert!(self.log.voted_for().unwrap().is_none());
             self.log.inc_current_term().unwrap();
-            self.log.set_voted_for(self.id).unwrap();
+            self.log.set_voted_for(Some(self.id)).unwrap();
             let latest_log_index = self.latest_log_index();
             self.state = ConsensusState::Leader;
             self.leader_state.reinitialize(latest_log_index);
@@ -847,7 +866,7 @@ impl<L, M> Consensus<L, M>
     fn transition_to_candidate(&mut self, actions: &mut Actions) {
         scoped_trace!("transitioning to Candidate");
         self.log.inc_current_term().unwrap();
-        self.log.set_voted_for(self.id).unwrap();
+        self.log.set_voted_for(Some(self.id)).unwrap();
         self.state = ConsensusState::Candidate;
         self.candidate_state.clear();
         self.candidate_state.record_vote(self.id);
