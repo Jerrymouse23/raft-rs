@@ -2,6 +2,7 @@ use iron::status;
 use router::Router;
 use iron::prelude::*;
 use params::{Params, Value};
+use std::fs::read_dir;
 
 use uuid::Uuid;
 use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, Ipv4Addr};
@@ -47,6 +48,21 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
     router.put("/document",
                move |request: &mut Request| http_put(request, &context),
                "put_document");
+
+    router.get("/document",
+               move |request: &mut Request| http_get_keys(request, &context),
+               "get_document_keys");
+
+    fn http_get_keys(req: &mut Request, context: &Context) -> IronResult<Response> {
+        let keys = read_dir("data1").unwrap();
+        let mut response = "".to_owned();
+        for key in keys {
+            response.push_str(key.unwrap().path().to_str().unwrap());
+            response.push_str(";");
+        }
+        Ok(Response::with((status::Ok, response)))
+    }
+
 
     spawn(move || {
         Iron::new(router).http(binding_addr);

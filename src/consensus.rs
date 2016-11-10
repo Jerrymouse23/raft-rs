@@ -220,12 +220,13 @@ impl<L, M> Consensus<L, M>
                 {
                     let entries_failed = self.log.rollback(commit_index).unwrap();
 
-                    for (term, command) in entries_failed {
+                    for &(ref term, ref command) in entries_failed.iter().rev() {
                         self.state_machine.revert(command.as_slice());
                     }
                 }
 
                 self.log.truncate(commit_index);
+                self.state_machine.rollback();
             }
             _ => panic!("cannot handle message"),
         };
@@ -330,12 +331,13 @@ impl<L, M> Consensus<L, M>
                     {
                         let entries_failed = self.log.rollback(commit_index).unwrap();
 
-                        for (term, command) in entries_failed {
+                        for &(ref term, ref command) in entries_failed.iter().rev() {
                             self.state_machine.revert(command.as_slice());
                         }
                     }
 
                     self.log.truncate(commit_index);
+                    self.state_machine.rollback();
 
                     actions.client_messages.push((from, message));
                 } else {

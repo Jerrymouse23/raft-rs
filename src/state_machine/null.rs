@@ -24,4 +24,6 @@ impl StateMachine for NullStateMachine {
     fn revert(&mut self, _command: &[u8]) -> () {
         unimplemented!()
     }
+
+    fn rollback(&mut self) {}
 }

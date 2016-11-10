@@ -9,10 +9,10 @@
 //! commands would be seen by all consensus modules.
 use std::fmt::Debug;
 
-mod channel;
+// mod channel;
 mod null;
 
-pub use state_machine::channel::ChannelStateMachine;
+// pub use state_machine::channel::ChannelStateMachine;
 pub use state_machine::null::NullStateMachine;
 
 /// This trait is meant to be implemented such that the commands issued to it via `apply()` will
@@ -39,4 +39,6 @@ pub trait StateMachine: Debug + Send + 'static {
     fn restore_snapshot(&mut self, snapshot: Vec<u8>) -> ();
 
     fn revert(&mut self, command: &[u8]) -> ();
+
+    fn rollback(&mut self);
 }

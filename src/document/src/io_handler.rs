@@ -61,11 +61,12 @@ impl ioHandler {
     }
 
     pub fn put(id: Uuid, payload: &[u8], volume: &str) -> Result<String, IoError> {
-        let mut handler = try!(OpenOptions::new()
+        let mut handler = OpenOptions::new()
             .read(true)
             .write(true)
             .create(false)
-            .open(format!("{}/{}", volume, id)));
+            .open(format!("{}/{}", volume, id))
+            .expect(&format!("Cannot find file {}/{}", volume, id));
 
         let mut document: Document = decode_from(&mut handler, SizeLimit::Infinite)
             .expect(&format!("Cannot find file {}/{}", volume, id));
