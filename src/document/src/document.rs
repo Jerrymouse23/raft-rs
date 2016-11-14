@@ -101,6 +101,7 @@ impl state_machine::StateMachine for DocumentStateMachine {
             Message::Post(document) => {
                 match Handler::post(document, &self.volume) {
                     Ok(id) => {
+
                         self.map.push(DocumentRecord::new(id.clone(),
                                                           format!("{}/{}",
                                                                   &self.volume,
@@ -114,17 +115,19 @@ impl state_machine::StateMachine for DocumentStateMachine {
                 }
             }
             Message::Remove(id) => {
-                match Handler::remove(id, &self.volume) {
-                    Ok(id) => {
-                        let mut record = DocumentRecord::new(Uuid::parse_str(&id.clone()).unwrap(),
+                let mut document = File::open(format!("{}/{}", &self.volume, &id))
+                    .expect(&format!("{}/{}", &self.volume, &id));
 
+                let old_payload = decode_from(&mut document, SizeLimit::Infinite).unwrap();
+
+                match Handler::remove(id, &self.volume) {
+                    Ok(_) => {
+
+                        let mut record = DocumentRecord::new(id,
                                                              format!("{}/{}", &self.volume, &id),
                                                              ActionType::Remove);
 
-                        let mut document = File::open(format!("{}/{}", &self.volume, &id)).unwrap();
-
-                        record.set_old_payload(decode_from(&mut document, SizeLimit::Infinite)
-                            .unwrap());
+                        record.set_old_payload(old_payload);
 
                         self.map.push(record);
 
@@ -228,11 +231,20 @@ impl state_machine::StateMachine for DocumentStateMachine {
                 }
             }
             Message::Remove(id) => {
-                for record in self.map.clone()[self.transaction_offset..].iter().rev() {
+                for record in self.map.clone()[0..(self.map.clone().len() -
+                                                   self.transaction_offset)]
+                    .iter()
+                    .rev() {
                     if record.id == id {
-                        match Handler::post(decode(&mut record.clone().old.unwrap()).unwrap(),
-                                            &self.volume) {
+
+                        let mut document = Document {
+                            id: record.id,
+                            payload: record.clone().old.unwrap(),
+                            version: 0,
+                        };
+                        match Handler::post(document, &self.volume) {
                             Ok(id) => {
+
                                 let mut new_record =
                                     DocumentRecord::new(record.id.clone(),
                                                         format!("{}/{}", &self.volume, &record.id),
@@ -253,9 +265,13 @@ impl state_machine::StateMachine for DocumentStateMachine {
                 }
             }
             Message::Put(id, new_payload) => {
-                for record in self.map.clone()[self.transaction_offset..].iter().rev() {
+                for record in self.map.clone()[0..(self.map.clone().len() -
+                                                   self.transaction_offset)]
+                    .iter()
+                    .rev() {
 
                     if record.id == id {
+
                         match Handler::put(id,
                                            record.clone().old.unwrap().as_slice(),
                                            &self.volume) {

@@ -84,7 +84,7 @@ Usage:
     document endtrans <node-address> <username> <password>
     document rollback <node-address> <username> <password>
     document transpost <node-address> <filepath> <username> <password> <transid>
-    document transremove <node-address> <filepath> <username> <password> <transid>
+    document transremove <node-address> <doc-id> <username> <password> <transid>
     document transput <node-address> <doc-id> <filepath> <username> <password> <transid>
 ";
 
