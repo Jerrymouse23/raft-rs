@@ -275,11 +275,11 @@ pub fn transaction_begin(session: &[u8]) -> Rc<Builder<HeapAllocator>> {
     Rc::new(message)
 }
 
-pub fn transaction_end() -> Rc<Builder<HeapAllocator>> {
+pub fn transaction_commit() -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
         message.init_root::<message::Builder>()
-            .init_transaction_end();
+            .init_transaction_commit();
     }
     Rc::new(message)
 }
@@ -294,11 +294,11 @@ pub fn client_transaction_begin(session: &[u8]) -> Builder<HeapAllocator> {
     message
 }
 
-pub fn client_transaction_end() -> Builder<HeapAllocator> {
+pub fn client_transaction_commit() -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
-        message.init_root::<client_request::Builder>()
-            .init_transaction_end();
+        let mut request = message.init_root::<client_request::Builder>();
+        request.init_transaction_commit();
     }
     message
 }

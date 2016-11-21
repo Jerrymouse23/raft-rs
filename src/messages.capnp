@@ -56,7 +56,7 @@ struct Message {
         requestVoteResponse @2 :RequestVoteResponse;
         requestVoteRequest @3 :RequestVoteRequest;
         transactionBegin @4 :TransactionBegin;
-        transactionEnd @5 :TransactionEnd;
+        transactionCommit @5 :TransactionCommit;
         transactionRollback @6 :TransactionRollback;
     }
 }
@@ -65,11 +65,12 @@ struct TransactionBegin{
   session @0 :Data;
 }
 
-struct TransactionEnd{
+struct TransactionCommit{
 
 }
 
 struct TransactionRollback{
+
 }
 
 struct AppendEntriesRequest {
@@ -160,7 +161,7 @@ struct ClientRequest {
     proposal @1 :ProposalRequest;
     query @2 :QueryRequest;
     transactionBegin @3 :CliTransactionBegin;
-    transactionEnd @4 :CliTransactionEnd;
+    transactionCommit @4 :CliTransactionCommit;
     transactionRollback @5 :CliTransactionRollback;
   }
 }
@@ -171,7 +172,7 @@ struct CliTransactionBegin{
   logIndex @2 :UInt64;
 }
 
-struct CliTransactionEnd{
+struct CliTransactionCommit{
 
 }
 

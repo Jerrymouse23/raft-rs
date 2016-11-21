@@ -77,7 +77,7 @@ impl Transaction {
 
     pub fn broadcast_end(&self, actions: &mut Actions) {
         scoped_debug!("BROADCAST TRANSACTION ENDS");
-        let message = messages::transaction_end();
+        let message = messages::transaction_commit();
         actions.peer_messages_broadcast.push(message);
     }
 

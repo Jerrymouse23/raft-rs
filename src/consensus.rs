@@ -207,7 +207,7 @@ impl<L, M> Consensus<L, M>
                                        self.last_applied,
                                        Some(self.follower_state.min_index));
             }
-            message::Which::TransactionEnd(Ok(response)) => {
+            message::Which::TransactionCommit(Ok(response)) => {
                 self.transaction.end();
             }
             message::Which::TransactionRollback(Ok(response)) => {
@@ -295,7 +295,7 @@ impl<L, M> Consensus<L, M>
                     actions.client_messages.push((from, message));
                 }
             }
-            client_request::Which::TransactionEnd(Ok(request)) => {
+            client_request::Which::TransactionCommit(Ok(request)) => {
                 if self.is_leader() {
                     self.transaction.end();
                     self.transaction.broadcast_end(actions);

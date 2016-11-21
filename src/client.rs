@@ -81,7 +81,7 @@ impl Client {
     }
 
     pub fn end_transaction(&mut self) -> Result<Vec<u8>> {
-        let mut message = messages::client_transaction_end();
+        let mut message = messages::client_transaction_commit();
         self.send_message(&mut message)
     }
 
