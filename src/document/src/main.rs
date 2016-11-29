@@ -197,9 +197,9 @@ fn main() {
 
         println!("{}", res.unwrap());
     } else if args.cmd_endtrans {
-        let res = Handler::end_transaction(parse_addr(&args.arg_node_address.unwrap()),
-                                           &args.arg_username.unwrap(),
-                                           &args.arg_password.unwrap());
+        let res = Handler::commit_transaction(parse_addr(&args.arg_node_address.unwrap()),
+                                              &args.arg_username.unwrap(),
+                                              &args.arg_password.unwrap());
         println!("{}", res.unwrap());
     } else if args.cmd_rollback {
         let res = Handler::rollback_transaction(parse_addr(&args.arg_node_address.unwrap()),

@@ -151,7 +151,7 @@ impl Handler {
         Ok(Uuid::from_bytes(res.unwrap().as_slice()).unwrap().hyphenated().to_string())
     }
 
-    pub fn end_transaction(addr: SocketAddr, username: &str, password: &str) -> Result<String> {
+    pub fn commit_transaction(addr: SocketAddr, username: &str, password: &str) -> Result<String> {
         let mut client = Self::new_client(addr, username, password);
 
         let res = client.end_transaction();
