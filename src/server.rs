@@ -39,7 +39,7 @@ const LISTENER: Token = Token(0);
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 
 pub enum ServerTimeout {
-    Consensus(ConsensusTimeout),
+    Consensus(LogId, ConsensusTimeout),
     Reconnect(Token),
 }
 
@@ -274,13 +274,13 @@ impl<L, M, A> Server<L, M, A>
             }
             self.consensus_timeouts.clear();
         }
-        for timeout in timeouts {
+        for (lid, timeout) in timeouts {
             let duration = timeout.duration_ms();
 
             // Registering a timeout may only fail if the maximum number of timeouts
             // is already registered, which is by default 65,536. We use a
             // maximum of one timeout per peer, so this unwrap should be safe.
-            let handle = event_loop.timeout_ms(ServerTimeout::Consensus(timeout), duration)
+            let handle = event_loop.timeout_ms(ServerTimeout::Consensus(lid, timeout), duration)
                 .unwrap();
             self.consensus_timeouts
                 .insert(timeout, handle)
@@ -331,30 +331,6 @@ impl<L, M, A> Server<L, M, A>
                 event_loop: &mut EventLoop<Server<L, M, A>>,
                 token: Token)
                 -> Result<()> {
-
-        // for (lid, consensus) in self.log_manager.consensus {
-        // if !consensus.transaction.isActive {
-        // let i = 0;
-        // for (m_lid, client, builder) in self.requests_in_queue {
-        // if lid == m_lid {
-        // let mut actions = Actions::new();
-        // self.log_manager
-        // .apply_client_message(client,
-        // &Self::into_reader(&builder),
-        // &mut actions);
-        // self.execute_actions(event_loop, actions);
-        // self.requests_in_queue.remove(i);
-        // } else {
-        // i += 1;
-        // continue;
-        // }
-        //
-        // i += 1;
-        // }
-        //
-        // }
-        // }
-        //
 
         for (lid, _) in self.log_manager.consensus {
             if !self.log_manager.active_transaction(&lid) {
@@ -600,12 +576,13 @@ impl<L, M, A> Handler for Server<L, M, A>
         push_log_scope!("{:?}", self);
         scoped_trace!("timeout: {:?}", &timeout);
         match timeout {
-            ServerTimeout::Consensus(consensus) => {
+            ServerTimeout::Consensus(lid, consensus) => {
+                //
                 scoped_assert!(self.consensus_timeouts.remove(&consensus).is_some(),
                                "missing timeout: {:?}",
                                timeout);
                 let mut actions = Actions::new();
-                self.consensus.apply_timeout(consensus, &mut actions);
+                self.log_manager.apply_timeout(&lid, consensus, &mut actions);
                 self.execute_actions(event_loop, actions);
             }
 
