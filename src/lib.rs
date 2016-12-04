@@ -329,10 +329,10 @@ impl fmt::Display for ClientId {
 
 /// The ID of a Raft log.
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
-pub struct LogId(Uuid);
+pub struct LogId(u64);
 impl LogId {
     fn new() -> LogId {
-        LogId(Uuid::new_v4())
+        LogId(0)
     }
 }
 impl fmt::Debug for LogId {
