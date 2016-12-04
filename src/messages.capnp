@@ -49,6 +49,7 @@ struct Entry {
 }
 
 struct Message {
+    logId @7: UInt64;
 
     union {
         appendEntriesRequest @0 :AppendEntriesRequest;
@@ -155,6 +156,7 @@ struct RequestVoteResponse {
 }
 
 struct ClientRequest {
+  logId @6 :UInt64;
   
   union {
     ping @0 :PingRequest;

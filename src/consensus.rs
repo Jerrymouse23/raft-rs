@@ -20,7 +20,7 @@ use std::rc::Rc;
 use capnp::message::{Builder, HeapAllocator, Reader, ReaderSegments};
 use rand::{self, Rng};
 
-use {LogIndex, Term, ServerId, ClientId, messages};
+use {LogId, LogIndex, Term, ServerId, ClientId, messages};
 use messages_capnp::{append_entries_request, append_entries_response, client_request,
                      proposal_request, query_request, message, request_vote_request,
                      request_vote_response};
@@ -30,6 +30,7 @@ use uuid::Uuid;
 use transaction::Transaction;
 use persistent_log::Log;
 use std::boxed::Box;
+use mio::Timeout as TimeoutHandle;
 
 const ELECTION_MIN: u64 = 1500;
 const ELECTION_MAX: u64 = 3000;
@@ -70,7 +71,7 @@ pub struct Actions {
     /// Whether to clear outbound peer message queues.
     pub clear_peer_messages: bool,
     pub peer_messages_broadcast: Vec<Rc<Builder<HeapAllocator>>>,
-    pub transaction_queue: Vec<(ClientId, Builder<HeapAllocator>)>,
+    pub transaction_queue: Vec<(LogId, ClientId, Builder<HeapAllocator>)>,
 }
 
 // TODO add transaction_queue
@@ -179,14 +180,13 @@ impl<L, M> Consensus<L, M>
     }
 
     /// Applies a peer message to the consensus state machine.
-    pub fn apply_peer_message<S>(&mut self,
-                                 from: ServerId,
-                                 message: &Reader<S>,
-                                 actions: &mut Actions)
-        where S: ReaderSegments
-    {
+    pub fn apply_peer_message(&mut self,
+                              from: ServerId,
+                              message: &message::Reader,
+                              actions: &mut Actions,
+                              logid: &LogId) {
         push_log_scope!("{:?}", self);
-        let reader = message.get_root::<message::Reader>().unwrap().which().unwrap();
+        let reader = message.which().unwrap();
         match reader {
             message::Which::AppendEntriesRequest(Ok(request)) => {
                 self.append_entries_request(from, request, actions)
@@ -233,14 +233,13 @@ impl<L, M> Consensus<L, M>
     }
 
     /// Applies a client message to the consensus state machine.
-    pub fn apply_client_message<S>(&mut self,
-                                   from: ClientId,
-                                   message: &Reader<S>,
-                                   actions: &mut Actions)
-        where S: ReaderSegments
-    {
+    pub fn apply_client_message(&mut self,
+                                from: ClientId,
+                                message: &client_request::Reader,
+                                actions: &mut Actions,
+                                logid: LogId) {
         push_log_scope!("{:?}", self);
-        let reader = message.get_root::<client_request::Reader>().unwrap().which().unwrap();
+        let reader = message.which().unwrap();
 
         match reader {
             client_request::Which::Proposal(Ok(request)) => {
@@ -255,7 +254,7 @@ impl<L, M> Consensus<L, M>
 
                         let message = messages::proposal_request(session, entry);
 
-                        actions.transaction_queue.push((from, message));
+                        actions.transaction_queue.push((logid, from, message));
 
                         self.transaction.count_up();
                     } else {
@@ -271,7 +270,7 @@ impl<L, M> Consensus<L, M>
                     let query = query.get_query().unwrap();
                     let message = messages::query_request(query);
 
-                    actions.transaction_queue.push((from, message));
+                    actions.transaction_queue.push((logid, from, message));
                 } else {
                     self.query_request(from, query, actions);
                 }

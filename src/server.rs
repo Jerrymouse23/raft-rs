@@ -22,6 +22,7 @@ use Result;
 use Error;
 use RaftError;
 use ServerId;
+use LogId;
 use messages;
 use messages_capnp::connection_preamble;
 use consensus::{Consensus, Actions, ConsensusTimeout};
@@ -31,6 +32,7 @@ use connection::{Connection, ConnectionKind};
 use std::io::Cursor;
 
 use auth::Auth;
+use log_manager::LogManager;
 
 const LISTENER: Token = Token(0);
 
@@ -62,7 +64,7 @@ pub struct Server<L, M, A>
     id: ServerId,
 
     /// Raft state machine consensus.
-    consensus: Consensus<L, M>,
+    log_manager: LogManager<L, M>,
 
     /// Connection listener.
     listener: TcpListener,
@@ -88,7 +90,7 @@ pub struct Server<L, M, A>
     /// Instance of the authentification module
     auth: A,
 
-    requests_in_queue: Vec<(ClientId, Builder<HeapAllocator>)>,
+    requests_in_queue: Vec<(LogId, ClientId, Builder<HeapAllocator>)>,
 }
 
 /// The implementation of the Server.
@@ -102,23 +104,24 @@ impl<L, M, A> Server<L, M, A>
     pub fn new(id: ServerId,
                addr: SocketAddr,
                peers: HashMap<ServerId, SocketAddr>,
-               store: L,
                state_machine: M,
                community_string: String,
-               auth: A)
+               auth: A,
+               logs: Vec<(LogId, L)>)
                -> Result<(Server<L, M, A>, EventLoop<Server<L, M, A>>)> {
         if peers.contains_key(&id) {
             return Err(Error::Raft(RaftError::InvalidPeerSet));
         }
 
-        let consensus = Consensus::new(id, peers.clone(), store, state_machine);
+        let log_manager = LogManager::new(id, logs, peers.clone(), state_machine);
+
         let mut event_loop = try!(EventLoop::<Server<L, M, A>>::new());
         let listener = try!(TcpListener::bind(&addr));
         try!(event_loop.register(&listener, LISTENER, EventSet::all(), PollOpt::level()));
 
         let mut server = Server {
             id: id,
-            consensus: consensus,
+            log_manager: log_manager,
             listener: listener,
             connections: Slab::new_starting_at(Token(1), 129),
             peer_tokens: HashMap::new(),
@@ -158,20 +161,16 @@ impl<L, M, A> Server<L, M, A>
     pub fn run(id: ServerId,
                addr: SocketAddr,
                peers: HashMap<ServerId, SocketAddr>,
-               store: L,
                state_machine: M,
                community_string: String,
-               auth: A)
+               auth: A,
+               logs: Vec<(LogId, L)>)
                -> Result<()> {
-        let (mut server, mut event_loop) = try!(Server::new(id,
-                                                            addr,
-                                                            peers,
-                                                            store,
-                                                            state_machine,
-                                                            community_string,
-                                                            auth));
-        let actions = server.consensus.init();
-        server.execute_actions(&mut event_loop, actions);
+        let (mut server, mut event_loop) =
+            try!(Server::new(id, addr, peers, state_machine, community_string, auth, logs));
+
+        server.init(&mut event_loop);
+
         event_loop.run(&mut server).map_err(From::from)
     }
 
@@ -185,28 +184,28 @@ impl<L, M, A> Server<L, M, A>
     /// * `store` - The persistent log store.
     /// * `state_machine` - The client state machine to which client commands will be applied.
     /// * `communinity_string` - To allow peers to connect to each other
-    pub fn spawn(id: ServerId,
-                 addr: SocketAddr,
-                 peers: HashMap<ServerId, SocketAddr>,
-                 store: L,
-                 state_machine: M,
-                 community_string: String,
-                 auth: A)
-                 -> Result<JoinHandle<Result<()>>> {
-        thread::Builder::new()
-            .name(format!("raft::Server({})", id))
-            .spawn(move || {
-                Server::run(id,
-                            addr,
-                            peers,
-                            store,
-                            state_machine,
-                            community_string,
-                            auth)
-            })
-            .map_err(From::from)
-    }
-
+    // TODO reimplement
+    //    pub fn spawn(id: ServerId,
+    // addr: SocketAddr,
+    // peers: HashMap<ServerId, SocketAddr>,
+    // store: L,
+    // state_machine: M,
+    // community_string: String,
+    // auth: A)
+    // -> Result<JoinHandle<Result<()>>> {
+    // thread::Builder::new()
+    // .name(format!("raft::Server({})", id))
+    // .spawn(move || {
+    // Server::run(id,
+    // addr,
+    // peers,
+    // store,
+    // state_machine,
+    // community_string,
+    // auth)
+    // })
+    // .map_err(From::from)
+    // }
     /// Sends the message to the connection associated with the provided token.
     /// If sending the message fails, the connection is reset.
     fn send_message(&mut self,
@@ -333,12 +332,40 @@ impl<L, M, A> Server<L, M, A>
                 token: Token)
                 -> Result<()> {
 
-        if !self.consensus.transaction.isActive {
-            for (client, builder) in self.requests_in_queue.pop() {
-                let mut actions = Actions::new();
-                self.consensus
-                    .apply_client_message(client, &Self::into_reader(&builder), &mut actions);
-                self.execute_actions(event_loop, actions);
+        // for (lid, consensus) in self.log_manager.consensus {
+        // if !consensus.transaction.isActive {
+        // let i = 0;
+        // for (m_lid, client, builder) in self.requests_in_queue {
+        // if lid == m_lid {
+        // let mut actions = Actions::new();
+        // self.log_manager
+        // .apply_client_message(client,
+        // &Self::into_reader(&builder),
+        // &mut actions);
+        // self.execute_actions(event_loop, actions);
+        // self.requests_in_queue.remove(i);
+        // } else {
+        // i += 1;
+        // continue;
+        // }
+        //
+        // i += 1;
+        // }
+        //
+        // }
+        // }
+        //
+
+        for (lid, _) in self.log_manager.consensus {
+            if !self.log_manager.active_transaction(&lid) {
+                let requests_in_queue = self.log_manager.get_requests_in_queue(&lid).unwrap();
+
+                for (client, builder) in requests_in_queue.pop() {
+                    let mut actions = Actions::new();
+                    self.log_manager
+                        .apply_client_message(client, &Self::into_reader(&builder), &mut actions);
+                    self.execute_actions(event_loop, actions);
+                }
             }
         }
 
@@ -348,12 +375,12 @@ impl<L, M, A> Server<L, M, A>
             match *self.connections[token].kind() {
                 ConnectionKind::Peer(id) => {
                     let mut actions = Actions::new();
-                    self.consensus.apply_peer_message(id, &message, &mut actions);
+                    self.log_manager.apply_peer_message(id, &message, &mut actions);
                     self.execute_actions(event_loop, actions);
                 }
                 ConnectionKind::Client(id) => {
                     let mut actions = Actions::new();
-                    self.consensus.apply_client_message(id, &message, &mut actions);
+                    self.log_manager.apply_client_message(id, &message, &mut actions);
                     self.execute_actions(event_loop, actions);
                 }
                 ConnectionKind::Unknown => {
@@ -405,7 +432,7 @@ impl<L, M, A> Server<L, M, A>
                                 }
                                 // Notify consensus that the connection reset.
                                 let mut actions = Actions::new();
-                                self.consensus
+                                self.log_manager
                                     .peer_connection_reset(peer_id, peer_addr, &mut actions);
                                 self.execute_actions(event_loop, actions);
                             }
@@ -497,6 +524,14 @@ impl<L, M, A> Server<L, M, A>
         serialize::write_message(&mut buf, message).unwrap();
         buf.set_position(0);
         serialize::read_message(&mut buf, ReaderOptions::new()).unwrap()
+    }
+
+    pub fn init(&mut self, event_loop: &mut EventLoop<Server<L, M, A>>) {
+        let actions = self.log_manager.init();
+
+        for (_, action) in actions {
+            self.execute_actions(event_loop, action);
+        }
     }
 }
 
@@ -591,7 +626,7 @@ impl<L, M, A> Handler for Server<L, M, A>
                     .and_then(|_| self.connections[token].register(event_loop, token))
                     .map(|_| {
                         let mut actions = Actions::new();
-                        self.consensus.peer_connection_reset(id, addr, &mut actions);
+                        self.log_manager.peer_connection_reset(id, addr, &mut actions);
                         self.execute_actions(event_loop, actions);
                     })
                     .unwrap_or_else(|error| {

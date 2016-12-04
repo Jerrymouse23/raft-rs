@@ -121,6 +121,7 @@ mod server;
 mod state;
 pub mod auth;
 mod transaction;
+mod log_manager;
 
 pub use server::Server;
 pub use state_machine::StateMachine;
@@ -321,6 +322,25 @@ impl fmt::Debug for ClientId {
     }
 }
 impl fmt::Display for ClientId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+/// The ID of a Raft log.
+#[derive(Copy, Clone, Hash, PartialEq, Eq)]
+pub struct LogId(Uuid);
+impl LogId {
+    fn new() -> LogId {
+        LogId(Uuid::new_v4())
+    }
+}
+impl fmt::Debug for LogId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "LogId({})", self.0)
+    }
+}
+impl fmt::Display for LogId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Display::fmt(&self.0, f)
     }
