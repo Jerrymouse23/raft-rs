@@ -16,6 +16,7 @@ use std::{cmp, fmt};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::rc::Rc;
+use std::cell::RefCell;
 
 use capnp::message::{Builder, HeapAllocator, Reader, ReaderSegments};
 use rand::{self, Rng};
@@ -49,7 +50,7 @@ impl ConsensusTimeout {
     /// Returns the timeout period in milliseconds.
     pub fn duration_ms(&self) -> u64 {
         match *self {
-            ConsensusTimeout::Election(..) => {
+            ConsensusTimeout::Election => {
                 rand::thread_rng().gen_range::<u64>(ELECTION_MIN, ELECTION_MAX)
             }
             ConsensusTimeout::Heartbeat(..) => HEARTBEAT_DURATION,
@@ -122,7 +123,7 @@ pub struct Consensus<L, M> {
     /// The persistent log.
     log: L,
     /// The client state machine to which client commands are applied.
-    state_machine: M,
+    state_machine: Rc<RefCell<M>>,
 
     /// Index of the latest entry known to be committed.
     commit_index: LogIndex,
@@ -139,6 +140,7 @@ pub struct Consensus<L, M> {
     follower_state: FollowerState,
     pub transaction: Transaction,
     lid: LogId,
+    pub requests_in_queue: Vec<(ClientId, Builder<HeapAllocator>)>,
 }
 
 impl<L, M> Consensus<L, M>
@@ -150,7 +152,7 @@ impl<L, M> Consensus<L, M>
                lid: LogId,
                peers: HashMap<ServerId, SocketAddr>,
                log: L,
-               state_machine: M)
+               state_machine: Rc<RefCell<M>>)
                -> Consensus<L, M> {
         let leader_state = LeaderState::new(log.latest_log_index().unwrap(),
                                             &peers.keys().cloned().collect());
@@ -167,6 +169,7 @@ impl<L, M> Consensus<L, M>
             follower_state: FollowerState::new(),
             transaction: Transaction::new(),
             lid: lid,
+            requests_in_queue: Vec::new(),
         }
     }
 
@@ -224,12 +227,12 @@ impl<L, M> Consensus<L, M>
                     let entries_failed = self.log.rollback(commit_index).unwrap();
 
                     for &(ref term, ref command) in entries_failed.iter().rev() {
-                        self.state_machine.revert(command.as_slice());
+                        self.state_machine.borrow_mut().revert(command.as_slice());
                     }
                 }
 
                 self.log.truncate(commit_index);
-                self.state_machine.rollback();
+                self.state_machine.borrow_mut().rollback();
             }
             _ => panic!("cannot handle message"),
         };
@@ -334,12 +337,12 @@ impl<L, M> Consensus<L, M>
                         let entries_failed = self.log.rollback(commit_index).unwrap();
 
                         for &(ref term, ref command) in entries_failed.iter().rev() {
-                            self.state_machine.revert(command.as_slice());
+                            self.state_machine.borrow_mut().revert(command.as_slice());
                         }
                     }
 
                     self.log.truncate(commit_index);
-                    self.state_machine.rollback();
+                    self.state_machine.borrow_mut().rollback();
 
                     actions.client_messages.push((from, message));
                 } else {
@@ -802,7 +805,7 @@ impl<L, M> Consensus<L, M>
         } else {
             // TODO: This is probably not exactly safe.
             let query = request.get_query().unwrap();
-            let result = self.state_machine.query(query);
+            let result = self.state_machine.borrow().query(query);
             let message = messages::command_response_success(&result);
             actions.client_messages.push((from, message));
         }
@@ -929,7 +932,7 @@ impl<L, M> Consensus<L, M>
             };
 
             if !entry.is_empty() {
-                let result = self.state_machine.apply(entry);
+                let result = self.state_machine.borrow_mut().apply(entry);
                 results.insert(self.last_applied + 1, result);
             }
             self.last_applied = self.last_applied + 1;
@@ -1030,15 +1033,18 @@ mod tests {
 
     use capnp::serialize::{self, OwnedSegments};
     use capnp::message::{Allocator, Builder, HeapAllocator, Reader, ReaderOptions};
+    use messages_capnp::{client_request, message};
     use ClientId;
     use LogIndex;
     use ServerId;
+    use LogId;
     use Term;
     use messages;
     use consensus::{Actions, Consensus, ConsensusTimeout};
     use state_machine::NullStateMachine;
     use persistent_log::{MemLog, Log};
     use uuid::Uuid;
+    use std::cell::RefCell;
 
     type TestPeer = Consensus<MemLog, NullStateMachine>;
 
@@ -1052,7 +1058,12 @@ mod tests {
                 let mut peers = ids.clone();
                 peers.remove(&id);
                 let store = MemLog::new();
-                (id, Consensus::new(id, peers, store, NullStateMachine))
+                (id,
+                 Consensus::new(id,
+                                LogId(0),
+                                peers,
+                                store,
+                                Rc::new(RefCell::new(NullStateMachine))))
             })
             .collect()
     }
@@ -1081,8 +1092,11 @@ mod tests {
         actions.peer_messages.clear();
 
         while let Some((from, to, message)) = queue.pop_front() {
-            let reader = into_reader(&*message);
-            peers.get_mut(&to).unwrap().apply_peer_message(from, &reader, &mut actions);
+            let mut reader = into_reader(&*message);
+            let message_reader = reader.get_root::<message::Reader>().unwrap();
+            peers.get_mut(&to)
+                .unwrap()
+                .apply_peer_message(from, &message_reader, &mut actions, &LogId(0));
             let inner_from = to;
             for (inner_to, message) in actions.peer_messages.iter().cloned() {
                 queue.push_back((inner_from, inner_to, message));
@@ -1176,30 +1190,35 @@ mod tests {
             assert_eq!(peer_message.0, follower_id.clone());
             peer_message.1.clone()
         };
-        let reader = into_reader(&*leader_append_entries);
+        let mut reader = into_reader(&*leader_append_entries);
+        let message_reader = reader.get_root::<message::Reader>().unwrap();
 
         // Follower responds.
         let follower_response = {
             let mut actions = Actions::new();
             let follower = peers.get_mut(&follower_id).unwrap();
-            follower.apply_peer_message(leader_id.clone(), &reader, &mut actions);
+            follower.apply_peer_message(leader_id.clone(), &message_reader, &mut actions, &LogId(0));
 
             let election_timeout = actions.timeouts.iter().next().unwrap();
-            assert_eq!(election_timeout, &ConsensusTimeout::Election);
+            assert_eq!(election_timeout, &(LogId(0), ConsensusTimeout::Election));
 
             let peer_message = actions.peer_messages.iter().next().unwrap();
             assert_eq!(peer_message.0, leader_id.clone());
             peer_message.1.clone()
         };
-        let reader = into_reader(&*follower_response);
+        let mut reader = into_reader(&*follower_response);
+        let message_reader = reader.get_root::<message::Reader>().unwrap();
 
         // Leader applies and sends back a heartbeat to establish leadership.
         let leader = peers.get_mut(&leader_id).unwrap();
         let mut actions = Actions::new();
-        leader.apply_peer_message(follower_id.clone(), &reader, &mut actions);
+        leader.apply_peer_message(follower_id.clone(),
+                                  &message_reader,
+                                  &mut actions,
+                                  &LogId(0));
         let heartbeat_timeout = actions.timeouts.iter().next().unwrap();
         assert_eq!(heartbeat_timeout,
-                   &ConsensusTimeout::Heartbeat(follower_id.clone()));
+                   &(LogId(0), ConsensusTimeout::Heartbeat(follower_id.clone())));
     }
 
     /// Emulates a slow heartbeat message in a two-node cluster.
@@ -1255,15 +1274,16 @@ mod tests {
             elect_leader(leader, &mut peers);
 
             let value: &[u8] = b"foo";
-            let proposal = into_reader(&messages::proposal_request(Uuid::new_v4().as_bytes(),
-                                                                   value));
+            let reader = into_reader(&messages::proposal_request(Uuid::new_v4().as_bytes(), value));
+            let message_reader = reader.get_root::<client_request::Reader>()
+                .unwrap();
             let mut actions = Actions::new();
 
             let client = ClientId::new();
 
             peers.get_mut(&leader)
                 .unwrap()
-                .apply_client_message(client, &proposal, &mut actions);
+                .apply_client_message(client, &message_reader, &mut actions, LogId(0));
 
             let client_messages = apply_actions(leader, actions, &mut peers);
             assert_eq!(1, client_messages.len());
@@ -1286,18 +1306,23 @@ mod tests {
         let mut follower = peers.get_mut(&peer_ids[0]).unwrap();
         let value: &[u8] = b"foo";
         let entries = vec![(Term(1), value), (Term(1), value)];
-        let msg1 = into_reader(&*messages::append_entries_request(Term(1),
-                                                                  LogIndex(0),
-                                                                  Term(0),
-                                                                  &entries,
-                                                                  LogIndex(0)));
-        let msg2 = into_reader(&*messages::append_entries_request(Term(1),
-                                                                  LogIndex(0),
-                                                                  Term(0),
-                                                                  &entries[0..1],
-                                                                  LogIndex(0)));
-        follower.apply_peer_message(peer_ids[1], &msg1, &mut actions);
-        follower.apply_peer_message(peer_ids[1], &msg2, &mut actions);
+        let reader = into_reader(&*messages::append_entries_request(Term(1),
+                                                                    LogIndex(0),
+                                                                    Term(0),
+                                                                    &entries,
+                                                                    LogIndex(0)));
+
+        let msg1 = reader.get_root::<message::Reader>()
+            .unwrap();
+        let reader = into_reader(&*messages::append_entries_request(Term(1),
+                                                                    LogIndex(0),
+                                                                    Term(0),
+                                                                    &entries[0..1],
+                                                                    LogIndex(0)));
+        let msg2 = reader.get_root::<message::Reader>()
+            .unwrap();
+        follower.apply_peer_message(peer_ids[1], &msg1, &mut actions, &LogId(0));
+        follower.apply_peer_message(peer_ids[1], &msg2, &mut actions, &LogId(0));
 
         assert_eq!((Term(1), value), follower.log.entry(LogIndex(1)).unwrap());
         assert_eq!((Term(1), value), follower.log.entry(LogIndex(2)).unwrap());
@@ -1325,7 +1350,9 @@ mod tests {
         elect_leader(leader, &mut peers);
 
         let value: &[u8] = b"foo";
-        let proposal = into_reader(&messages::proposal_request(Uuid::new_v4().as_bytes(), value));
+        let reader = into_reader(&messages::proposal_request(Uuid::new_v4().as_bytes(), value));
+        let message_reader = reader.get_root::<client_request::Reader>()
+            .unwrap();
         let client = ClientId::new();
 
 
@@ -1333,7 +1360,7 @@ mod tests {
             let mut actions = Actions::new();
             peers.get_mut(&leader)
                 .unwrap()
-                .apply_client_message(client, &proposal, &mut actions);
+                .apply_client_message(client, &message_reader, &mut actions, LogId(0));
 
             let client_messages = apply_actions(leader, actions, &mut peers);
             assert_eq!(1, client_messages.len());

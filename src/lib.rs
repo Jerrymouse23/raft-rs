@@ -328,7 +328,7 @@ impl fmt::Display for ClientId {
 }
 
 /// The ID of a Raft log.
-#[derive(Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq,PartialOrd,Ord)]
 pub struct LogId(u64);
 impl LogId {
     fn new() -> LogId {

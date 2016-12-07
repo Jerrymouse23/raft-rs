@@ -6,8 +6,10 @@ use std::net::SocketAddr;
 use std::collections::HashMap;
 use persistent_log::Log;
 use state_machine::StateMachine;
+use std::rc::Rc;
+use std::cell::RefCell;
 
-use capnp::message::{Builder, HeapAllocator, Reader, ReaderSegments};
+use capnp::message::{Builder, HeapAllocator, Allocator, Reader, ReaderSegments, ReaderOptions};
 use messages_capnp::{append_entries_request, append_entries_response, client_request,
                      proposal_request, query_request, message, request_vote_request,
                      request_vote_response};
@@ -19,7 +21,6 @@ pub struct LogManager<L, M>
           M: StateMachine
 {
     pub consensus: HashMap<LogId, Consensus<L, M>>,
-    requests_in_queue: HashMap<LogId, Vec<(ClientId, Builder<HeapAllocator>)>>,
 }
 
 impl<L, M> LogManager<L, M>
@@ -27,22 +28,20 @@ impl<L, M> LogManager<L, M>
           M: StateMachine
 {
     pub fn new(id: ServerId,
-               logs: Vec<(LogId, L)>,
+               store_logs: Vec<(LogId, L)>,
                peers: HashMap<ServerId, SocketAddr>,
                state_machine: M)
                -> Self {
         let mut logs: HashMap<LogId, Consensus<L, M>> = HashMap::new();
+        let state_machine = Rc::new(RefCell::new(state_machine));
 
-        for (lid, store) in logs {
+        for (lid, store) in store_logs {
             let consensus: Consensus<L, M> =
-                Consensus::new(id, lid, peers.clone(), store, state_machine);
+                Consensus::new(id, lid, peers.clone(), store, state_machine.clone());
             logs.insert(lid, consensus);
         }
 
-        LogManager {
-            consensus: logs,
-            requests_in_queue: HashMap::new(),
-        }
+        LogManager { consensus: logs }
     }
 
     pub fn get(&self, index: LogId) -> Option<&Consensus<L, M>> {
@@ -53,17 +52,11 @@ impl<L, M> LogManager<L, M>
         self.consensus.get(logid).unwrap().transaction.isActive
     }
 
-    pub fn get_requests_in_queue(&self,
-                                 logid: &LogId)
-                                 -> Option<&Vec<(ClientId, Builder<HeapAllocator>)>> {
-        self.requests_in_queue.get(logid)
-    }
-
     pub fn init(&self) -> Vec<(LogId, Actions)> {
         let mut actions = Vec::new();
-        for (id, mut consensus) in self.consensus {
+        for (id, ref mut consensus) in self.consensus.iter() {
             let ac = consensus.init();
-            actions.push((id, ac));
+            actions.push((*id, ac));
         }
 
         actions
@@ -79,7 +72,7 @@ impl<L, M> LogManager<L, M>
         let log_id = LogId(reader.get_log_id());
 
         // TODO implement error handling
-        let mut cons = self.consensus.get(&log_id).unwrap();
+        let mut cons = self.consensus.get_mut(&log_id).unwrap();
 
         cons.apply_client_message(from, &reader, actions, log_id);
     }
@@ -94,7 +87,7 @@ impl<L, M> LogManager<L, M>
         let log_id = LogId(reader.get_log_id());
 
         // TODO implement error handling
-        let mut cons = self.consensus.get(&log_id).unwrap();
+        let mut cons = self.consensus.get_mut(&log_id).unwrap();
 
         cons.apply_peer_message(from, &reader, actions, &log_id);
     }
@@ -103,7 +96,7 @@ impl<L, M> LogManager<L, M>
                                  peer: ServerId,
                                  addr: SocketAddr,
                                  actions: &mut Actions) {
-        for (lid, mut cons) in self.consensus {
+        for (lid, mut cons) in self.consensus.iter_mut() {
             cons.peer_connection_reset(peer, addr, actions);
         }
     }
@@ -112,6 +105,18 @@ impl<L, M> LogManager<L, M>
                          lid: &LogId,
                          consensus: ConsensusTimeout,
                          actions: &mut Actions) {
-        self.consensus.get(lid).unwrap().apply_timeout(consensus, actions);
+        self.consensus.get_mut(lid).unwrap().apply_timeout(consensus, actions);
     }
+
+    // pub fn process_requests_in_queue(&mut self, mut actions: Actions) -> Actions {
+    // let values = self.consensus.values_mut().clone();
+    // for ref mut cons in values {
+    // if !cons.transaction.isActive {
+    // for (client, builder) in cons.requests_in_queue.pop() {
+    // self.apply_client_message(client, &Self::into_reader(&builder), &mut actions)
+    // }
+    // }
+    // }
+    // actions
+    // }
 }

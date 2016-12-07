@@ -14,8 +14,8 @@ use mio::tcp::TcpListener;
 use mio::util::Slab;
 use mio::{EventLoop, EventSet, Handler, PollOpt, Token};
 use mio::Timeout as TimeoutHandle;
-use capnp::serialize::{self, OwnedSegments};
 use capnp::message::{Builder, Allocator, HeapAllocator, Reader, ReaderOptions};
+use capnp::serialize::{self, OwnedSegments};
 
 use ClientId;
 use Result;
@@ -332,18 +332,16 @@ impl<L, M, A> Server<L, M, A>
                 token: Token)
                 -> Result<()> {
 
-        for (lid, _) in self.log_manager.consensus {
-            if !self.log_manager.active_transaction(&lid) {
-                let requests_in_queue = self.log_manager.get_requests_in_queue(&lid).unwrap();
 
-                for (client, builder) in requests_in_queue.pop() {
-                    let mut actions = Actions::new();
-                    self.log_manager
-                        .apply_client_message(client, &Self::into_reader(&builder), &mut actions);
-                    self.execute_actions(event_loop, actions);
-                }
+        let mut actions = Actions::new();
+        for clid in self.log_manager.consensus.keys() {
+            for &(ref lid, ref client, ref message) in self.requests_in_queue
+                .iter()
+                .take_while(|x| x.0 == *clid) {
+                // TODO apply
             }
         }
+        self.execute_actions(event_loop, actions);
 
         scoped_trace!("{:?}: readable event", self.connections[token]);
         // Read messages from the connection until there are no more.
@@ -492,6 +490,15 @@ impl<L, M, A> Server<L, M, A>
         self.listener.local_addr().unwrap()
     }
 
+
+    pub fn init(&mut self, event_loop: &mut EventLoop<Server<L, M, A>>) {
+        let actions = self.log_manager.init();
+
+        for (_, action) in actions {
+            self.execute_actions(event_loop, action);
+        }
+    }
+
     pub fn into_reader<C>(message: &Builder<C>) -> Reader<OwnedSegments>
         where C: Allocator
     {
@@ -500,14 +507,6 @@ impl<L, M, A> Server<L, M, A>
         serialize::write_message(&mut buf, message).unwrap();
         buf.set_position(0);
         serialize::read_message(&mut buf, ReaderOptions::new()).unwrap()
-    }
-
-    pub fn init(&mut self, event_loop: &mut EventLoop<Server<L, M, A>>) {
-        let actions = self.log_manager.init();
-
-        for (_, action) in actions {
-            self.execute_actions(event_loop, action);
-        }
     }
 }
 
@@ -644,6 +643,7 @@ mod tests {
     use ClientId;
     use Result;
     use ServerId;
+    use LogId;
     use messages;
     use messages_capnp::connection_preamble;
     use consensus::Actions;
@@ -657,13 +657,15 @@ mod tests {
 
     fn new_test_server(peers: HashMap<ServerId, SocketAddr>)
                        -> Result<(TestServer, EventLoop<TestServer>)> {
+        let mut logs: Vec<(LogId, MemLog)> = Vec::new();
+        logs.push((LogId(0), MemLog::new()));
         Server::new(ServerId::from(0),
                     SocketAddr::from_str("127.0.0.1:0").unwrap(),
                     peers,
-                    MemLog::new(),
                     NullStateMachine,
                     "test".to_string(),
-                    NullAuth)
+                    NullAuth,
+                    logs)
     }
 
     /// Attempts to grab a local, unbound socket address for testing.
@@ -800,7 +802,8 @@ mod tests {
 
         // Make sure that reconnecting updated the peer address
         // known to `Consensus` with the one given in the preamble.
-        assert_eq!(server.consensus.peers()[&peer_id], fake_peer_addr);
+        assert_eq!(server.log_manager.get(LogId(0)).unwrap().peers()[&peer_id],
+                   fake_peer_addr);
         // Check that the server has closed the old connection.
         assert!(stream_shutdown(&mut in_stream));
         // Check that there's a connection which has the fake address
