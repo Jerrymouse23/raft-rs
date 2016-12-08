@@ -331,8 +331,12 @@ impl fmt::Display for ClientId {
 #[derive(Copy, Clone, Hash, PartialEq, Eq,PartialOrd,Ord)]
 pub struct LogId(u64);
 impl LogId {
-    fn new() -> LogId {
+    pub fn new() -> LogId {
         LogId(0)
+    }
+
+    pub fn as_u64(self) -> u64 {
+        self.0
     }
 }
 impl fmt::Debug for LogId {
@@ -343,5 +347,16 @@ impl fmt::Debug for LogId {
 impl fmt::Display for LogId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl From<u64> for LogId {
+    fn from(val: u64) -> LogId {
+        LogId(val)
+    }
+}
+impl Into<u64> for LogId {
+    fn into(self) -> u64 {
+        self.0
     }
 }

@@ -74,7 +74,7 @@ impl<L, M> LogManager<L, M>
         // TODO implement error handling
         let mut cons = self.consensus.get_mut(&log_id).unwrap();
 
-        cons.apply_client_message(from, &reader, actions, log_id);
+        cons.apply_client_message(from, &reader, actions, &log_id);
     }
 
     pub fn apply_peer_message<S>(&mut self,

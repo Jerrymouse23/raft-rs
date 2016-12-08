@@ -183,6 +183,7 @@ struct CliTransactionRollback{
 }
 
 struct ClientResponse {
+  logId @4 :UInt64;
 
   union {
     ping @0 :PingResponse;
