@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 use uuid::Uuid;
 use raft::Result;
 use raft::Client;
+use raft::LogId;
 use raft::Error as RError;
 use raft::state_machine;
 use raft::RaftError;
@@ -31,25 +32,30 @@ impl Handler {
         hashset
     }
 
-    fn new_client(addr: SocketAddr, username: &str, password: &str) -> Client {
+    fn new_client(addr: SocketAddr, username: &str, password: &str, lid: LogId) -> Client {
         Client::new::<NullAuth>(Self::to_hashset(addr),
                                 username.to_string(),
-                                password.to_string())
+                                password.to_string(),
+                                lid)
     }
 
     pub fn get(addr: SocketAddr,
                username: &str,
                plain_password: &str,
-               id: Uuid)
+               id: Uuid,
+               lid: LogId)
                -> Result<Document> {
-        let mut client = Self::new_client(addr, username, plain_password);
+
+        println!("{:?}", lid);
+
+        let mut client = Self::new_client(addr, username, plain_password, lid);
 
         let payload = encode(&Message::Get(id), SizeLimit::Infinite).unwrap();
 
         let response = match client.query(payload.as_slice()) {
             Ok(res) => res,
             Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
-                return Handler::get(parse_addr(&leader_str), username, plain_password, id);
+                return Handler::get(parse_addr(&leader_str), username, plain_password, id, lid);
             } 
             Err(err) => panic!(err),
         };
@@ -63,9 +69,10 @@ impl Handler {
                 username: &str,
                 plain_password: &str,
                 document: Document,
-                session: Uuid)
+                session: Uuid,
+                lid: LogId)
                 -> Result<Uuid> {
-        let mut client = Self::new_client(addr, username, plain_password);
+        let mut client = Self::new_client(addr, username, plain_password, lid);
 
         let payload = encode(&Message::Post(document.clone()), SizeLimit::Infinite).unwrap();
 
@@ -76,7 +83,8 @@ impl Handler {
                                      username,
                                      plain_password,
                                      document,
-                                     session);
+                                     session,
+                                     lid);
             } 
             Err(err) => panic!(err),
         };
@@ -90,9 +98,10 @@ impl Handler {
                   username: &str,
                   plain_password: &str,
                   id: Uuid,
-                  session: Uuid)
+                  session: Uuid,
+                  lid: LogId)
                   -> Result<()> {
-        let mut client = Self::new_client(addr, username, plain_password);
+        let mut client = Self::new_client(addr, username, plain_password, lid);
 
         let payload = encode(&Message::Remove(id), SizeLimit::Infinite).unwrap();
 
@@ -103,7 +112,8 @@ impl Handler {
                                        username,
                                        plain_password,
                                        id,
-                                       session);
+                                       session,
+                                       lid);
             } 
             Err(err) => panic!(err),
         };
@@ -116,10 +126,11 @@ impl Handler {
                plain_password: &str,
                id: Uuid,
                new_payload: Vec<u8>,
-               session: Uuid)
+               session: Uuid,
+               lid: LogId)
                -> Result<()> {
 
-        let mut client = Self::new_client(addr, username, plain_password);
+        let mut client = Self::new_client(addr, username, plain_password, lid);
 
         let payload = encode(&Message::Put(id, new_payload.clone()), SizeLimit::Infinite).unwrap();
 
@@ -131,7 +142,8 @@ impl Handler {
                                     plain_password,
                                     id,
                                     new_payload,
-                                    session);
+                                    session,
+                                    lid);
             } 
             Err(err) => panic!(err),
         };
@@ -142,17 +154,22 @@ impl Handler {
     pub fn begin_transaction(addr: SocketAddr,
                              username: &str,
                              password: &str,
-                             session: Uuid)
+                             session: Uuid,
+                             lid: LogId)
                              -> Result<String> {
-        let mut client = Self::new_client(addr, username, password);
+        let mut client = Self::new_client(addr, username, password, lid);
 
         let res = client.begin_transaction(session.as_bytes());
 
         Ok(Uuid::from_bytes(res.unwrap().as_slice()).unwrap().hyphenated().to_string())
     }
 
-    pub fn commit_transaction(addr: SocketAddr, username: &str, password: &str) -> Result<String> {
-        let mut client = Self::new_client(addr, username, password);
+    pub fn commit_transaction(addr: SocketAddr,
+                              username: &str,
+                              password: &str,
+                              lid: LogId)
+                              -> Result<String> {
+        let mut client = Self::new_client(addr, username, password, lid);
 
         let res = client.end_transaction();
 
@@ -161,175 +178,13 @@ impl Handler {
 
     pub fn rollback_transaction(addr: SocketAddr,
                                 username: &str,
-                                password: &str)
+                                password: &str,
+                                lid: LogId)
                                 -> Result<String> {
-        let mut client = Self::new_client(addr, username, password);
+        let mut client = Self::new_client(addr, username, password, lid);
 
         let res = client.rollback_transaction();
 
         Ok(from_utf8(res.unwrap().as_slice()).unwrap().to_string())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-
-    extern crate mio;
-    extern crate capnp;
-
-    use raft::{Server, ServerId};
-    use raft::Log;
-    use raft::state_machine::NullStateMachine;
-    use raft::auth::Auth;
-    use raft::auth::null::NullAuth;
-    use raft::persistent_log::MemLog;
-    use self::mio::EventLoop;
-    use std::net::{SocketAddr, TcpListener, TcpStream};
-    use std::collections::HashMap;
-    use handler::Handler;
-    use document::Document;
-    use uuid::Uuid;
-    use raft::Result;
-    use std::str::FromStr;
-    use self::capnp::message::ReaderOptions;
-    use self::capnp::serialize;
-    use raft::messages_capnp::connection_preamble;
-    use std::io::{Write, Read};
-
-    type TestServer = Server<MemLog, NullStateMachine, NullAuth>;
-
-    static USERNAME: &str = "username";
-    static PASSWORD: &str = "password";
-
-    fn new_test_server(peers: HashMap<ServerId, SocketAddr>)
-                       -> Result<(TestServer, EventLoop<TestServer>)> {
-        Server::new(ServerId::from(0),
-                    SocketAddr::from_str("127.0.0.1:0").unwrap(),
-                    peers,
-                    MemLog::new(),
-                    NullStateMachine,
-                    "test".to_string(),
-                    NullAuth)
-    }
-
-    fn read_server_preamble<R>(read: &mut R) -> ServerId
-        where R: Read
-    {
-        let message = serialize::read_message(read, ReaderOptions::new()).unwrap();
-        let preamble = message.get_root::<connection_preamble::Reader>().unwrap();
-
-        match preamble.get_id().which().unwrap() {
-            connection_preamble::id::Which::Server(peer) => ServerId::from(peer.unwrap().get_id()),
-            _ => panic!("unexpected preamble id"),
-        }
-    }
-
-    #[ignore]
-    #[test]
-    // FIXME
-    fn test_get() {
-        let mut peers = HashMap::new();
-        let (mut server, mut event_loop) = new_test_server(peers).unwrap();
-
-        let doc = Document {
-            id: Uuid::new_v4(),
-            payload: b"Hello world!".to_vec(),
-            version: 0,
-        };
-
-        let id = Handler::post(server.get_local_addr(),
-                               USERNAME,
-                               PASSWORD,
-                               doc.clone(),
-                               Uuid::new_v4())
-            .unwrap();
-
-        let doc2 = Handler::get(server.get_local_addr(), USERNAME, PASSWORD, id).unwrap();
-
-        assert_eq!(doc, doc2);
-    }
-
-    #[ignore]
-    #[test]
-    // FIXME
-    fn test_post() {
-        let mut peers = HashMap::new();
-        let (mut server, mut event_loop) = new_test_server(peers).unwrap();
-
-        let doc = Document {
-            id: Uuid::new_v4(),
-            payload: b"Hello world!".to_vec(),
-            version: 0,
-        };
-
-        let id = Handler::post(server.get_local_addr(),
-                               USERNAME,
-                               PASSWORD,
-                               doc.clone(),
-                               Uuid::new_v4())
-            .unwrap();
-    }
-
-    #[ignore]
-    #[test]
-    // FIXME
-    fn test_put() {
-        let mut peers = HashMap::new();
-        let (mut server, mut event_loop) = new_test_server(peers).unwrap();
-
-        let doc = Document {
-            id: Uuid::new_v4(),
-            payload: b"Hello world!".to_vec(),
-            version: 0,
-        };
-
-        let id = Handler::post(server.get_local_addr(),
-                               USERNAME,
-                               PASSWORD,
-                               doc.clone(),
-                               Uuid::new_v4())
-            .unwrap();
-
-        let new_payload = b"This is updated! :P".to_vec();
-
-        Handler::put(server.get_local_addr(),
-                     USERNAME,
-                     PASSWORD,
-                     id,
-                     new_payload,
-                     Uuid::new_v4())
-            .unwrap();
-
-        let doc2 = Handler::get(server.get_local_addr(), USERNAME, PASSWORD, id).unwrap();
-
-        assert_eq!(doc2.payload, b"This is updated! :P".to_vec());
-    }
-
-    #[ignore]
-    #[test]
-    // FIXME
-    fn test_remove() {
-        let mut peers = HashMap::new();
-        let (mut server, mut event_loop) = new_test_server(peers).unwrap();
-
-        let doc = Document {
-            id: Uuid::new_v4(),
-            payload: b"Hello world!".to_vec(),
-            version: 0,
-        };
-
-        let id = Handler::post(server.get_local_addr(),
-                               USERNAME,
-                               PASSWORD,
-                               doc.clone(),
-                               Uuid::new_v4())
-            .unwrap();
-
-        Handler::remove(server.get_local_addr(),
-                        USERNAME,
-                        PASSWORD,
-                        doc.id.clone(),
-                        Uuid::new_v4())
-            .unwrap();
     }
 }

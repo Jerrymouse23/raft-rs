@@ -51,6 +51,7 @@ use std::io::ErrorKind;
 
 use raft::Server;
 use raft::RaftError;
+use raft::LogId;
 use raft::state_machine::StateMachine;
 
 use document::*;
@@ -75,17 +76,17 @@ Commands:
     server  Start server
 
 Usage:
-    document get <doc-id> <node-address> <username> <password>
-    document put <doc-id> <node-address> <filepath> <username> <password>
-    document post <node-address> <filepath> <username> <password> 
-    document remove <doc-id> <node-address> <username> <password>
+    document get <doc-id> <lid> <node-address> <username> <password>
+    document put <doc-id> <lid> <node-address> <filepath> <username> <password>
+    document post <lid> <node-address> <filepath> <username> <password> 
+    document remove <doc-id> <lid> <node-address> <username> <password>
     document server  <config-path>
-    document begintrans <node-address> <username> <password>
-    document endtrans <node-address> <username> <password>
-    document rollback <node-address> <username> <password>
-    document transpost <node-address> <filepath> <username> <password> <transid>
-    document transremove <node-address> <doc-id> <username> <password> <transid>
-    document transput <node-address> <doc-id> <filepath> <username> <password> <transid>
+    document begintrans <lid> <node-address> <username> <password>
+    document endtrans <lid> <node-address> <username> <password>
+    document rollback <lid> <node-address> <username> <password>
+    document transpost <lid> <node-address> <filepath> <username> <password> <transid>
+    document transremove <lid> <node-address> <doc-id> <username> <password> <transid>
+    document transput <lid> <node-address> <doc-id> <filepath> <username> <password> <transid>
 ";
 
 #[derive(Debug,RustcDecodable,Clone)]
@@ -111,6 +112,7 @@ struct Args {
     arg_password: Option<String>,
     arg_username: Option<String>,
     arg_transid: Option<String>,
+    arg_lid: Option<u64>,
 }
 fn main() {
     env_logger::init().unwrap();
@@ -158,13 +160,15 @@ fn main() {
         get(parse_addr(&args.arg_node_address.unwrap()),
             id,
             args.arg_username.unwrap(),
-            args.arg_password.unwrap());
+            args.arg_password.unwrap(),
+            LogId::from(args.arg_lid.unwrap()));
     } else if args.cmd_post {
         post(parse_addr(&args.arg_node_address.unwrap()),
              &args.arg_filepath,
              args.arg_username.unwrap(),
              args.arg_password.unwrap(),
-             Uuid::new_v4());
+             Uuid::new_v4(),
+             LogId::from(args.arg_lid.unwrap()));
     } else if args.cmd_remove {
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
             Ok(id) => id,
@@ -175,7 +179,8 @@ fn main() {
                id,
                args.arg_username.unwrap(),
                args.arg_password.unwrap(),
-               Uuid::new_v4());
+               Uuid::new_v4(),
+               LogId::from(args.arg_lid.unwrap()));
     } else if args.cmd_put {
 
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
@@ -188,23 +193,27 @@ fn main() {
             args.arg_filepath,
             args.arg_username.unwrap(),
             args.arg_password.unwrap(),
-            Uuid::new_v4());
+            Uuid::new_v4(),
+            LogId::from(args.arg_lid.unwrap()));
     } else if args.cmd_begintrans {
         let res = Handler::begin_transaction(parse_addr(&args.arg_node_address.unwrap()),
                                              &args.arg_username.unwrap(),
                                              &args.arg_password.unwrap(),
-                                             Uuid::new_v4());
+                                             Uuid::new_v4(),
+                                             LogId::from(args.arg_lid.unwrap()));
 
         println!("{}", res.unwrap());
     } else if args.cmd_endtrans {
         let res = Handler::commit_transaction(parse_addr(&args.arg_node_address.unwrap()),
                                               &args.arg_username.unwrap(),
-                                              &args.arg_password.unwrap());
+                                              &args.arg_password.unwrap(),
+                                              LogId::from(args.arg_lid.unwrap()));
         println!("{}", res.unwrap());
     } else if args.cmd_rollback {
         let res = Handler::rollback_transaction(parse_addr(&args.arg_node_address.unwrap()),
                                                 &args.arg_username.unwrap(),
-                                                &args.arg_password.unwrap());
+                                                &args.arg_password.unwrap(),
+                                                LogId::from(args.arg_lid.unwrap()));
 
         println!("{}", res.unwrap());
     } else if args.cmd_transpost {
@@ -212,7 +221,8 @@ fn main() {
              &args.arg_filepath,
              args.arg_username.unwrap(),
              args.arg_password.unwrap(),
-             Uuid::parse_str(&args.arg_transid.unwrap()).unwrap());
+             Uuid::parse_str(&args.arg_transid.unwrap()).unwrap(),
+             LogId::from(args.arg_lid.unwrap()));
 
     } else if args.cmd_transremove {
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
@@ -224,7 +234,8 @@ fn main() {
                id,
                args.arg_username.unwrap(),
                args.arg_password.unwrap(),
-               Uuid::parse_str(&args.arg_transid.unwrap()).unwrap());
+               Uuid::parse_str(&args.arg_transid.unwrap()).unwrap(),
+               LogId::from(args.arg_lid.unwrap()));
     } else if args.cmd_transput {
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
             Ok(id) => id,
@@ -236,7 +247,8 @@ fn main() {
             args.arg_filepath,
             args.arg_username.unwrap(),
             args.arg_password.unwrap(),
-            Uuid::parse_str(&args.arg_transid.unwrap()).unwrap());
+            Uuid::parse_str(&args.arg_transid.unwrap()).unwrap(),
+            LogId::from(args.arg_lid.unwrap()));
     }
 }
 
@@ -276,22 +288,30 @@ fn server(serverId: ServerId,
 
     init(binding_addr, node_addr);
 
+    let mut logs: Vec<(LogId, DocLog)> = Vec::new();
+    logs.push((LogId::from(0), persistent_log));
+
     Server::run(serverId,
                 addr,
                 peers,
-                persistent_log,
                 state_machine,
                 community_string,
-                NullAuth)
+                NullAuth,
+                logs)
         .unwrap();
 }
 
-fn get(addr: SocketAddr, doc_id: Uuid, username: String, password: String) {
-    let document = Handler::get(addr, &username, &password, doc_id);
+fn get(addr: SocketAddr, doc_id: Uuid, username: String, password: String, lid: LogId) {
+    let document = Handler::get(addr, &username, &password, doc_id, lid);
     println!("{:?}", document);
 }
 
-fn post(addr: SocketAddr, filepath: &str, username: String, password: String, session: Uuid) {
+fn post(addr: SocketAddr,
+        filepath: &str,
+        username: String,
+        password: String,
+        session: Uuid,
+        lid: LogId) {
     let mut handler = File::open(&filepath).expect(&format!("Could not find file {}", filepath));
     let mut buffer: Vec<u8> = Vec::new();
 
@@ -305,7 +325,7 @@ fn post(addr: SocketAddr, filepath: &str, username: String, password: String, se
         version: 1,
     };
 
-    let id = Handler::post(addr, &username, &password, document, session).unwrap();
+    let id = Handler::post(addr, &username, &password, document, session, lid).unwrap();
 
     println!("{}", id);
 }
@@ -315,17 +335,23 @@ fn put(addr: SocketAddr,
        filepath: String,
        username: String,
        password: String,
-       session: Uuid) {
+       session: Uuid,
+       lid: LogId) {
     let mut handler = File::open(&filepath).expect(&format!("Could not find file {}", filepath));
     let mut buffer: Vec<u8> = Vec::new();
 
     handler.read_to_end(&mut buffer);
 
-    Handler::put(addr, &username, &password, doc_id, buffer, session);
+    Handler::put(addr, &username, &password, doc_id, buffer, session, lid);
 }
 
-fn remove(addr: SocketAddr, doc_id: Uuid, username: String, password: String, session: Uuid) {
-    Handler::remove(addr, &username, &password, doc_id, session).unwrap();
+fn remove(addr: SocketAddr,
+          doc_id: Uuid,
+          username: String,
+          password: String,
+          session: Uuid,
+          lid: LogId) {
+    Handler::remove(addr, &username, &password, doc_id, session, lid).unwrap();
 
     println!("Ok");
 }
