@@ -332,16 +332,10 @@ impl<L, M, A> Server<L, M, A>
                 token: Token)
                 -> Result<()> {
 
-
         let mut actions = Actions::new();
-        for clid in self.log_manager.consensus.keys() {
-            for &(ref lid, ref client, ref message) in self.requests_in_queue
-                .iter()
-                .take_while(|x| x.0 == *clid) {
-                // TODO apply
-            }
-        }
+        self.log_manager.handle_queue(&mut actions);
         self.execute_actions(event_loop, actions);
+
 
         scoped_trace!("{:?}: readable event", self.connections[token]);
         // Read messages from the connection until there are no more.

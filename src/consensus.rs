@@ -18,8 +18,10 @@ use std::net::SocketAddr;
 use std::rc::Rc;
 use std::cell::RefCell;
 
-use capnp::message::{Builder, HeapAllocator, Reader, ReaderSegments};
+use capnp::message::{Builder, Allocator, ReaderOptions, HeapAllocator, Reader, ReaderSegments};
 use rand::{self, Rng};
+use capnp::serialize::{self, OwnedSegments};
+use std::io::Cursor;
 
 use {LogId, LogIndex, Term, ServerId, ClientId, messages};
 use messages_capnp::{append_entries_request, append_entries_response, client_request,
@@ -183,6 +185,20 @@ impl<L, M> Consensus<L, M>
     /// Returns the consenus peers.
     pub fn peers(&self) -> &HashMap<ServerId, SocketAddr> {
         &self.peers
+    }
+
+    pub fn handle_queue(&mut self, actions: &mut Actions) {
+        let lid = self.lid.clone();
+        if !self.transaction.isActive {
+            for (client, builder) in self.requests_in_queue.pop() {
+                self.apply_client_message(client,
+                                          &Self::into_reader(&builder)
+                                              .get_root::<client_request::Reader>()
+                                              .unwrap(),
+                                          actions,
+                                          &lid);
+            }
+        }
     }
 
     /// Applies a peer message to the consensus state machine.
@@ -828,6 +844,16 @@ impl<L, M> Consensus<L, M>
             let message = messages::command_response_success(&result, logid);
             actions.client_messages.push((from, message));
         }
+    }
+
+    fn into_reader<C>(message: &Builder<C>) -> Reader<OwnedSegments>
+        where C: Allocator
+    {
+        let mut buf = Cursor::new(Vec::new());
+
+        serialize::write_message(&mut buf, message).unwrap();
+        buf.set_position(0);
+        serialize::read_message(&mut buf, ReaderOptions::new()).unwrap()
     }
 
     /// Triggers a heartbeat timeout for the peer.

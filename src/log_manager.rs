@@ -8,8 +8,10 @@ use persistent_log::Log;
 use state_machine::StateMachine;
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::io::Cursor;
 
 use capnp::message::{Builder, HeapAllocator, Allocator, Reader, ReaderSegments, ReaderOptions};
+use capnp::serialize::{self, OwnedSegments};
 use messages_capnp::{append_entries_request, append_entries_response, client_request,
                      proposal_request, query_request, message, request_vote_request,
                      request_vote_response};
@@ -106,6 +108,22 @@ impl<L, M> LogManager<L, M>
                          consensus: ConsensusTimeout,
                          actions: &mut Actions) {
         self.consensus.get_mut(lid).unwrap().apply_timeout(consensus, actions);
+    }
+
+    pub fn handle_queue(&mut self, actions: &mut Actions) {
+        for (lid, mut con) in self.consensus.iter_mut() {
+            con.handle_queue(actions);
+        }
+    }
+
+    fn into_reader<C>(message: &Builder<C>) -> Reader<OwnedSegments>
+        where C: Allocator
+    {
+        let mut buf = Cursor::new(Vec::new());
+
+        serialize::write_message(&mut buf, message).unwrap();
+        buf.set_position(0);
+        serialize::read_message(&mut buf, ReaderOptions::new()).unwrap()
     }
 
     // pub fn process_requests_in_queue(&mut self, mut actions: Actions) -> Actions {
