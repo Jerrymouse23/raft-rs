@@ -141,6 +141,7 @@ pub struct Consensus<L, M> {
     /// State necessary while a `Follower`. Should not be used otherwise.
     follower_state: FollowerState,
     pub transaction: Transaction,
+    /// The ID of this consensus instance for the log_manager
     lid: LogId,
     pub requests_in_queue: Vec<(ClientId, Builder<HeapAllocator>)>,
 }
@@ -230,7 +231,6 @@ impl<L, M> Consensus<L, M>
                                        Some(self.follower_state.min_index));
             }
             message::Which::TransactionCommit(Ok(response)) => {
-                // TODO refactor to seperate method
                 self.transaction.end();
             }
             message::Which::TransactionRollback(Ok(response)) => {
@@ -1047,19 +1047,22 @@ impl<L, M> fmt::Debug for Consensus<L, M>
         match self.state {
             ConsensusState::Follower => {
                 write!(fmt,
-                       "Follower {{ term: {}, index: {} }}",
+                       "Follower {{ lid: {}, term: {}, index: {} }}",
+                       self.lid,
                        self.current_term(),
                        self.latest_log_index())
             }
             ConsensusState::Candidate => {
                 write!(fmt,
-                       "Candidate {{ term: {}, index: {} }}",
+                       "Candidate {{ lid: {}, term: {}, index: {} }}",
+                       self.lid,
                        self.current_term(),
                        self.latest_log_index())
             }
             ConsensusState::Leader => {
                 write!(fmt,
-                       "Leader {{ term: {}, index: {} }}",
+                       "Leader {{ lid: {}, term: {}, index: {} }}",
+                       self.lid,
                        self.current_term(),
                        self.latest_log_index())
             }

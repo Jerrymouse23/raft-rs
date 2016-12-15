@@ -40,6 +40,7 @@ impl<L, M> LogManager<L, M>
         for (lid, store) in store_logs {
             let consensus: Consensus<L, M> =
                 Consensus::new(id, lid, peers.clone(), store, state_machine.clone());
+            println!("lid: {:?}", lid);
             logs.insert(lid, consensus);
         }
 
@@ -57,6 +58,7 @@ impl<L, M> LogManager<L, M>
     pub fn init(&self) -> Vec<(LogId, Actions)> {
         let mut actions = Vec::new();
         for (id, ref mut consensus) in self.consensus.iter() {
+            println!("Consensus: {:?}", id);
             let ac = consensus.init();
             actions.push((*id, ac));
         }
@@ -87,6 +89,8 @@ impl<L, M> LogManager<L, M>
     {
         let reader = message.get_root::<message::Reader>().unwrap();
         let log_id = LogId(reader.get_log_id());
+
+        println!(">>>>>>>> LOGID {:?}", log_id);
 
         // TODO implement error handling
         let mut cons = self.consensus.get_mut(&log_id).unwrap();
@@ -125,16 +129,4 @@ impl<L, M> LogManager<L, M>
         buf.set_position(0);
         serialize::read_message(&mut buf, ReaderOptions::new()).unwrap()
     }
-
-    // pub fn process_requests_in_queue(&mut self, mut actions: Actions) -> Actions {
-    // let values = self.consensus.values_mut().clone();
-    // for ref mut cons in values {
-    // if !cons.transaction.isActive {
-    // for (client, builder) in cons.requests_in_queue.pop() {
-    // self.apply_client_message(client, &Self::into_reader(&builder), &mut actions)
-    // }
-    // }
-    // }
-    // actions
-    // }
 }
