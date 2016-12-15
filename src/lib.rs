@@ -328,7 +328,7 @@ impl fmt::Display for ClientId {
 }
 
 /// The ID of a Raft log.
-#[derive(Copy, Clone, Hash, PartialEq, Eq,PartialOrd,Ord)]
+#[derive(Copy, Clone, Hash, Eq,PartialOrd,Ord)]
 pub struct LogId(u64);
 impl LogId {
     pub fn new() -> LogId {
@@ -355,8 +355,15 @@ impl From<u64> for LogId {
         LogId(val)
     }
 }
+
 impl Into<u64> for LogId {
     fn into(self) -> u64 {
         self.0
+    }
+}
+
+impl PartialEq for LogId {
+    fn eq(&self, other: &LogId) -> bool {
+        if self.0 == other.0 { true } else { false }
     }
 }

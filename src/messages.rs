@@ -76,6 +76,8 @@ pub fn append_entries_response_success(term: Term,
                                        log_index: LogIndex,
                                        lid: &LogId)
                                        -> Rc<Builder<HeapAllocator>> {
+
+    println!("Builded log {:?}", lid);
     let mut message = Builder::new_default();
     {
         let mut response = message.init_root::<message::Builder>();

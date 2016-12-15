@@ -260,7 +260,8 @@ fn server(serverId: ServerId,
           binding_addr: SocketAddr,
           config: &Config) {
 
-    let persistent_log = DocLog::new();
+    let persistent_log1 = DocLog::new();
+    let persistent_log2 = DocLog::new();
 
     let mut peers = node_id.iter()
         .zip(node_address.iter())
@@ -289,7 +290,8 @@ fn server(serverId: ServerId,
     init(binding_addr, node_addr);
 
     let mut logs: Vec<(LogId, DocLog)> = Vec::new();
-    logs.push((LogId::from(0), persistent_log));
+    logs.push((LogId::from(0), persistent_log1));
+    // logs.push((LogId::from(1), persistent_log2));
 
     Server::run(serverId,
                 addr,

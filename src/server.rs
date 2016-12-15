@@ -419,8 +419,6 @@ impl<L, M, A> Server<L, M, A>
                                                         .unwrap(),
                                                     &hashed);
 
-                            let isAuth = true;
-
                             if isAuth == false {
                                 scoped_debug!("Wrong username or password");
                             } else {

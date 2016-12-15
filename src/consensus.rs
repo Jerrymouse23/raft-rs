@@ -141,6 +141,7 @@ pub struct Consensus<L, M> {
     /// State necessary while a `Follower`. Should not be used otherwise.
     follower_state: FollowerState,
     pub transaction: Transaction,
+    /// The ID of this consensus instance for the log_manager
     lid: LogId,
     pub requests_in_queue: Vec<(ClientId, Builder<HeapAllocator>)>,
 }
@@ -230,7 +231,6 @@ impl<L, M> Consensus<L, M>
                                        Some(self.follower_state.min_index));
             }
             message::Which::TransactionCommit(Ok(response)) => {
-                // TODO refactor to seperate method
                 self.transaction.end();
             }
             message::Which::TransactionRollback(Ok(response)) => {
@@ -262,6 +262,9 @@ impl<L, M> Consensus<L, M>
                                 message: &client_request::Reader,
                                 actions: &mut Actions,
                                 logid: &LogId) {
+
+        assert_eq!(*logid, self.lid);
+
         push_log_scope!("{:?}", self);
         let reader = message.which().unwrap();
 
@@ -449,6 +452,8 @@ impl<L, M> Consensus<L, M>
                               request: append_entries_request::Reader,
                               actions: &mut Actions,
                               logid: &LogId) {
+        assert_eq!(*logid, self.lid);
+
         scoped_trace!("AppendEntriesRequest from peer {}", &from);
 
         let leader_term = Term(request.get_term());
@@ -589,9 +594,14 @@ impl<L, M> Consensus<L, M>
                                response: append_entries_response::Reader,
                                actions: &mut Actions,
                                logid: &LogId) {
+        assert_eq!(*logid, self.lid);
+
         let local_term = self.current_term();
         let responder_term = Term::from(response.get_term());
         let local_latest_log_index = self.latest_log_index();
+
+        println!("LOOOOOOOOG ID: {:?}", logid);
+        println!("LOOOOOOOOG ID: {:?}", self.lid);
 
         if local_term < responder_term {
             // Responder has a higher term number. Relinquish leader position (if it is held), and
@@ -699,6 +709,9 @@ impl<L, M> Consensus<L, M>
                             request: request_vote_request::Reader,
                             actions: &mut Actions,
                             logid: &LogId) {
+
+        assert_eq!(*logid, self.lid);
+
         let candidate_term = Term(request.get_term());
         let candidate_log_term = Term(request.get_last_log_term());
         let candidate_log_index = LogIndex(request.get_last_log_index());
@@ -747,6 +760,8 @@ impl<L, M> Consensus<L, M>
                              response: request_vote_response::Reader,
                              actions: &mut Actions,
                              logid: &LogId) {
+
+        assert_eq!(*logid, self.lid);
         scoped_debug!("RequestVoteResponse from peer {}", from);
 
         let local_term = self.current_term();
@@ -787,6 +802,7 @@ impl<L, M> Consensus<L, M>
                             actions: &mut Actions,
                             logid: &LogId) {
 
+        assert_eq!(*logid, self.lid);
         if self.is_candidate() || (self.is_follower() && self.follower_state.leader.is_none()) {
             actions.client_messages.push((from, messages::command_response_unknown_leader(logid)));
         } else if self.is_follower() {
@@ -833,6 +849,8 @@ impl<L, M> Consensus<L, M>
                          request: query_request::Reader,
                          actions: &mut Actions,
                          logid: &LogId) {
+
+        assert_eq!(*logid, self.lid);
         scoped_trace!("query from Client({})", from);
 
         if self.is_candidate() || (self.is_follower() && self.follower_state.leader.is_none()) {
@@ -1047,19 +1065,22 @@ impl<L, M> fmt::Debug for Consensus<L, M>
         match self.state {
             ConsensusState::Follower => {
                 write!(fmt,
-                       "Follower {{ term: {}, index: {} }}",
+                       "Follower {{ lid: {}, term: {}, index: {} }}",
+                       self.lid,
                        self.current_term(),
                        self.latest_log_index())
             }
             ConsensusState::Candidate => {
                 write!(fmt,
-                       "Candidate {{ term: {}, index: {} }}",
+                       "Candidate {{ lid: {}, term: {}, index: {} }}",
+                       self.lid,
                        self.current_term(),
                        self.latest_log_index())
             }
             ConsensusState::Leader => {
                 write!(fmt,
-                       "Leader {{ term: {}, index: {} }}",
+                       "Leader {{ lid: {}, term: {}, index: {} }}",
+                       self.lid,
                        self.current_term(),
                        self.latest_log_index())
             }
