@@ -19,6 +19,8 @@ struct ConnectionPreamble {
         # further messages sent by the client will be of type ClientRequest, and
         # all replys from the server to the client will be of type
         # ClientResponse.
+
+	portal @2 :Portal;
     }
 }
 
@@ -36,6 +38,10 @@ struct Client{
   password @0 :Data;
 
   data @1 :Data;
+}
+
+struct Portal{
+
 }
 
 struct Entry {

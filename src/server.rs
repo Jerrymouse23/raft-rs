@@ -5,7 +5,7 @@
 
 use std::{fmt, io};
 use std::str::FromStr;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::thread::{self, JoinHandle};
 use std::rc::Rc;
@@ -78,6 +78,9 @@ pub struct Server<L, M, A>
     /// Index of client id to connection token.
     client_tokens: HashMap<ClientId, Token>,
 
+    /// Index of portal id to connection token
+    portals_tokens: HashSet<Token>,
+
     /// Currently registered consensus timeouts.
     consensus_timeouts: HashMap<ConsensusTimeout, TimeoutHandle>,
 
@@ -125,6 +128,7 @@ impl<L, M, A> Server<L, M, A>
             listener: listener,
             connections: Slab::new_starting_at(Token(1), 129),
             peer_tokens: HashMap::new(),
+            portals_tokens: HashSet::new(),
             client_tokens: HashMap::new(),
             consensus_timeouts: HashMap::new(),
             reconnection_timeouts: HashMap::new(),
@@ -317,6 +321,10 @@ impl<L, M, A> Server<L, M, A>
                                "client {:?} not connected",
                                id);
             }
+            ConnectionKind::Portal => {
+                self.connections.remove(token).expect("unable to find portal connection");
+                assert_eq!(self.portals_tokens.remove(&token), true);
+            }
             ConnectionKind::Unknown => {
                 self.connections.remove(token).expect("unable to find unknown connection");
             }
@@ -351,6 +359,7 @@ impl<L, M, A> Server<L, M, A>
                     self.log_manager.apply_client_message(id, &message, &mut actions);
                     self.execute_actions(event_loop, actions);
                 }
+                ConnectionKind::Portal => unimplemented!(),
                 ConnectionKind::Unknown => {
                     let preamble = try!(message.get_root::<connection_preamble::Reader>());
                     match try!(preamble.get_id().which()) {
@@ -435,6 +444,14 @@ impl<L, M, A> Server<L, M, A>
                                                self,
                                                client_id);
                             }
+                        }
+                        connection_preamble::id::Which::Portal(Ok(portal)) => {
+                            scoped_debug!("received new connection from portal");
+
+                            // TODO implement auth
+
+                            self.connections[token].set_kind(ConnectionKind::Portal);
+                            let prev_token = self.portals_tokens.insert(token);
                         }
                         _ => {
                             return Err(Error::Raft(RaftError::UnknownConnectionType));
