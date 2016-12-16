@@ -540,9 +540,12 @@ impl<L, M> Consensus<L, M>
                                     cmp::min(LogIndex::from(request.get_leader_commit()),
                                              new_latest_log_index);
                                 self.apply_commits();
+
                             } else {
                                 panic!("AppendEntriesRequest: no entry list")
                             }
+
+
                             messages::append_entries_response_success(self.current_term(),
                                                                       self.log
                                                                           .latest_log_index()
@@ -551,7 +554,9 @@ impl<L, M> Consensus<L, M>
                         }
                     }
                 };
-                actions.peer_messages.push((from, message));
+                actions.peer_messages.push((from, message.clone()));
+                actions.portal_queue.push((from, message));
+
                 actions.timeouts.push((self.lid, ConsensusTimeout::Election));
             }
             ConsensusState::Candidate => {
