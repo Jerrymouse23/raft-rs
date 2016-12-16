@@ -73,8 +73,11 @@ pub struct Actions {
     pub timeouts: Vec<(LogId, ConsensusTimeout)>,
     /// Whether to clear outbound peer message queues.
     pub clear_peer_messages: bool,
-    pub peer_messages_broadcast: Vec<Rc<Builder<HeapAllocator>>>,
+    /// Messages which are in queue because there is a transaction active
     pub transaction_queue: Vec<(LogId, ClientId, Builder<HeapAllocator>)>,
+    pub peer_messages_broadcast: Vec<Rc<Builder<HeapAllocator>>>,
+    /// Messages which will be send to all portals
+    pub portal_queue: Vec<(ServerId, Rc<Builder<HeapAllocator>>)>,
 }
 
 // TODO add transaction_queue
@@ -108,8 +111,9 @@ impl Actions {
             clear_timeouts: false,
             timeouts: vec![],
             clear_peer_messages: false,
-            peer_messages_broadcast: vec![],
             transaction_queue: vec![],
+            peer_messages_broadcast: vec![],
+            portal_queue: vec![],
         }
     }
 }
@@ -870,7 +874,9 @@ impl<L, M> Consensus<L, M>
             request.set_leader_commit(self.commit_index.as_u64());
             request.init_entries(0);
         }
-        actions.peer_messages.push((peer, Rc::new(message)));
+        let message = Rc::new(message);
+        actions.peer_messages.push((peer, message.clone()));
+        actions.portal_queue.push((peer, message));
     }
 
     /// Triggers an election timeout.

@@ -41,7 +41,7 @@ struct Client{
 }
 
 struct Portal{
-
+  id @0 :UInt64;
 }
 
 struct Entry {

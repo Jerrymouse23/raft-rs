@@ -238,7 +238,8 @@ impl<L, M, A> Server<L, M, A>
                       clear_timeouts,
                       clear_peer_messages,
                       peer_messages_broadcast,
-                      transaction_queue } = actions;
+                      transaction_queue,
+                      portal_queue } = actions;
 
         if clear_peer_messages {
             for &token in self.peer_tokens.values() {
@@ -293,6 +294,15 @@ impl<L, M, A> Server<L, M, A>
                                    "unable to clear timeout: {:?}",
                                    timeout)
                 });
+        }
+
+        scoped_debug!("Sending {:?}  messages to portals", portal_queue.len());
+        scoped_debug!("Sending informations to {:?} portals",
+                      self.portals_tokens.clone().len());
+        for (peer, message) in portal_queue {
+            for t in self.portals_tokens.clone() {
+                self.send_message(event_loop, t, message.clone());
+            }
         }
     }
 
