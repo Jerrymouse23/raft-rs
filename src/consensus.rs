@@ -1180,7 +1180,9 @@ mod tests {
     /// The leader and the followers must be in the same term.
     fn elect_leader(leader: ServerId, peers: &mut HashMap<ServerId, TestPeer>) {
         let mut actions = Actions::new();
-        peers.get_mut(&leader).unwrap().apply_timeout(ConsensusTimeout::Election, &mut actions);
+        peers.get_mut(&leader)
+            .unwrap()
+            .apply_timeout(ConsensusTimeout::Election(LogId(0)), &mut actions);
         let client_messages = apply_actions(leader, actions, peers);
         assert!(client_messages.is_empty());
         assert!(peers[&leader].is_leader());
@@ -1211,7 +1213,7 @@ mod tests {
         assert!(peer.is_follower());
 
         let mut actions = Actions::new();
-        peer.apply_timeout(ConsensusTimeout::Election, &mut actions);
+        peer.apply_timeout(ConsensusTimeout::Election(LogId(0)), &mut actions);
         assert!(peer.is_leader());
         assert!(actions.peer_messages.is_empty());
         assert!(actions.client_messages.is_empty());
@@ -1268,7 +1270,7 @@ mod tests {
             follower.apply_peer_message(leader_id.clone(), &message_reader, &mut actions, &LogId(0));
 
             let election_timeout = actions.timeouts.iter().next().unwrap();
-            assert_eq!(election_timeout, &(LogId(0), ConsensusTimeout::Election));
+            assert_eq!(election_timeout, &ConsensusTimeout::Election(LogId(0)));
 
             let peer_message = actions.peer_messages.iter().next().unwrap();
             assert_eq!(peer_message.0, leader_id.clone());
@@ -1286,7 +1288,7 @@ mod tests {
                                   &LogId(0));
         let heartbeat_timeout = actions.timeouts.iter().next().unwrap();
         assert_eq!(heartbeat_timeout,
-                   &(LogId(0), ConsensusTimeout::Heartbeat(follower_id.clone())));
+                   &ConsensusTimeout::Heartbeat(follower_id.clone(), LogId(0)));
     }
 
     /// Emulates a slow heartbeat message in a two-node cluster.
@@ -1308,13 +1310,14 @@ mod tests {
         let mut peer_0_actions = Actions::new();
         peers.get_mut(peer_0)
             .unwrap()
-            .apply_timeout(ConsensusTimeout::Heartbeat(*peer_1), &mut peer_0_actions);
+            .apply_timeout(ConsensusTimeout::Heartbeat(*peer_1, LogId(0)),
+                           &mut peer_0_actions);
         assert!(peers[peer_0].is_leader());
 
         let mut peer_1_actions = Actions::new();
         peers.get_mut(peer_1)
             .unwrap()
-            .apply_timeout(ConsensusTimeout::Election, &mut peer_1_actions);
+            .apply_timeout(ConsensusTimeout::Election(LogId(0)), &mut peer_1_actions);
         assert!(peers[peer_1].is_candidate());
 
         // Apply candidate messages.
