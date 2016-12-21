@@ -34,6 +34,8 @@ use std::io::Cursor;
 use auth::Auth;
 use log_manager::LogManager;
 
+use state::ConsensusState;
+
 const LISTENER: Token = Token(0);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -241,6 +243,10 @@ impl<L, M, A> Server<L, M, A>
                       transaction_queue,
                       portal_queue } = actions;
 
+        println!("Timeouts registered \nCount: {:?}  \n{:?}",
+                 timeouts.len(),
+                 timeouts);
+
         if clear_peer_messages {
             for &token in self.peer_tokens.values() {
                 self.connections[token].clear_messages();
@@ -304,6 +310,19 @@ impl<L, M, A> Server<L, M, A>
                 self.send_message(event_loop, t, message.clone());
             }
         }
+
+        // for (lid, cons) in self.log_manager.consensus.iter() {
+        //
+        // println!("----------------------");
+        // println!("LogId: {:?}", lid);
+        // match cons.state {
+        // ConsensusState::Leader => println!("{:?}", cons.leader_state),
+        // ConsensusState::Candidate => println!("{:?}", cons.candidate_state),
+        // ConsensusState::Follower => println!("{:?}", cons.follower_state),
+        // }
+        // }
+        //
+        //
     }
 
     /// Resets the connection corresponding to the provided token.
@@ -513,11 +532,9 @@ impl<L, M, A> Server<L, M, A>
 
 
     pub fn init(&mut self, event_loop: &mut EventLoop<Server<L, M, A>>) {
-        let actions = self.log_manager.init();
+        let action = self.log_manager.init();
 
-        for (_, action) in actions {
-            self.execute_actions(event_loop, action);
-        }
+        self.execute_actions(event_loop, action);
     }
 
     pub fn into_reader<C>(message: &Builder<C>) -> Reader<OwnedSegments>
@@ -602,6 +619,7 @@ impl<L, M, A> Handler for Server<L, M, A>
                                "missing timeout: {:?}",
                                timeout);
                 let mut actions = Actions::new();
+                println!("Timeout for {:?}", &lid);
                 self.log_manager.apply_timeout(&lid, consensus, &mut actions);
                 self.execute_actions(event_loop, actions);
             }

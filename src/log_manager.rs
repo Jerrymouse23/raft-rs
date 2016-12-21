@@ -55,12 +55,12 @@ impl<L, M> LogManager<L, M>
         self.consensus.get(logid).unwrap().transaction.isActive
     }
 
-    pub fn init(&self) -> Vec<(LogId, Actions)> {
-        let mut actions = Vec::new();
+    pub fn init(&self) -> Actions {
+        let mut actions = Actions::new();
         for (id, ref mut consensus) in self.consensus.iter() {
-            println!("Consensus: {:?}", id);
-            let ac = consensus.init();
-            actions.push((*id, ac));
+            println!("Consensus Election initialised: {:?}", id);
+
+            actions.timeouts.push((*id, ConsensusTimeout::Election));
         }
 
         actions
@@ -90,7 +90,7 @@ impl<L, M> LogManager<L, M>
         let reader = message.get_root::<message::Reader>().unwrap();
         let log_id = LogId(reader.get_log_id());
 
-        println!(">>>>>>>> LOGID {:?}", log_id);
+        println!("Applying Peer Message with logId {:?}", log_id);
 
         // TODO implement error handling
         let mut cons = self.consensus.get_mut(&log_id).unwrap();

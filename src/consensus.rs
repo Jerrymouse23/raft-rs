@@ -137,13 +137,13 @@ pub struct Consensus<L, M> {
     last_applied: LogIndex,
 
     /// The current state of the `Consensus` (`Leader`, `Candidate`, or `Follower`).
-    state: ConsensusState,
+    pub state: ConsensusState,
     /// State necessary while a `Leader`. Should not be used otherwise.
-    leader_state: LeaderState,
+    pub leader_state: LeaderState,
     /// State necessary while a `Candidate`. Should not be used otherwise.
-    candidate_state: CandidateState,
+    pub candidate_state: CandidateState,
     /// State necessary while a `Follower`. Should not be used otherwise.
-    follower_state: FollowerState,
+    pub follower_state: FollowerState,
     pub transaction: Transaction,
     /// The ID of this consensus instance for the log_manager
     lid: LogId,
@@ -708,6 +708,9 @@ impl<L, M> Consensus<L, M>
                             request: request_vote_request::Reader,
                             actions: &mut Actions,
                             logid: &LogId) {
+
+        println!("Sending request vote request for LogId {:?}", logid);
+
         let candidate_term = Term(request.get_term());
         let candidate_log_term = Term(request.get_last_log_term());
         let candidate_log_index = LogIndex(request.get_last_log_index());
@@ -867,6 +870,7 @@ impl<L, M> Consensus<L, M>
 
     /// Triggers a heartbeat timeout for the peer.
     fn heartbeat_timeout(&mut self, peer: ServerId, actions: &mut Actions) {
+        println!("Heartbeat {:?} applied for {:?}", self.lid, peer);
         scoped_assert!(self.is_leader());
         scoped_debug!("HeartbeatTimeout for peer: {}", peer);
         let mut message = Builder::new_default();
@@ -934,6 +938,8 @@ impl<L, M> Consensus<L, M>
         self.state = ConsensusState::Candidate;
         self.candidate_state.clear();
         self.candidate_state.record_vote(self.id);
+
+        println!("Sending a requestvote LogId {:?}", self.lid);
 
         let message = messages::request_vote_request(self.current_term(),
                                                      self.latest_log_index(),
