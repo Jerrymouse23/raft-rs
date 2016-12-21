@@ -60,7 +60,7 @@ impl<L, M> LogManager<L, M>
         for (id, ref mut consensus) in self.consensus.iter() {
             println!("Consensus Election initialised: {:?}", id);
 
-            actions.timeouts.push((*id, ConsensusTimeout::Election));
+            actions.timeouts.push(ConsensusTimeout::Election(*id));
         }
 
         actions

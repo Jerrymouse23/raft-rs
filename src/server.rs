@@ -247,6 +247,7 @@ impl<L, M, A> Server<L, M, A>
                  timeouts.len(),
                  timeouts);
 
+
         if clear_peer_messages {
             for &token in self.peer_tokens.values() {
                 self.connections[token].clear_messages();
@@ -285,8 +286,13 @@ impl<L, M, A> Server<L, M, A>
             }
             self.consensus_timeouts.clear();
         }
-        for (lid, timeout) in timeouts {
+        for timeout in timeouts {
             let duration = timeout.duration_ms();
+
+            let lid = match timeout {
+                ConsensusTimeout::Election(lid) => lid,
+                ConsensusTimeout::Heartbeat(_, lid) => lid,
+            };
 
             // Registering a timeout may only fail if the maximum number of timeouts
             // is already registered, which is by default 65,536. We use a
