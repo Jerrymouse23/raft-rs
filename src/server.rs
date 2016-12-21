@@ -5,7 +5,7 @@
 
 use std::{fmt, io};
 use std::str::FromStr;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::thread::{self, JoinHandle};
 use std::rc::Rc;
@@ -33,6 +33,8 @@ use std::io::Cursor;
 
 use auth::Auth;
 use log_manager::LogManager;
+
+use state::ConsensusState;
 
 const LISTENER: Token = Token(0);
 
@@ -77,6 +79,9 @@ pub struct Server<L, M, A>
 
     /// Index of client id to connection token.
     client_tokens: HashMap<ClientId, Token>,
+
+    /// Index of portal id to connection token
+    portals_tokens: HashSet<Token>,
 
     /// Currently registered consensus timeouts.
     consensus_timeouts: HashMap<ConsensusTimeout, TimeoutHandle>,
@@ -125,6 +130,7 @@ impl<L, M, A> Server<L, M, A>
             listener: listener,
             connections: Slab::new_starting_at(Token(1), 129),
             peer_tokens: HashMap::new(),
+            portals_tokens: HashSet::new(),
             client_tokens: HashMap::new(),
             consensus_timeouts: HashMap::new(),
             reconnection_timeouts: HashMap::new(),
@@ -234,7 +240,13 @@ impl<L, M, A> Server<L, M, A>
                       clear_timeouts,
                       clear_peer_messages,
                       peer_messages_broadcast,
-                      transaction_queue } = actions;
+                      transaction_queue,
+                      portal_queue } = actions;
+
+        println!("Timeouts registered \nCount: {:?}  \n{:?}",
+                 timeouts.len(),
+                 timeouts);
+
 
         if clear_peer_messages {
             for &token in self.peer_tokens.values() {
@@ -274,8 +286,13 @@ impl<L, M, A> Server<L, M, A>
             }
             self.consensus_timeouts.clear();
         }
-        for (lid, timeout) in timeouts {
+        for timeout in timeouts {
             let duration = timeout.duration_ms();
+
+            let lid = match timeout {
+                ConsensusTimeout::Election(lid) => lid,
+                ConsensusTimeout::Heartbeat(_, lid) => lid,
+            };
 
             // Registering a timeout may only fail if the maximum number of timeouts
             // is already registered, which is by default 65,536. We use a
@@ -290,6 +307,28 @@ impl<L, M, A> Server<L, M, A>
                                    timeout)
                 });
         }
+
+        scoped_debug!("Sending {:?}  messages to portals", portal_queue.len());
+        scoped_debug!("Sending informations to {:?} portals",
+                      self.portals_tokens.clone().len());
+        for (peer, message) in portal_queue {
+            for t in self.portals_tokens.clone() {
+                self.send_message(event_loop, t, message.clone());
+            }
+        }
+
+        // for (lid, cons) in self.log_manager.consensus.iter() {
+        //
+        // println!("----------------------");
+        // println!("LogId: {:?}", lid);
+        // match cons.state {
+        // ConsensusState::Leader => println!("{:?}", cons.leader_state),
+        // ConsensusState::Candidate => println!("{:?}", cons.candidate_state),
+        // ConsensusState::Follower => println!("{:?}", cons.follower_state),
+        // }
+        // }
+        //
+        //
     }
 
     /// Resets the connection corresponding to the provided token.
@@ -316,6 +355,10 @@ impl<L, M, A> Server<L, M, A>
                 scoped_assert!(self.client_tokens.remove(id).is_some(),
                                "client {:?} not connected",
                                id);
+            }
+            ConnectionKind::Portal => {
+                self.connections.remove(token).expect("unable to find portal connection");
+                assert_eq!(self.portals_tokens.remove(&token), true);
             }
             ConnectionKind::Unknown => {
                 self.connections.remove(token).expect("unable to find unknown connection");
@@ -351,6 +394,7 @@ impl<L, M, A> Server<L, M, A>
                     self.log_manager.apply_client_message(id, &message, &mut actions);
                     self.execute_actions(event_loop, actions);
                 }
+                ConnectionKind::Portal => unimplemented!(),
                 ConnectionKind::Unknown => {
                     let preamble = try!(message.get_root::<connection_preamble::Reader>());
                     match try!(preamble.get_id().which()) {
@@ -434,6 +478,14 @@ impl<L, M, A> Server<L, M, A>
                                                client_id);
                             }
                         }
+                        connection_preamble::id::Which::Portal(Ok(portal)) => {
+                            scoped_debug!("received new connection from portal");
+
+                            // TODO implement auth
+
+                            self.connections[token].set_kind(ConnectionKind::Portal);
+                            let prev_token = self.portals_tokens.insert(token);
+                        }
                         _ => {
                             return Err(Error::Raft(RaftError::UnknownConnectionType));
                         }
@@ -484,11 +536,9 @@ impl<L, M, A> Server<L, M, A>
 
 
     pub fn init(&mut self, event_loop: &mut EventLoop<Server<L, M, A>>) {
-        let actions = self.log_manager.init();
+        let action = self.log_manager.init();
 
-        for (_, action) in actions {
-            self.execute_actions(event_loop, action);
-        }
+        self.execute_actions(event_loop, action);
     }
 
     pub fn into_reader<C>(message: &Builder<C>) -> Reader<OwnedSegments>
@@ -573,6 +623,7 @@ impl<L, M, A> Handler for Server<L, M, A>
                                "missing timeout: {:?}",
                                timeout);
                 let mut actions = Actions::new();
+                println!("Timeout for {:?}", &lid);
                 self.log_manager.apply_timeout(&lid, consensus, &mut actions);
                 self.execute_actions(event_loop, actions);
             }

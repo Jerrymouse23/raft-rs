@@ -40,6 +40,7 @@ impl<L, M> LogManager<L, M>
         for (lid, store) in store_logs {
             let consensus: Consensus<L, M> =
                 Consensus::new(id, lid, peers.clone(), store, state_machine.clone());
+            println!("lid: {:?}", lid);
             logs.insert(lid, consensus);
         }
 
@@ -54,11 +55,12 @@ impl<L, M> LogManager<L, M>
         self.consensus.get(logid).unwrap().transaction.isActive
     }
 
-    pub fn init(&self) -> Vec<(LogId, Actions)> {
-        let mut actions = Vec::new();
+    pub fn init(&self) -> Actions {
+        let mut actions = Actions::new();
         for (id, ref mut consensus) in self.consensus.iter() {
-            let ac = consensus.init();
-            actions.push((*id, ac));
+            println!("Consensus Election initialised: {:?}", id);
+
+            actions.timeouts.push(ConsensusTimeout::Election(*id));
         }
 
         actions
@@ -90,7 +92,7 @@ impl<L, M> LogManager<L, M>
         let reader = message.get_root::<message::Reader>().unwrap();
         let log_id = LogId(reader.get_log_id());
 
-        scoped_trace!("Received peer message on log {:?}", log_id);
+        println!("Applying Peer Message with logId {:?}", log_id);
 
         // TODO implement error handling
         let mut cons = self.consensus.get_mut(&log_id).unwrap();

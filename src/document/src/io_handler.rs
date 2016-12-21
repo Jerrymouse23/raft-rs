@@ -88,7 +88,7 @@ mod tests {
     use std::fs::{create_dir, remove_dir, File, metadata};
     use io_handler::ioHandler;
 
-    static VOLUME: &str = "test_dir";
+    static VOLUME: &'static str = "test_dir";
 
     struct Setup;
 

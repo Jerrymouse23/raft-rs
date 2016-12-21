@@ -262,6 +262,8 @@ fn server(serverId: ServerId,
 
     let persistent_log1 = DocLog::new();
     let persistent_log2 = DocLog::new();
+    let persistent_log3 = DocLog::new();
+    let persistent_log4 = DocLog::new();
 
     let mut peers = node_id.iter()
         .zip(node_address.iter())
@@ -291,7 +293,9 @@ fn server(serverId: ServerId,
 
     let mut logs: Vec<(LogId, DocLog)> = Vec::new();
     logs.push((LogId::from(0), persistent_log1));
-    // logs.push((LogId::from(1), persistent_log2));
+    logs.push((LogId::from(1), persistent_log2));
+    logs.push((LogId::from(2), persistent_log3));
+    logs.push((LogId::from(3), persistent_log4));
 
     Server::run(serverId,
                 addr,

@@ -43,16 +43,16 @@ const HEARTBEAT_DURATION: u64 = 1000;
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum ConsensusTimeout {
     // An election timeout. Randomized value.
-    Election,
+    Election(LogId),
     // A heartbeat timeout. Stable value.
-    Heartbeat(ServerId),
+    Heartbeat(ServerId, LogId),
 }
 
 impl ConsensusTimeout {
     /// Returns the timeout period in milliseconds.
     pub fn duration_ms(&self) -> u64 {
         match *self {
-            ConsensusTimeout::Election => {
+            ConsensusTimeout::Election(..) => {
                 rand::thread_rng().gen_range::<u64>(ELECTION_MIN, ELECTION_MAX)
             }
             ConsensusTimeout::Heartbeat(..) => HEARTBEAT_DURATION,
@@ -70,11 +70,14 @@ pub struct Actions {
     /// Whether to clear existing consensus timeouts.
     pub clear_timeouts: bool,
     /// Any new timeouts to create.
-    pub timeouts: Vec<(LogId, ConsensusTimeout)>,
+    pub timeouts: Vec<ConsensusTimeout>,
     /// Whether to clear outbound peer message queues.
     pub clear_peer_messages: bool,
-    pub peer_messages_broadcast: Vec<Rc<Builder<HeapAllocator>>>,
+    /// Messages which are in queue because there is a transaction active
     pub transaction_queue: Vec<(LogId, ClientId, Builder<HeapAllocator>)>,
+    pub peer_messages_broadcast: Vec<Rc<Builder<HeapAllocator>>>,
+    /// Messages which will be send to all portals
+    pub portal_queue: Vec<(ServerId, Rc<Builder<HeapAllocator>>)>,
 }
 
 // TODO add transaction_queue
@@ -108,8 +111,9 @@ impl Actions {
             clear_timeouts: false,
             timeouts: vec![],
             clear_peer_messages: false,
-            peer_messages_broadcast: vec![],
             transaction_queue: vec![],
+            peer_messages_broadcast: vec![],
+            portal_queue: vec![],
         }
     }
 }
@@ -133,13 +137,13 @@ pub struct Consensus<L, M> {
     last_applied: LogIndex,
 
     /// The current state of the `Consensus` (`Leader`, `Candidate`, or `Follower`).
-    state: ConsensusState,
+    pub state: ConsensusState,
     /// State necessary while a `Leader`. Should not be used otherwise.
-    leader_state: LeaderState,
+    pub leader_state: LeaderState,
     /// State necessary while a `Candidate`. Should not be used otherwise.
-    candidate_state: CandidateState,
+    pub candidate_state: CandidateState,
     /// State necessary while a `Follower`. Should not be used otherwise.
-    follower_state: FollowerState,
+    pub follower_state: FollowerState,
     pub transaction: Transaction,
     /// The ID of this consensus instance for the log_manager
     lid: LogId,
@@ -179,7 +183,7 @@ impl<L, M> Consensus<L, M>
     /// Returns the set of initial action which should be executed upon startup.
     pub fn init(&self) -> Actions {
         let mut actions = Actions::new();
-        actions.timeouts.push((self.lid, ConsensusTimeout::Election));
+        actions.timeouts.push(ConsensusTimeout::Election(self.lid));
         actions
     }
 
@@ -386,8 +390,8 @@ impl<L, M> Consensus<L, M>
     pub fn apply_timeout(&mut self, timeout: ConsensusTimeout, actions: &mut Actions) {
         push_log_scope!("{:?}", self);
         match timeout {
-            ConsensusTimeout::Election => self.election_timeout(actions),
-            ConsensusTimeout::Heartbeat(peer) => self.heartbeat_timeout(peer, actions),
+            ConsensusTimeout::Election(..) => self.election_timeout(actions),
+            ConsensusTimeout::Heartbeat(peer, ..) => self.heartbeat_timeout(peer, actions),
         }
     }
 
@@ -541,9 +545,12 @@ impl<L, M> Consensus<L, M>
                                     cmp::min(LogIndex::from(request.get_leader_commit()),
                                              new_latest_log_index);
                                 self.apply_commits();
+
                             } else {
                                 panic!("AppendEntriesRequest: no entry list")
                             }
+
+
                             messages::append_entries_response_success(self.current_term(),
                                                                       self.log
                                                                           .latest_log_index()
@@ -552,8 +559,10 @@ impl<L, M> Consensus<L, M>
                         }
                     }
                 };
-                actions.peer_messages.push((from, message));
-                actions.timeouts.push((self.lid, ConsensusTimeout::Election));
+                actions.peer_messages.push((from, message.clone()));
+                actions.portal_queue.push((from, message));
+
+                actions.timeouts.push(ConsensusTimeout::Election(self.lid));
             }
             ConsensusState::Candidate => {
                 // recognize the new leader, return to follower state, and apply the entries
@@ -698,8 +707,8 @@ impl<L, M> Consensus<L, M>
             // If the peer is caught up, set a heartbeat timeout.
             scoped_trace!("AppendEntriesResponse: scheduling heartbeat for peer {}",
                           from);
-            let timeout = ConsensusTimeout::Heartbeat(from);
-            actions.timeouts.push((*logid, timeout));
+            let timeout = ConsensusTimeout::Heartbeat(from, *logid);
+            actions.timeouts.push(timeout);
         }
     }
 
@@ -710,7 +719,7 @@ impl<L, M> Consensus<L, M>
                             actions: &mut Actions,
                             logid: &LogId) {
 
-        assert_eq!(*logid, self.lid);
+        println!("Sending request vote request for LogId {:?}", logid);
 
         let candidate_term = Term(request.get_term());
         let candidate_log_term = Term(request.get_last_log_term());
@@ -876,6 +885,7 @@ impl<L, M> Consensus<L, M>
 
     /// Triggers a heartbeat timeout for the peer.
     fn heartbeat_timeout(&mut self, peer: ServerId, actions: &mut Actions) {
+        println!("Heartbeat {:?} applied for {:?}", self.lid, peer);
         scoped_assert!(self.is_leader());
         scoped_debug!("HeartbeatTimeout for peer: {}", peer);
         let mut message = Builder::new_default();
@@ -888,7 +898,9 @@ impl<L, M> Consensus<L, M>
             request.set_leader_commit(self.commit_index.as_u64());
             request.init_entries(0);
         }
-        actions.peer_messages.push((peer, Rc::new(message)));
+        let message = Rc::new(message);
+        actions.peer_messages.push((peer, message.clone()));
+        actions.portal_queue.push((peer, message));
     }
 
     /// Triggers an election timeout.
@@ -942,6 +954,8 @@ impl<L, M> Consensus<L, M>
         self.candidate_state.clear();
         self.candidate_state.record_vote(self.id);
 
+        println!("Sending a requestvote LogId {:?}", self.lid);
+
         let message = messages::request_vote_request(self.current_term(),
                                                      self.latest_log_index(),
                                                      self.log.latest_log_term().unwrap(),
@@ -950,7 +964,7 @@ impl<L, M> Consensus<L, M>
         for &peer in self.peers().keys() {
             actions.peer_messages.push((peer, message.clone()));
         }
-        actions.timeouts.push((self.lid, ConsensusTimeout::Election));
+        actions.timeouts.push(ConsensusTimeout::Election(self.lid));
         actions.clear_peer_messages = true;
     }
 
@@ -1015,7 +1029,7 @@ impl<L, M> Consensus<L, M>
         self.follower_state.set_leader(leader);
         actions.clear_timeouts = true;
         actions.clear_peer_messages = true;
-        actions.timeouts.push((self.lid, ConsensusTimeout::Election));
+        actions.timeouts.push(ConsensusTimeout::Election(self.lid));
     }
 
     /// Returns whether the consensus state machine is currently a Leader.
@@ -1181,7 +1195,9 @@ mod tests {
     /// The leader and the followers must be in the same term.
     fn elect_leader(leader: ServerId, peers: &mut HashMap<ServerId, TestPeer>) {
         let mut actions = Actions::new();
-        peers.get_mut(&leader).unwrap().apply_timeout(ConsensusTimeout::Election, &mut actions);
+        peers.get_mut(&leader)
+            .unwrap()
+            .apply_timeout(ConsensusTimeout::Election(LogId(0)), &mut actions);
         let client_messages = apply_actions(leader, actions, peers);
         assert!(client_messages.is_empty());
         assert!(peers[&leader].is_leader());
@@ -1212,7 +1228,7 @@ mod tests {
         assert!(peer.is_follower());
 
         let mut actions = Actions::new();
-        peer.apply_timeout(ConsensusTimeout::Election, &mut actions);
+        peer.apply_timeout(ConsensusTimeout::Election(LogId(0)), &mut actions);
         assert!(peer.is_leader());
         assert!(actions.peer_messages.is_empty());
         assert!(actions.client_messages.is_empty());
@@ -1269,7 +1285,7 @@ mod tests {
             follower.apply_peer_message(leader_id.clone(), &message_reader, &mut actions, &LogId(0));
 
             let election_timeout = actions.timeouts.iter().next().unwrap();
-            assert_eq!(election_timeout, &(LogId(0), ConsensusTimeout::Election));
+            assert_eq!(election_timeout, &ConsensusTimeout::Election(LogId(0)));
 
             let peer_message = actions.peer_messages.iter().next().unwrap();
             assert_eq!(peer_message.0, leader_id.clone());
@@ -1287,7 +1303,7 @@ mod tests {
                                   &LogId(0));
         let heartbeat_timeout = actions.timeouts.iter().next().unwrap();
         assert_eq!(heartbeat_timeout,
-                   &(LogId(0), ConsensusTimeout::Heartbeat(follower_id.clone())));
+                   &ConsensusTimeout::Heartbeat(follower_id.clone(), LogId(0)));
     }
 
     /// Emulates a slow heartbeat message in a two-node cluster.
@@ -1309,13 +1325,14 @@ mod tests {
         let mut peer_0_actions = Actions::new();
         peers.get_mut(peer_0)
             .unwrap()
-            .apply_timeout(ConsensusTimeout::Heartbeat(*peer_1), &mut peer_0_actions);
+            .apply_timeout(ConsensusTimeout::Heartbeat(*peer_1, LogId(0)),
+                           &mut peer_0_actions);
         assert!(peers[peer_0].is_leader());
 
         let mut peer_1_actions = Actions::new();
         peers.get_mut(peer_1)
             .unwrap()
-            .apply_timeout(ConsensusTimeout::Election, &mut peer_1_actions);
+            .apply_timeout(ConsensusTimeout::Election(LogId(0)), &mut peer_1_actions);
         assert!(peers[peer_1].is_candidate());
 
         // Apply candidate messages.
