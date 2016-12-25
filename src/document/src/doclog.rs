@@ -9,10 +9,13 @@ use raft::persistent_log::Log;
 use raft::LogIndex;
 use raft::ServerId;
 use raft::Term;
+use raft::LogId;
 
 #[derive(Clone, Debug)]
 pub struct DocLog {
     entries: Vec<(Term, Vec<u8>)>,
+    logid: LogId,
+    prefix: String,
 }
 
 /// Non-instantiable error type for MemLog
@@ -37,8 +40,12 @@ impl error::Error for Error {
 }
 
 impl DocLog {
-    pub fn new() -> Self {
-        let mut d = DocLog { entries: Vec::new() };
+    pub fn new(prefix: &str, lid: LogId) -> Self {
+        let mut d = DocLog {
+            prefix: prefix.to_string(),
+            entries: Vec::new(),
+            logid: lid,
+        };
 
         d.set_current_term(Term::from(0));
 
@@ -51,7 +58,8 @@ impl Log for DocLog {
     type Error = Error;
 
     fn current_term(&self) -> result::Result<Term, Error> {
-        let mut term_handler = File::open("term").expect("Could not find term file");
+        let mut term_handler = File::open(format!("{}/{}_{}", self.prefix, self.logid, "term"))
+            .unwrap_or(return Ok(Term::from(0)));
 
         let term: Term = decode_from(&mut term_handler, SizeLimit::Infinite).unwrap();
 
@@ -63,13 +71,14 @@ impl Log for DocLog {
             .read(true)
             .write(true)
             .create(true)
-            .open("term")
+            .open(format!("{}/{}_{}", self.prefix, self.logid, "term"))
             .unwrap();
 
         encode_into(&term, &mut term_handler, SizeLimit::Infinite);
 
         self.set_voted_for(None);
 
+        term_handler.flush();
         Ok(())
     }
 
@@ -81,11 +90,14 @@ impl Log for DocLog {
     }
 
     fn voted_for(&self) -> result::Result<Option<ServerId>, Error> {
-        let mut voted_for_handler = File::open("voted_for").expect("Could not find voted_for file");
+        let mut voted_for_handler =
+            File::open(format!("{}/{}_{}", self.prefix, self.logid, "voted_for"))
+                .unwrap_or(return Ok(None));
 
         let voted_for: Option<ServerId> = decode_from(&mut voted_for_handler, SizeLimit::Infinite)
             .unwrap();
 
+        voted_for_handler.flush();
         Ok(voted_for)
     }
 
@@ -94,7 +106,7 @@ impl Log for DocLog {
             .read(true)
             .write(true)
             .create(true)
-            .open("voted_for")
+            .open(format!("{}/{}_{}", self.prefix, self.logid, "voted_for"))
             .unwrap();
 
         encode_into(&address, &mut voted_for_handler, SizeLimit::Infinite);

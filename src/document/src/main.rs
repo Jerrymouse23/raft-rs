@@ -260,10 +260,12 @@ fn server(serverId: ServerId,
           binding_addr: SocketAddr,
           config: &Config) {
 
-    let persistent_log1 = DocLog::new();
-    let persistent_log2 = DocLog::new();
-    let persistent_log3 = DocLog::new();
-    let persistent_log4 = DocLog::new();
+    // let persistent_log1 = DocLog::new("node1", LogId::from(0));
+    // let persistent_log2 = DocLog::new("node2", LogId::from(1));
+    //    let persistent_log3 = DocLog::new();
+    //   let persistent_log4 = DocLog::new();
+
+
 
     let mut peers = node_id.iter()
         .zip(node_address.iter())
@@ -292,10 +294,11 @@ fn server(serverId: ServerId,
     init(binding_addr, node_addr);
 
     let mut logs: Vec<(LogId, DocLog)> = Vec::new();
-    logs.push((LogId::from(0), persistent_log1));
-    logs.push((LogId::from(1), persistent_log2));
-    logs.push((LogId::from(2), persistent_log3));
-    logs.push((LogId::from(3), persistent_log4));
+
+    for l in config.logs.iter() {
+        let p = DocLog::new(&l.path, LogId::from(l.lid.clone()));
+        logs.push((LogId::from(l.lid), p));
+    }
 
     Server::run(serverId,
                 addr,
