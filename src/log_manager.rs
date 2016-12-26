@@ -92,8 +92,6 @@ impl<L, M> LogManager<L, M>
         let reader = message.get_root::<message::Reader>().unwrap();
         let log_id = LogId(reader.get_log_id());
 
-        println!("Applying Peer Message with logId {:?}", log_id);
-
         // TODO implement error handling
         let mut cons = self.consensus.get_mut(&log_id).unwrap();
 

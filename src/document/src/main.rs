@@ -58,6 +58,7 @@ use document::*;
 use config::*;
 use handler::Handler;
 use doclog::DocLog;
+use raft::persistent_log::{Log, MemLog};
 
 use raft::auth::null::NullAuth;
 use raft::auth::Auth;
@@ -297,7 +298,9 @@ fn server(serverId: ServerId,
 
     for l in config.logs.iter() {
         let p = DocLog::new(&l.path, LogId::from(l.lid.clone()));
-        logs.push((LogId::from(l.lid), p));
+        // let p = MemLog::new();
+        logs.push((LogId::from(l.lid.clone()), p));
+        println!("Init {:?}", l.lid);
     }
 
     Server::run(serverId,

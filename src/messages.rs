@@ -52,6 +52,7 @@ pub fn append_entries_request(term: Term,
                               leader_commit: LogIndex,
                               lid: &LogId)
                               -> Rc<Builder<HeapAllocator>> {
+    println!("Send heartbeat for {:?}", lid);
     let mut message = Builder::new_default();
     {
         let mut request = message.init_root::<message::Builder>();
@@ -76,8 +77,8 @@ pub fn append_entries_response_success(term: Term,
                                        log_index: LogIndex,
                                        lid: &LogId)
                                        -> Rc<Builder<HeapAllocator>> {
+    println!("Send append entry success to leader {:?}", lid);
 
-    println!("Builded log {:?}", lid);
     let mut message = Builder::new_default();
     {
         let mut response = message.init_root::<message::Builder>();
@@ -138,6 +139,7 @@ pub fn request_vote_request(term: Term,
                             last_log_term: Term,
                             lid: &LogId)
                             -> Rc<Builder<HeapAllocator>> {
+    println!("I want to be leader {:?}", lid);
     let mut message = Builder::new_default();
     {
         let mut request = message.init_root::<message::Builder>();
@@ -151,6 +153,7 @@ pub fn request_vote_request(term: Term,
 }
 
 pub fn request_vote_response_granted(term: Term, lid: &LogId) -> Rc<Builder<HeapAllocator>> {
+    println!("I voted for {:?}", lid);
     let mut message = Builder::new_default();
     {
         let mut response = message.init_root::<message::Builder>();
@@ -175,6 +178,7 @@ pub fn request_vote_response_stale_term(term: Term, lid: &LogId) -> Rc<Builder<H
 }
 
 pub fn request_vote_response_already_voted(term: Term, lid: &LogId) -> Rc<Builder<HeapAllocator>> {
+    println!("I voted for myself {:?}", lid);
     let mut message = Builder::new_default();
     {
         let mut response = message.init_root::<message::Builder>();
@@ -204,6 +208,7 @@ pub fn request_vote_response_internal_error(term: Term,
                                             error: &str,
                                             lid: &LogId)
                                             -> Rc<Builder<HeapAllocator>> {
+    println!("Internal vote error {:?}", lid);
     let mut message = Builder::new_default();
     {
         let mut response = message.init_root::<message::Builder>();

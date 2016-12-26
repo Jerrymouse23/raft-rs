@@ -243,10 +243,11 @@ impl<L, M, A> Server<L, M, A>
                       transaction_queue,
                       portal_queue } = actions;
 
-        println!("Timeouts registered \nCount: {:?}  \n{:?}",
-                 timeouts.len(),
-                 timeouts);
+        println!("{:?}", timeouts);
 
+        for (l, i) in self.log_manager.consensus.iter() {
+            println!("{:?} {:?}", l, i.state);
+        }
 
         if clear_peer_messages {
             for &token in self.peer_tokens.values() {
@@ -740,7 +741,6 @@ mod tests {
 
     /// Returns true if the server has an open connection with the client.
     fn client_connected(server: &TestServer, client: ClientId) -> bool {
-        println!("{:?}", server.client_tokens);
         server.client_tokens.contains_key(&client)
     }
 
@@ -877,8 +877,6 @@ mod tests {
             .unwrap();
         stream.flush().unwrap();
         event_loop.run_once(&mut server, None).unwrap();
-
-        println!("{}", client_id);
 
         // Check that the server holds on to the client connection.
         assert!(client_connected(&server, client_id));

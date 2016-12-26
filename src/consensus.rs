@@ -35,8 +35,8 @@ use persistent_log::Log;
 use std::boxed::Box;
 use mio::Timeout as TimeoutHandle;
 
-const ELECTION_MIN: u64 = 1500;
-const ELECTION_MAX: u64 = 3000;
+const ELECTION_MIN: u64 = 3000;
+const ELECTION_MAX: u64 = 5000;
 const HEARTBEAT_DURATION: u64 = 1000;
 
 /// Consensus timeout types.
@@ -219,6 +219,14 @@ impl<L, M> Consensus<L, M>
                 self.append_entries_request(from, request, actions, logid)
             }
             message::Which::AppendEntriesResponse(Ok(response)) => {
+                if self.is_leader() == false {
+                    println!("###### PANIC");
+                    println!("{:?}", self.state);
+                    println!("{:?}", from);
+                    println!("{:?}", logid);
+                    panic!();
+                }
+
                 self.append_entries_response(from, response, actions, logid)
             }
             message::Which::RequestVoteRequest(Ok(request)) => {
@@ -609,9 +617,6 @@ impl<L, M> Consensus<L, M>
         let responder_term = Term::from(response.get_term());
         let local_latest_log_index = self.latest_log_index();
 
-        println!("LOOOOOOOOG ID: {:?}", logid);
-        println!("LOOOOOOOOG ID: {:?}", self.lid);
-
         if local_term < responder_term {
             // Responder has a higher term number. Relinquish leader position (if it is held), and
             // return to follower status.
@@ -718,8 +723,6 @@ impl<L, M> Consensus<L, M>
                             request: request_vote_request::Reader,
                             actions: &mut Actions,
                             logid: &LogId) {
-
-        println!("Sending request vote request for LogId {:?}", logid);
 
         let candidate_term = Term(request.get_term());
         let candidate_log_term = Term(request.get_last_log_term());
@@ -885,7 +888,7 @@ impl<L, M> Consensus<L, M>
 
     /// Triggers a heartbeat timeout for the peer.
     fn heartbeat_timeout(&mut self, peer: ServerId, actions: &mut Actions) {
-        println!("Heartbeat {:?} applied for {:?}", self.lid, peer);
+        println!("Timeout for {:?}", self.lid);
         scoped_assert!(self.is_leader());
         scoped_debug!("HeartbeatTimeout for peer: {}", peer);
         let mut message = Builder::new_default();
@@ -953,8 +956,6 @@ impl<L, M> Consensus<L, M>
         self.state = ConsensusState::Candidate;
         self.candidate_state.clear();
         self.candidate_state.record_vote(self.id);
-
-        println!("Sending a requestvote LogId {:?}", self.lid);
 
         let message = messages::request_vote_request(self.current_term(),
                                                      self.latest_log_index(),
