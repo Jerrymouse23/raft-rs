@@ -52,6 +52,10 @@ impl<L, M> LogManager<L, M>
         self.consensus.get(&index)
     }
 
+    pub fn get_mut(&mut self, index: LogId) -> Option<&mut Consensus<L, M>> {
+        self.consensus.get_mut(&index)
+    }
+
     pub fn active_transaction(&self, logid: &LogId) -> bool {
         self.consensus.get(logid).unwrap().transaction.isActive
     }
@@ -133,15 +137,5 @@ impl<L, M> LogManager<L, M>
         for (lid, mut con) in self.consensus.iter_mut() {
             con.handle_queue(actions);
         }
-    }
-
-    fn into_reader<C>(message: &Builder<C>) -> Reader<OwnedSegments>
-        where C: Allocator
-    {
-        let mut buf = Cursor::new(Vec::new());
-
-        serialize::write_message(&mut buf, message).unwrap();
-        buf.set_position(0);
-        serialize::read_message(&mut buf, ReaderOptions::new()).unwrap()
     }
 }

@@ -83,9 +83,6 @@ pub struct Server<L, M, A>
     /// Index of portal id to connection token
     portals_tokens: HashSet<Token>,
 
-    /// Currently registered consensus timeouts.
-    consensus_timeouts: HashMap<ConsensusTimeout, TimeoutHandle>,
-
     /// Currently registered reconnection timeouts.
     reconnection_timeouts: HashMap<Token, TimeoutHandle>,
 
@@ -132,7 +129,6 @@ impl<L, M, A> Server<L, M, A>
             peer_tokens: HashMap::new(),
             portals_tokens: HashSet::new(),
             client_tokens: HashMap::new(),
-            consensus_timeouts: HashMap::new(),
             reconnection_timeouts: HashMap::new(),
             community_string: community_string.clone(),
             auth: auth,
@@ -281,14 +277,21 @@ impl<L, M, A> Server<L, M, A>
             }
         }
 
-        if clear_timeouts {
-            for (timeout, &handle) in &self.consensus_timeouts {
+        for lid in clear_timeouts {
+            let mut consensus = self.log_manager
+                .get_mut(lid)
+                .expect(&format!("Log {:?} is not registered in the log_manager", lid));
+
+            for (timeout, &handle) in consensus.consensus_timeouts.iter() {
+                println!("Clear timeout {:?}", timeout);
                 scoped_assert!(event_loop.clear_timeout(handle),
-                               "unable to clear timeout: {:?}",
+                               "unable to clear timeout; {:?}",
                                timeout);
             }
-            self.consensus_timeouts.clear();
+
+            consensus.consensus_timeouts.clear();
         }
+
         for timeout in timeouts {
             let duration = timeout.duration_ms();
 
@@ -302,7 +305,12 @@ impl<L, M, A> Server<L, M, A>
             // maximum of one timeout per peer, so this unwrap should be safe.
             let handle = event_loop.timeout_ms(ServerTimeout::Consensus(lid, timeout), duration)
                 .unwrap();
-            self.consensus_timeouts
+
+            let mut consensus = self.log_manager
+                .get_mut(lid)
+                .expect(&format!("Log {:?} is not registered in the log_manager", lid));
+
+            consensus.consensus_timeouts
                 .insert(timeout, handle)
                 .map(|handle| {
                     scoped_assert!(event_loop.clear_timeout(handle),
@@ -620,13 +628,20 @@ impl<L, M, A> Handler for Server<L, M, A>
         push_log_scope!("{:?}", self);
         scoped_trace!("timeout: {:?}", &timeout);
         match timeout {
-            ServerTimeout::Consensus(lid, consensus) => {
+            ServerTimeout::Consensus(lid, ctimeout) => {
                 //
-                scoped_assert!(self.consensus_timeouts.remove(&consensus).is_some(),
+                scoped_assert!(self.log_manager
+                                   .get_mut(lid)
+                                   .expect(&format!("Log {:?} is not registered in the \
+                                                     log_manager",
+                                                    lid))
+                                   .consensus_timeouts
+                                   .remove(&ctimeout)
+                                   .is_some(),
                                "missing timeout: {:?}",
                                timeout);
                 let mut actions = Actions::new();
-                self.log_manager.apply_timeout(&lid, consensus, &mut actions);
+                self.log_manager.apply_timeout(&lid, ctimeout, &mut actions);
                 self.execute_actions(event_loop, actions);
             }
 

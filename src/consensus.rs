@@ -35,8 +35,8 @@ use persistent_log::Log;
 use std::boxed::Box;
 use mio::Timeout as TimeoutHandle;
 
-const ELECTION_MIN: u64 = 5000;
-const ELECTION_MAX: u64 = 10000;
+const ELECTION_MIN: u64 = 8000;
+const ELECTION_MAX: u64 = 12000;
 const HEARTBEAT_DURATION: u64 = 1000;
 
 /// Consensus timeout types.
@@ -68,7 +68,7 @@ pub struct Actions {
     /// Messages to be send to clients.
     pub client_messages: Vec<(ClientId, Rc<Builder<HeapAllocator>>)>,
     /// Whether to clear existing consensus timeouts.
-    pub clear_timeouts: bool,
+    pub clear_timeouts: Vec<LogId>,
     /// Any new timeouts to create.
     pub timeouts: Vec<ConsensusTimeout>,
     /// Whether to clear outbound peer message queues.
@@ -108,7 +108,7 @@ impl Actions {
         Actions {
             peer_messages: vec![],
             client_messages: vec![],
-            clear_timeouts: false,
+            clear_timeouts: Vec::with_capacity(1),
             timeouts: vec![],
             clear_peer_messages: false,
             transaction_queue: vec![],
@@ -148,6 +148,8 @@ pub struct Consensus<L, M> {
     /// The ID of this consensus instance for the log_manager
     lid: LogId,
     pub requests_in_queue: Vec<(ClientId, Builder<HeapAllocator>)>,
+    /// Currently registered consensus timeouts.
+    pub consensus_timeouts: HashMap<ConsensusTimeout, TimeoutHandle>,
 }
 
 impl<L, M> Consensus<L, M>
@@ -177,6 +179,7 @@ impl<L, M> Consensus<L, M>
             transaction: Transaction::new(),
             lid: lid,
             requests_in_queue: Vec::new(),
+            consensus_timeouts: HashMap::new(),
         }
     }
 
@@ -450,6 +453,7 @@ impl<L, M> Consensus<L, M>
                               from: ServerId,
                               request: append_entries_request::Reader,
                               actions: &mut Actions) {
+        println!("Heartbeat {:?}", self.lid);
         scoped_trace!("AppendEntriesRequest from peer {}", &from);
 
         let leader_term = Term(request.get_term());
@@ -551,6 +555,7 @@ impl<L, M> Consensus<L, M>
                     }
                 };
 
+                actions.clear_timeouts.push(self.lid);
                 actions.timeouts.push(ConsensusTimeout::Election(self.lid));
                 actions.peer_messages.push((from, message.clone()));
                 actions.portal_queue.push((from, message));
@@ -702,8 +707,6 @@ impl<L, M> Consensus<L, M>
                             candidate: ServerId,
                             request: request_vote_request::Reader,
                             actions: &mut Actions) {
-
-        println!("Peer {} wants to leader for {:?}", candidate, self.lid);
 
         let candidate_term = Term(request.get_term());
         let candidate_log_term = Term(request.get_last_log_term());
@@ -896,6 +899,7 @@ impl<L, M> Consensus<L, M>
             self.state = ConsensusState::Leader;
             self.leader_state.reinitialize(latest_log_index);
         } else {
+            println!("Election timeout {:?}", self.lid);
             scoped_info!("ElectionTimeout: transitioning to Candidate");
             self.transition_to_candidate(actions);
         }
@@ -920,7 +924,7 @@ impl<L, M> Consensus<L, M>
             actions.peer_messages.push((peer, message.clone()));
         }
 
-        actions.clear_timeouts = true;
+        actions.clear_timeouts.push(self.lid);
         actions.clear_peer_messages = true;
     }
 
@@ -1004,7 +1008,7 @@ impl<L, M> Consensus<L, M>
         self.log.set_current_term(term).unwrap();
         self.state = ConsensusState::Follower;
         self.follower_state.set_leader(leader);
-        actions.clear_timeouts = true;
+        actions.clear_timeouts.push(self.lid);
         actions.clear_peer_messages = true;
         actions.timeouts.push(ConsensusTimeout::Election(self.lid));
     }

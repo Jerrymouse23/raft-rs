@@ -72,6 +72,7 @@ impl Handler {
                 session: Uuid,
                 lid: LogId)
                 -> Result<Uuid> {
+
         let mut client = Self::new_client(addr, username, plain_password, lid);
 
         let payload = encode(&Message::Post(document.clone()), SizeLimit::Infinite).unwrap();
