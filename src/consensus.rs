@@ -35,8 +35,8 @@ use persistent_log::Log;
 use std::boxed::Box;
 use mio::Timeout as TimeoutHandle;
 
-const ELECTION_MIN: u64 = 3000;
-const ELECTION_MAX: u64 = 5000;
+const ELECTION_MIN: u64 = 5000;
+const ELECTION_MAX: u64 = 10000;
 const HEARTBEAT_DURATION: u64 = 1000;
 
 /// Consensus timeout types.
@@ -127,7 +127,7 @@ pub struct Consensus<L, M> {
     peers: HashMap<ServerId, SocketAddr>,
 
     /// The persistent log.
-    log: L,
+    pub log: L,
     /// The client state machine to which client commands are applied.
     state_machine: Rc<RefCell<M>>,
 
@@ -200,8 +200,7 @@ impl<L, M> Consensus<L, M>
                                           &Self::into_reader(&builder)
                                               .get_root::<client_request::Reader>()
                                               .unwrap(),
-                                          actions,
-                                          &lid);
+                                          actions);
             }
         }
     }
@@ -210,30 +209,21 @@ impl<L, M> Consensus<L, M>
     pub fn apply_peer_message(&mut self,
                               from: ServerId,
                               message: &message::Reader,
-                              actions: &mut Actions,
-                              logid: &LogId) {
+                              actions: &mut Actions) {
         push_log_scope!("{:?}", self);
         let reader = message.which().unwrap();
         match reader {
             message::Which::AppendEntriesRequest(Ok(request)) => {
-                self.append_entries_request(from, request, actions, logid)
+                self.append_entries_request(from, request, actions)
             }
             message::Which::AppendEntriesResponse(Ok(response)) => {
-                if self.is_leader() == false {
-                    println!("###### PANIC");
-                    println!("{:?}", self.state);
-                    println!("{:?}", from);
-                    println!("{:?}", logid);
-                    panic!();
-                }
-
-                self.append_entries_response(from, response, actions, logid)
+                self.append_entries_response(from, response, actions)
             }
             message::Which::RequestVoteRequest(Ok(request)) => {
-                self.request_vote_request(from, request, actions, logid)
+                self.request_vote_request(from, request, actions)
             }
             message::Which::RequestVoteResponse(Ok(response)) => {
-                self.request_vote_response(from, response, actions, logid)
+                self.request_vote_response(from, response, actions)
             }
             message::Which::TransactionBegin(Ok(response)) => {
                 let session = Uuid::from_bytes(response.get_session().unwrap()).unwrap();
@@ -272,10 +262,7 @@ impl<L, M> Consensus<L, M>
     pub fn apply_client_message(&mut self,
                                 from: ClientId,
                                 message: &client_request::Reader,
-                                actions: &mut Actions,
-                                logid: &LogId) {
-
-        assert_eq!(*logid, self.lid);
+                                actions: &mut Actions) {
 
         push_log_scope!("{:?}", self);
         let reader = message.which().unwrap();
@@ -290,27 +277,27 @@ impl<L, M> Consensus<L, M>
                         let session = request.get_session().unwrap();
                         let entry = request.get_entry().unwrap();
 
-                        let message = messages::proposal_request(session, entry, logid);
+                        let message = messages::proposal_request(session, entry, &self.lid);
 
-                        actions.transaction_queue.push((*logid, from, message));
+                        actions.transaction_queue.push((self.lid, from, message));
 
                         self.transaction.count_up();
                     } else {
-                        self.proposal_request(from, request, actions, logid)
+                        self.proposal_request(from, request, actions)
                     }
 
                 } else {
-                    self.proposal_request(from, request, actions, logid)
+                    self.proposal_request(from, request, actions)
                 }
             }
             client_request::Which::Query(Ok(query)) => {
                 if self.transaction.isActive {
                     let query = query.get_query().unwrap();
-                    let message = messages::query_request(query, logid);
+                    let message = messages::query_request(query, &self.lid);
 
-                    actions.transaction_queue.push((*logid, from, message));
+                    actions.transaction_queue.push((self.lid, from, message));
                 } else {
-                    self.query_request(from, query, actions, logid);
+                    self.query_request(from, query, actions);
                 }
             }
             client_request::Which::TransactionBegin(Ok(request)) => {
@@ -318,11 +305,11 @@ impl<L, M> Consensus<L, M>
                     let session = Uuid::from_bytes(request.get_session().unwrap()).unwrap();
                     self.transaction
                         .begin(session, self.commit_index, self.last_applied, None);
-                    self.transaction.broadcast_begin(logid, actions);
+                    self.transaction.broadcast_begin(&self.lid, actions);
 
                     let message = messages::command_transaction_success(request.get_session()
                                                                             .unwrap(),
-                                                                        logid);
+                                                                        &self.lid);
 
                     actions.client_messages.push((from, message));
                 } else {
@@ -330,19 +317,19 @@ impl<L, M> Consensus<L, M>
                         messages::command_response_not_leader(&self.peers[&self.follower_state
                                                                   .leader
                                                                   .unwrap()],
-                                                              logid);
+                                                              &self.lid);
                     actions.client_messages.push((from, message));
                 }
             }
             client_request::Which::TransactionCommit(Ok(request)) => {
                 if self.is_leader() {
                     self.transaction.end();
-                    self.transaction.broadcast_end(logid, actions);
+                    self.transaction.broadcast_end(&self.lid, actions);
 
                     let message = messages::command_transaction_success("Transaction has been \
                                                                          stopped"
                                                                             .as_bytes(),
-                                                                        logid);
+                                                                        &self.lid);
 
                     actions.client_messages.push((from, message));
 
@@ -351,7 +338,7 @@ impl<L, M> Consensus<L, M>
                         messages::command_response_not_leader(&self.peers[&self.follower_state
                                                                   .leader
                                                                   .unwrap()],
-                                                              logid);
+                                                              &self.lid);
                     actions.client_messages.push((from, message));
                 }
             }
@@ -361,9 +348,9 @@ impl<L, M> Consensus<L, M>
                     self.commit_index = commit_index;
                     self.last_applied = last_applied;
                     self.log.rollback(commit_index);
-                    self.transaction.broadcast_rollback(logid, actions);
+                    self.transaction.broadcast_rollback(&self.lid, actions);
 
-                    let message = messages::command_transaction_success("".as_bytes(), logid);
+                    let message = messages::command_transaction_success("".as_bytes(), &self.lid);
 
                     for &peer in self.peers.keys() {
                         self.leader_state.set_next_index(peer, commit_index + 1);
@@ -386,7 +373,7 @@ impl<L, M> Consensus<L, M>
                         messages::command_response_not_leader(&self.peers[&self.follower_state
                                                                   .leader
                                                                   .unwrap()],
-                                                              logid);
+                                                              &self.lid);
                     actions.client_messages.push((from, message));
                 }
             }
@@ -462,17 +449,14 @@ impl<L, M> Consensus<L, M>
     fn append_entries_request(&mut self,
                               from: ServerId,
                               request: append_entries_request::Reader,
-                              actions: &mut Actions,
-                              logid: &LogId) {
-        assert_eq!(*logid, self.lid);
-
+                              actions: &mut Actions) {
         scoped_trace!("AppendEntriesRequest from peer {}", &from);
 
         let leader_term = Term(request.get_term());
         let current_term = self.current_term();
 
         if leader_term < current_term {
-            let message = messages::append_entries_response_stale_term(current_term, logid);
+            let message = messages::append_entries_response_stale_term(current_term, &self.lid);
             actions.peer_messages.push((from, message));
             return;
         }
@@ -502,7 +486,7 @@ impl<L, M> Consensus<L, M>
                                       latest_log_index);
 
                         messages::append_entries_response_inconsistent_prev_entry(
-                            self.current_term(), leader_prev_log_index,logid)
+                            self.current_term(), leader_prev_log_index,&self.lid)
                     } else {
                         let existing_term = if leader_prev_log_index == LogIndex::from(0) {
                             Term::from(0)
@@ -518,7 +502,7 @@ impl<L, M> Consensus<L, M>
                             // If an existing entry conflicts with a new one (same index but different terms),
                             // delete the existing entry and all that follow it
                             messages::append_entries_response_inconsistent_prev_entry(self.current_term(),
-                                leader_prev_log_index,logid)
+                                leader_prev_log_index,&self.lid)
                         } else {
                             scoped_debug!("Everything ok");
                             if let Ok(entries) = request.get_entries() {
@@ -558,19 +542,18 @@ impl<L, M> Consensus<L, M>
                                 panic!("AppendEntriesRequest: no entry list")
                             }
 
-
                             messages::append_entries_response_success(self.current_term(),
                                                                       self.log
                                                                           .latest_log_index()
                                                                           .unwrap(),
-                                                                      logid)
+                                                                      &self.lid)
                         }
                     }
                 };
-                actions.peer_messages.push((from, message.clone()));
-                actions.portal_queue.push((from, message));
 
                 actions.timeouts.push(ConsensusTimeout::Election(self.lid));
+                actions.peer_messages.push((from, message.clone()));
+                actions.portal_queue.push((from, message));
             }
             ConsensusState::Candidate => {
                 // recognize the new leader, return to follower state, and apply the entries
@@ -579,7 +562,7 @@ impl<L, M> Consensus<L, M>
                              from,
                              leader_term);
                 self.transition_to_follower(leader_term, from, actions);
-                return self.append_entries_request(from, request, actions, logid);
+                return self.append_entries_request(from, request, actions);
             }
             ConsensusState::Leader => {
                 if leader_term == current_term {
@@ -597,7 +580,7 @@ impl<L, M> Consensus<L, M>
                              from,
                              leader_term);
                 self.transition_to_follower(leader_term, from, actions);
-                return self.append_entries_request(from, request, actions, logid);
+                return self.append_entries_request(from, request, actions);
             }
         }
     }
@@ -609,10 +592,7 @@ impl<L, M> Consensus<L, M>
     fn append_entries_response(&mut self,
                                from: ServerId,
                                response: append_entries_response::Reader,
-                               actions: &mut Actions,
-                               logid: &LogId) {
-        assert_eq!(*logid, self.lid);
-
+                               actions: &mut Actions) {
         let local_term = self.current_term();
         let responder_term = Term::from(response.get_term());
         let local_latest_log_index = self.latest_log_index();
@@ -704,7 +684,7 @@ impl<L, M> Consensus<L, M>
                                                            prev_log_term,
                                                            &entries,
                                                            self.commit_index,
-                                                           logid);
+                                                           &self.lid);
 
             self.leader_state.set_next_index(from, local_latest_log_index + 1);
             actions.peer_messages.push((from, message));
@@ -712,7 +692,7 @@ impl<L, M> Consensus<L, M>
             // If the peer is caught up, set a heartbeat timeout.
             scoped_trace!("AppendEntriesResponse: scheduling heartbeat for peer {}",
                           from);
-            let timeout = ConsensusTimeout::Heartbeat(from, *logid);
+            let timeout = ConsensusTimeout::Heartbeat(from, self.lid);
             actions.timeouts.push(timeout);
         }
     }
@@ -721,8 +701,9 @@ impl<L, M> Consensus<L, M>
     fn request_vote_request(&mut self,
                             candidate: ServerId,
                             request: request_vote_request::Reader,
-                            actions: &mut Actions,
-                            logid: &LogId) {
+                            actions: &mut Actions) {
+
+        println!("Peer {} wants to leader for {:?}", candidate, self.lid);
 
         let candidate_term = Term(request.get_term());
         let candidate_log_term = Term(request.get_last_log_term());
@@ -747,20 +728,20 @@ impl<L, M> Consensus<L, M>
         };
 
         let message = if candidate_term < local_term {
-            messages::request_vote_response_stale_term(new_local_term, logid)
+            messages::request_vote_response_stale_term(new_local_term, &self.lid)
         } else if candidate_log_term < self.latest_log_term() ||
                                 candidate_log_index < self.latest_log_index() {
-            messages::request_vote_response_inconsistent_log(new_local_term, logid)
+            messages::request_vote_response_inconsistent_log(new_local_term, &self.lid)
         } else {
             match self.log.voted_for().unwrap() {
                 None => {
                     self.log.set_voted_for(Some(candidate)).unwrap();
-                    messages::request_vote_response_granted(new_local_term, logid)
+                    messages::request_vote_response_granted(new_local_term, &self.lid)
                 }
                 Some(voted_for) if voted_for == candidate => {
-                    messages::request_vote_response_granted(new_local_term, logid)
+                    messages::request_vote_response_granted(new_local_term, &self.lid)
                 }
-                _ => messages::request_vote_response_already_voted(new_local_term, logid),
+                _ => messages::request_vote_response_already_voted(new_local_term, &self.lid),
             }
         };
         actions.peer_messages.push((candidate, message));
@@ -770,10 +751,8 @@ impl<L, M> Consensus<L, M>
     fn request_vote_response(&mut self,
                              from: ServerId,
                              response: request_vote_response::Reader,
-                             actions: &mut Actions,
-                             logid: &LogId) {
+                             actions: &mut Actions) {
 
-        assert_eq!(*logid, self.lid);
         scoped_debug!("RequestVoteResponse from peer {}", from);
 
         let local_term = self.current_term();
@@ -811,17 +790,16 @@ impl<L, M> Consensus<L, M>
     pub fn proposal_request(&mut self,
                             from: ClientId,
                             request: proposal_request::Reader,
-                            actions: &mut Actions,
-                            logid: &LogId) {
+                            actions: &mut Actions) {
 
-        assert_eq!(*logid, self.lid);
         if self.is_candidate() || (self.is_follower() && self.follower_state.leader.is_none()) {
-            actions.client_messages.push((from, messages::command_response_unknown_leader(logid)));
+            actions.client_messages
+                .push((from, messages::command_response_unknown_leader(&self.lid)));
         } else if self.is_follower() {
             let message = messages::command_response_not_leader(&self.peers[&self.follower_state
                                                                     .leader
                                                                     .unwrap()],
-                                                                logid);
+                                                                &self.lid);
             actions.client_messages.push((from, message));
         } else if let Ok(entry) = request.get_entry() {
             let prev_log_index = self.latest_log_index();
@@ -842,7 +820,7 @@ impl<L, M> Consensus<L, M>
                                                                prev_log_term,
                                                                &[(term, entry)],
                                                                self.commit_index,
-                                                               logid);
+                                                               &self.lid);
                 for &peer in self.peers.keys() {
                     if self.leader_state.next_index(&peer) == log_index {
                         actions.peer_messages.push((peer, message.clone()));
@@ -859,19 +837,18 @@ impl<L, M> Consensus<L, M>
     pub fn query_request(&mut self,
                          from: ClientId,
                          request: query_request::Reader,
-                         actions: &mut Actions,
-                         logid: &LogId) {
+                         actions: &mut Actions) {
 
-        assert_eq!(*logid, self.lid);
         scoped_trace!("query from Client({})", from);
 
         if self.is_candidate() || (self.is_follower() && self.follower_state.leader.is_none()) {
-            actions.client_messages.push((from, messages::command_response_unknown_leader(logid)));
+            actions.client_messages
+                .push((from, messages::command_response_unknown_leader(&self.lid)));
         } else {
             // TODO: This is probably not exactly safe.
             let query = request.get_query().unwrap();
             let result = self.state_machine.borrow().query(query);
-            let message = messages::command_response_success(&result, logid);
+            let message = messages::command_response_success(&result, &self.lid);
             actions.client_messages.push((from, message));
         }
     }
@@ -888,7 +865,6 @@ impl<L, M> Consensus<L, M>
 
     /// Triggers a heartbeat timeout for the peer.
     fn heartbeat_timeout(&mut self, peer: ServerId, actions: &mut Actions) {
-        println!("Timeout for {:?}", self.lid);
         scoped_assert!(self.is_leader());
         scoped_debug!("HeartbeatTimeout for peer: {}", peer);
         let mut message = Builder::new_default();

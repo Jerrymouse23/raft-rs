@@ -9,6 +9,7 @@ use state_machine::StateMachine;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::io::Cursor;
+use uuid::Uuid;
 
 use capnp::message::{Builder, HeapAllocator, Allocator, Reader, ReaderSegments, ReaderOptions};
 use capnp::serialize::{self, OwnedSegments};
@@ -72,15 +73,16 @@ impl<L, M> LogManager<L, M>
                                    actions: &mut Actions)
         where S: ReaderSegments
     {
+        // TODO: implement error handling
         let reader = message.get_root::<client_request::Reader>().unwrap();
-        let log_id = LogId(reader.get_log_id());
+        let log_id = LogId(Uuid::from_bytes(reader.get_log_id().unwrap()).unwrap());
 
         scoped_trace!("Received client message on log {:?}", log_id);
 
         // TODO implement error handling
         let mut cons = self.consensus.get_mut(&log_id).unwrap();
 
-        cons.apply_client_message(from, &reader, actions, &log_id);
+        cons.apply_client_message(from, &reader, actions);
     }
 
     pub fn apply_peer_message<S>(&mut self,
@@ -90,12 +92,25 @@ impl<L, M> LogManager<L, M>
         where S: ReaderSegments
     {
         let reader = message.get_root::<message::Reader>().unwrap();
-        let log_id = LogId(reader.get_log_id());
+
+        let logid_in_bytes = reader.get_log_id()
+            .expect("LogId property was not set in the message");
+        let id = match Uuid::from_bytes(logid_in_bytes) {
+            Ok(id) => id,
+            Err(_) => {
+                scoped_warn!("Received a message with an invalid LogId; Discarding it");
+                return;
+            }
+        };
+
+        let log_id = LogId(id);
 
         // TODO implement error handling
-        let mut cons = self.consensus.get_mut(&log_id).unwrap();
+        let mut cons = self.consensus
+            .get_mut(&log_id)
+            .expect(&format!("There is not consensus instance with this {:?}", log_id));
 
-        cons.apply_peer_message(from, &reader, actions, &log_id);
+        cons.apply_peer_message(from, &reader, actions);
     }
 
     pub fn peer_connection_reset(&mut self,

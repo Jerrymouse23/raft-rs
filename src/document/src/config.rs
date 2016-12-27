@@ -35,7 +35,7 @@ pub struct PeerConfig {
 #[derive(Debug,RustcDecodable,Clone)]
 pub struct LogConfig {
     pub path: String,
-    pub lid: u64,
+    pub lid: String,
 }
 
 impl Config {

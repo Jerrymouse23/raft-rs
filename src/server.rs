@@ -243,10 +243,12 @@ impl<L, M, A> Server<L, M, A>
                       transaction_queue,
                       portal_queue } = actions;
 
-        println!("{:?}", timeouts);
-
+        println!("###################");
         for (l, i) in self.log_manager.consensus.iter() {
-            println!("{:?} {:?}", l, i.state);
+            println!("{:?} {:?} > {:?}",
+                     l,
+                     i.state,
+                     i.log.current_term().unwrap());
         }
 
         if clear_peer_messages {
@@ -624,7 +626,6 @@ impl<L, M, A> Handler for Server<L, M, A>
                                "missing timeout: {:?}",
                                timeout);
                 let mut actions = Actions::new();
-                println!("Timeout for {:?}", &lid);
                 self.log_manager.apply_timeout(&lid, consensus, &mut actions);
                 self.execute_actions(event_loop, actions);
             }

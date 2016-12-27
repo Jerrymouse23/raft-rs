@@ -329,14 +329,19 @@ impl fmt::Display for ClientId {
 
 /// The ID of a Raft log.
 #[derive(Copy, Clone, Hash, Eq,PartialOrd,Ord)]
-pub struct LogId(u64);
+pub struct LogId(Uuid);
 impl LogId {
     pub fn new() -> LogId {
-        LogId(0)
+        LogId(Uuid::new_v4())
     }
 
-    pub fn as_u64(self) -> u64 {
-        self.0
+    pub fn as_bytes(self) -> [u8; 16] {
+        *self.0.as_bytes()
+    }
+
+    pub fn from(i: String) -> std::result::Result<Self, uuid::ParseError> {
+        let id = try!(Uuid::parse_str(&i));
+        Ok(LogId(id))
     }
 }
 impl fmt::Debug for LogId {
@@ -347,18 +352,6 @@ impl fmt::Debug for LogId {
 impl fmt::Display for LogId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Display::fmt(&self.0, f)
-    }
-}
-
-impl From<u64> for LogId {
-    fn from(val: u64) -> LogId {
-        LogId(val)
-    }
-}
-
-impl Into<u64> for LogId {
-    fn into(self) -> u64 {
-        self.0
     }
 }
 

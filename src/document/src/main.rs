@@ -22,7 +22,7 @@ extern crate toml;
 
 pub mod document;
 pub mod io_handler;
-pub mod http_handler;
+// pub mod http_handler;
 pub mod handler;
 pub mod config;
 pub mod doclog;
@@ -63,7 +63,7 @@ use raft::persistent_log::{Log, MemLog};
 use raft::auth::null::NullAuth;
 use raft::auth::Auth;
 
-use http_handler::*;
+// use http_handler::*;
 
 static USAGE: &'static str = "
 A replicated document database.
@@ -113,7 +113,7 @@ struct Args {
     arg_password: Option<String>,
     arg_username: Option<String>,
     arg_transid: Option<String>,
-    arg_lid: Option<u64>,
+    arg_lid: Option<String>,
 }
 fn main() {
     env_logger::init().unwrap();
@@ -144,7 +144,7 @@ fn main() {
             _ => panic!("The node address given must be IPv4"),
         };
 
-        http_handler::init(parse_addr(&config.server.binding_addr), node_addr);
+        // http_handler::init(parse_addr(&config.server.binding_addr), node_addr);
         server(ServerId::from(config.server.node_id),
                local_addr,
                node_ids,
@@ -162,14 +162,14 @@ fn main() {
             id,
             args.arg_username.unwrap(),
             args.arg_password.unwrap(),
-            LogId::from(args.arg_lid.unwrap()));
+            LogId::from(args.arg_lid.unwrap()).unwrap());
     } else if args.cmd_post {
         post(parse_addr(&args.arg_node_address.unwrap()),
              &args.arg_filepath,
              args.arg_username.unwrap(),
              args.arg_password.unwrap(),
              Uuid::new_v4(),
-             LogId::from(args.arg_lid.unwrap()));
+             LogId::from(args.arg_lid.unwrap()).unwrap());
     } else if args.cmd_remove {
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
             Ok(id) => id,
@@ -181,7 +181,7 @@ fn main() {
                args.arg_username.unwrap(),
                args.arg_password.unwrap(),
                Uuid::new_v4(),
-               LogId::from(args.arg_lid.unwrap()));
+               LogId::from(args.arg_lid.unwrap()).unwrap());
     } else if args.cmd_put {
 
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
@@ -195,26 +195,26 @@ fn main() {
             args.arg_username.unwrap(),
             args.arg_password.unwrap(),
             Uuid::new_v4(),
-            LogId::from(args.arg_lid.unwrap()));
+            LogId::from(args.arg_lid.unwrap()).unwrap());
     } else if args.cmd_begintrans {
         let res = Handler::begin_transaction(parse_addr(&args.arg_node_address.unwrap()),
                                              &args.arg_username.unwrap(),
                                              &args.arg_password.unwrap(),
                                              Uuid::new_v4(),
-                                             LogId::from(args.arg_lid.unwrap()));
+                                             LogId::from(args.arg_lid.unwrap()).unwrap());
 
         println!("{}", res.unwrap());
     } else if args.cmd_endtrans {
         let res = Handler::commit_transaction(parse_addr(&args.arg_node_address.unwrap()),
                                               &args.arg_username.unwrap(),
                                               &args.arg_password.unwrap(),
-                                              LogId::from(args.arg_lid.unwrap()));
+                                              LogId::from(args.arg_lid.unwrap()).unwrap());
         println!("{}", res.unwrap());
     } else if args.cmd_rollback {
         let res = Handler::rollback_transaction(parse_addr(&args.arg_node_address.unwrap()),
                                                 &args.arg_username.unwrap(),
                                                 &args.arg_password.unwrap(),
-                                                LogId::from(args.arg_lid.unwrap()));
+                                                LogId::from(args.arg_lid.unwrap()).unwrap());
 
         println!("{}", res.unwrap());
     } else if args.cmd_transpost {
@@ -223,7 +223,7 @@ fn main() {
              args.arg_username.unwrap(),
              args.arg_password.unwrap(),
              Uuid::parse_str(&args.arg_transid.unwrap()).unwrap(),
-             LogId::from(args.arg_lid.unwrap()));
+             LogId::from(args.arg_lid.unwrap()).unwrap());
 
     } else if args.cmd_transremove {
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
@@ -236,7 +236,7 @@ fn main() {
                args.arg_username.unwrap(),
                args.arg_password.unwrap(),
                Uuid::parse_str(&args.arg_transid.unwrap()).unwrap(),
-               LogId::from(args.arg_lid.unwrap()));
+               LogId::from(args.arg_lid.unwrap()).unwrap());
     } else if args.cmd_transput {
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
             Ok(id) => id,
@@ -249,7 +249,7 @@ fn main() {
             args.arg_username.unwrap(),
             args.arg_password.unwrap(),
             Uuid::parse_str(&args.arg_transid.unwrap()).unwrap(),
-            LogId::from(args.arg_lid.unwrap()));
+            LogId::from(args.arg_lid.unwrap()).unwrap());
     }
 }
 
@@ -292,14 +292,14 @@ fn server(serverId: ServerId,
         _ => panic!("The node_address must be IPv4"),
     };
 
-    init(binding_addr, node_addr);
+    // init(binding_addr, node_addr);
 
-    let mut logs: Vec<(LogId, DocLog)> = Vec::new();
+    let mut logs: Vec<(LogId, MemLog)> = Vec::new();
 
     for l in config.logs.iter() {
-        let p = DocLog::new(&l.path, LogId::from(l.lid.clone()));
-        // let p = MemLog::new();
-        logs.push((LogId::from(l.lid.clone()), p));
+        // let p = DocLog::new(&l.path, LogId::from(l.lid.clone()).unwrap());
+        let p = MemLog::new();
+        logs.push((LogId::from(l.lid.clone()).unwrap(), p));
         println!("Init {:?}", l.lid);
     }
 
