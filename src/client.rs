@@ -254,7 +254,9 @@ mod tests {
     use {Client, messages, Result, LogId};
     use messages_capnp::{connection_preamble, client_request};
 
-    static lid: LogId = LogId(0);
+    lazy_static!{
+        static ref lid: LogId = LogId(Uuid::new_v4());
+    }
 
     fn expect_preamble(connection: &mut TcpStream, client_id: Uuid) -> Result<bool> {
         let message = try!(serialize::read_message(connection, ReaderOptions::new()));
@@ -264,7 +266,7 @@ mod tests {
             connection_preamble::id::Which::Client(client) => {
                 let client = try!(client);
 
-                let id = Uuid::from_bytes(client.get_id().unwrap()).expect("valid bytes");
+                let id = Uuid::from_bytes(client.get_id().unwrap()).expect("va*lid bytes");
 
                 Ok(id == client_id)
             } 
@@ -292,8 +294,10 @@ mod tests {
         let test_addr = test_server.local_addr().unwrap();
         cluster.insert(test_addr);
 
-        let mut client =
-            Client::new::<NullAuth>(cluster, "username".to_string(), "password".to_string(), lid);
+        let mut client = Client::new::<NullAuth>(cluster,
+                                                 "username".to_string(),
+                                                 "password".to_string(),
+                                                 *lid);
         let client_id = client.id.0.clone();
         let to_propose = b"Bears";
 
@@ -307,7 +311,7 @@ mod tests {
             expect_preamble(&mut connection, client_id).unwrap();
             expect_proposal(&mut connection, to_propose).unwrap();
             // Send response! (success!)
-            let response = messages::command_response_success(b"Foxes", &lid);
+            let response = messages::command_response_success(b"Foxes", &*lid);
             serialize::write_message(&mut connection, &*response).unwrap();
             connection.flush().unwrap();
         });
@@ -330,8 +334,10 @@ mod tests {
         let test_addr = test_server.local_addr().unwrap();
         cluster.insert(test_addr);
 
-        let mut client =
-            Client::new::<NullAuth>(cluster, "username".to_string(), "password".to_string(), lid);
+        let mut client = Client::new::<NullAuth>(cluster,
+                                                 "username".to_string(),
+                                                 "password".to_string(),
+                                                 *lid);
         let to_propose = b"Bears";
 
         // The client connects on the proposal.
@@ -343,7 +349,7 @@ mod tests {
             scoped_debug!("Should get proposal. Responds UnknownLeader");
             expect_proposal(&mut connection, to_propose).unwrap();
             // Send response! (unknown leader!) Client should drop connection.
-            let response = messages::command_response_unknown_leader(&lid);
+            let response = messages::command_response_unknown_leader(&*lid);
             serialize::write_message(&mut connection, &*response).unwrap();
             connection.flush().unwrap();
         });
@@ -366,8 +372,10 @@ mod tests {
         let second_addr = second_server.local_addr().unwrap();
         cluster.insert(second_addr);
 
-        let mut client =
-            Client::new::<NullAuth>(cluster, "username".to_string(), "password".to_string(), lid);
+        let mut client = Client::new::<NullAuth>(cluster,
+                                                 "username".to_string(),
+                                                 "password".to_string(),
+                                                 *lid);
         let client_id = client.id.0.clone();
         let to_propose = b"Bears";
 
@@ -381,7 +389,7 @@ mod tests {
             expect_proposal(&mut connection, to_propose).unwrap();
 
             // Send response! (not leader!)
-            let response = messages::command_response_not_leader(&second_addr, &lid);
+            let response = messages::command_response_not_leader(&second_addr, &*lid);
             serialize::write_message(&mut connection, &*response).unwrap();
             connection.flush().unwrap();
 
@@ -392,7 +400,7 @@ mod tests {
             expect_proposal(&mut connection, to_propose).unwrap();
 
             // Send final response! (Success!)
-            let response = messages::command_response_success(b"Foxes", &lid);
+            let response = messages::command_response_success(b"Foxes", &*lid);
             serialize::write_message(&mut connection, &*response).unwrap();
         });
 
@@ -427,8 +435,10 @@ mod tests {
         let second_addr = second_server.local_addr().unwrap();
         // cluster.insert(second_addr); <--- NOT in cluster.
 
-        let mut client =
-            Client::new::<NullAuth>(cluster, "username".to_string(), "password".to_string(), lid);
+        let mut client = Client::new::<NullAuth>(cluster,
+                                                 "username".to_string(),
+                                                 "password".to_string(),
+                                                 *lid);
         let client_id = client.id.0.clone();
         let to_propose = b"Bears";
 
@@ -442,7 +452,7 @@ mod tests {
             expect_proposal(&mut connection, to_propose).unwrap();
 
             // Send response! (not leader!)
-            let response = messages::command_response_not_leader(&second_addr, &lid);
+            let response = messages::command_response_not_leader(&second_addr, &*lid);
             serialize::write_message(&mut connection, &*response).unwrap();
             connection.flush().unwrap();
 

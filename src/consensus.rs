@@ -1109,7 +1109,10 @@ mod tests {
     use std::cell::RefCell;
 
     type TestPeer = Consensus<MemLog, NullStateMachine>;
-    static lid: LogId = LogId(0);
+
+    lazy_static!{
+        static ref lid: LogId = LogId(Uuid::new_v4());
+    }
 
     fn new_cluster(size: u64) -> HashMap<ServerId, TestPeer> {
         let ids: HashMap<ServerId, SocketAddr> = (0..size)
@@ -1123,7 +1126,7 @@ mod tests {
                 let store = MemLog::new();
                 (id,
                  Consensus::new(id,
-                                LogId(0),
+                                *lid,
                                 peers,
                                 store,
                                 Rc::new(RefCell::new(NullStateMachine))))
@@ -1159,7 +1162,7 @@ mod tests {
             let message_reader = reader.get_root::<message::Reader>().unwrap();
             peers.get_mut(&to)
                 .unwrap()
-                .apply_peer_message(from, &message_reader, &mut actions, &LogId(0));
+                .apply_peer_message(from, &message_reader, &mut actions);
             let inner_from = to;
             for (inner_to, message) in actions.peer_messages.iter().cloned() {
                 queue.push_back((inner_from, inner_to, message));
@@ -1177,7 +1180,7 @@ mod tests {
         let mut actions = Actions::new();
         peers.get_mut(&leader)
             .unwrap()
-            .apply_timeout(ConsensusTimeout::Election(LogId(0)), &mut actions);
+            .apply_timeout(ConsensusTimeout::Election(*lid), &mut actions);
         let client_messages = apply_actions(leader, actions, peers);
         assert!(client_messages.is_empty());
         assert!(peers[&leader].is_leader());
@@ -1208,7 +1211,7 @@ mod tests {
         assert!(peer.is_follower());
 
         let mut actions = Actions::new();
-        peer.apply_timeout(ConsensusTimeout::Election(LogId(0)), &mut actions);
+        peer.apply_timeout(ConsensusTimeout::Election(*lid), &mut actions);
         assert!(peer.is_leader());
         assert!(actions.peer_messages.is_empty());
         assert!(actions.client_messages.is_empty());
@@ -1262,10 +1265,10 @@ mod tests {
         let follower_response = {
             let mut actions = Actions::new();
             let follower = peers.get_mut(&follower_id).unwrap();
-            follower.apply_peer_message(leader_id.clone(), &message_reader, &mut actions, &LogId(0));
+            follower.apply_peer_message(leader_id.clone(), &message_reader, &mut actions);
 
             let election_timeout = actions.timeouts.iter().next().unwrap();
-            assert_eq!(election_timeout, &ConsensusTimeout::Election(LogId(0)));
+            assert_eq!(election_timeout, &ConsensusTimeout::Election(*lid));
 
             let peer_message = actions.peer_messages.iter().next().unwrap();
             assert_eq!(peer_message.0, leader_id.clone());
@@ -1277,13 +1280,10 @@ mod tests {
         // Leader applies and sends back a heartbeat to establish leadership.
         let leader = peers.get_mut(&leader_id).unwrap();
         let mut actions = Actions::new();
-        leader.apply_peer_message(follower_id.clone(),
-                                  &message_reader,
-                                  &mut actions,
-                                  &LogId(0));
+        leader.apply_peer_message(follower_id.clone(), &message_reader, &mut actions);
         let heartbeat_timeout = actions.timeouts.iter().next().unwrap();
         assert_eq!(heartbeat_timeout,
-                   &ConsensusTimeout::Heartbeat(follower_id.clone(), LogId(0)));
+                   &ConsensusTimeout::Heartbeat(follower_id.clone(), *lid));
     }
 
     /// Emulates a slow heartbeat message in a two-node cluster.
@@ -1305,14 +1305,14 @@ mod tests {
         let mut peer_0_actions = Actions::new();
         peers.get_mut(peer_0)
             .unwrap()
-            .apply_timeout(ConsensusTimeout::Heartbeat(*peer_1, LogId(0)),
+            .apply_timeout(ConsensusTimeout::Heartbeat(*peer_1, *lid),
                            &mut peer_0_actions);
         assert!(peers[peer_0].is_leader());
 
         let mut peer_1_actions = Actions::new();
         peers.get_mut(peer_1)
             .unwrap()
-            .apply_timeout(ConsensusTimeout::Election(LogId(0)), &mut peer_1_actions);
+            .apply_timeout(ConsensusTimeout::Election(*lid), &mut peer_1_actions);
         assert!(peers[peer_1].is_candidate());
 
         // Apply candidate messages.
@@ -1341,7 +1341,7 @@ mod tests {
 
             let value: &[u8] = b"foo";
             let reader =
-                into_reader(&messages::proposal_request(Uuid::new_v4().as_bytes(), value, &lid));
+                into_reader(&messages::proposal_request(Uuid::new_v4().as_bytes(), value, &*lid));
             let message_reader = reader.get_root::<client_request::Reader>()
                 .unwrap();
             let mut actions = Actions::new();
@@ -1350,7 +1350,7 @@ mod tests {
 
             peers.get_mut(&leader)
                 .unwrap()
-                .apply_client_message(client, &message_reader, &mut actions, &lid);
+                .apply_client_message(client, &message_reader, &mut actions);
 
             let client_messages = apply_actions(leader, actions, &mut peers);
             assert_eq!(1, client_messages.len());
@@ -1378,7 +1378,7 @@ mod tests {
                                                                     Term(0),
                                                                     &entries,
                                                                     LogIndex(0),
-                                                                    &lid));
+                                                                    &*lid));
 
         let msg1 = reader.get_root::<message::Reader>()
             .unwrap();
@@ -1387,11 +1387,11 @@ mod tests {
                                                                     Term(0),
                                                                     &entries[0..1],
                                                                     LogIndex(0),
-                                                                    &lid));
+                                                                    &*lid));
         let msg2 = reader.get_root::<message::Reader>()
             .unwrap();
-        follower.apply_peer_message(peer_ids[1], &msg1, &mut actions, &lid);
-        follower.apply_peer_message(peer_ids[1], &msg2, &mut actions, &lid);
+        follower.apply_peer_message(peer_ids[1], &msg1, &mut actions);
+        follower.apply_peer_message(peer_ids[1], &msg2, &mut actions);
 
         assert_eq!((Term(1), value), follower.log.entry(LogIndex(1)).unwrap());
         assert_eq!((Term(1), value), follower.log.entry(LogIndex(2)).unwrap());
@@ -1420,7 +1420,7 @@ mod tests {
 
         let value: &[u8] = b"foo";
         let reader =
-            into_reader(&messages::proposal_request(Uuid::new_v4().as_bytes(), value, &lid));
+            into_reader(&messages::proposal_request(Uuid::new_v4().as_bytes(), value, &*lid));
         let message_reader = reader.get_root::<client_request::Reader>()
             .unwrap();
         let client = ClientId::new();
@@ -1430,7 +1430,7 @@ mod tests {
             let mut actions = Actions::new();
             peers.get_mut(&leader)
                 .unwrap()
-                .apply_client_message(client, &message_reader, &mut actions, &lid);
+                .apply_client_message(client, &message_reader, &mut actions);
 
             let client_messages = apply_actions(leader, actions, &mut peers);
             assert_eq!(1, client_messages.len());

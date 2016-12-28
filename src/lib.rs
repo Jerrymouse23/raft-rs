@@ -92,6 +92,8 @@ extern crate serde;
 extern crate bincode;
 extern crate rustc_serialize;
 extern crate crypto;
+#[macro_use]
+extern crate lazy_static;
 
 /// Prepares the environment testing. Should be called as the first line of every test with the
 /// name of the test as the only argument.

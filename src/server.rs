@@ -691,13 +691,17 @@ mod tests {
     use super::*;
     use auth::Auth;
     use auth::null::NullAuth;
+    use uuid::Uuid;
 
     type TestServer = Server<MemLog, NullStateMachine, NullAuth>;
+    lazy_static!{
+        static ref lid: LogId = LogId(Uuid::new_v4());
+    }
 
     fn new_test_server(peers: HashMap<ServerId, SocketAddr>)
                        -> Result<(TestServer, EventLoop<TestServer>)> {
         let mut logs: Vec<(LogId, MemLog)> = Vec::new();
-        logs.push((LogId(0), MemLog::new()));
+        logs.push((*lid, MemLog::new()));
         Server::new(ServerId::from(0),
                     SocketAddr::from_str("127.0.0.1:0").unwrap(),
                     peers,
@@ -712,7 +716,7 @@ mod tests {
         TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap()
     }
 
-    /// Verifies that the proved stream has been sent a valid connection
+    /// Verifies that the proved stream has been sent a va*lid connection
     /// preamble.
     fn read_server_preamble<R>(read: &mut R) -> ServerId
         where R: Read
@@ -755,7 +759,7 @@ mod tests {
         }
     }
 
-    /// Tests that a Server will reject an invalid peer configuration set.
+    /// Tests that a Server will reject an inva*lid peer configuration set.
     #[test]
     fn test_illegal_peer_set() {
         setup_test!("test_illegal_peer_set");
@@ -781,7 +785,7 @@ mod tests {
         // Accept the server's connection.
         let (mut stream, _) = peer_listener.accept().unwrap();
 
-        // Check that the server sends a valid preamble.
+        // Check that the server sends a va*lid preamble.
         assert_eq!(ServerId::from(0), read_server_preamble(&mut stream));
         assert!(peer_connected(&server, peer_id));
 
@@ -795,7 +799,7 @@ mod tests {
         assert!(peer_connected(&server, peer_id));
         let (mut stream, _) = peer_listener.accept().unwrap();
 
-        // Check that the server sends a valid preamble after the connection is
+        // Check that the server sends a va*lid preamble after the connection is
         // established.
         assert_eq!(ServerId::from(0), read_server_preamble(&mut stream));
         assert!(peer_connected(&server, peer_id));
@@ -817,7 +821,7 @@ mod tests {
         // Accept the server's connection.
         let (mut in_stream, _) = peer_listener.accept().unwrap();
 
-        // Check that the server sends a valid preamble.
+        // Check that the server sends a va*lid preamble.
         assert_eq!(ServerId::from(0), read_server_preamble(&mut in_stream));
         assert!(peer_connected(&server, peer_id));
 
@@ -840,7 +844,7 @@ mod tests {
 
         // Make sure that reconnecting updated the peer address
         // known to `Consensus` with the one given in the preamble.
-        assert_eq!(server.log_manager.get(LogId(0)).unwrap().peers()[&peer_id],
+        assert_eq!(server.log_manager.get(*lid).unwrap().peers()[&peer_id],
                    fake_peer_addr);
         // Check that the server has closed the old connection.
         assert!(stream_shutdown(&mut in_stream));
@@ -896,7 +900,7 @@ mod tests {
         let mut stream = TcpStream::connect(server_addr).unwrap();
         event_loop.run_once(&mut server, None).unwrap();
 
-        // Send an invalid preamble.
+        // Send an inva*lid preamble.
         stream.write(b"foo bar baz").unwrap();
         stream.flush().unwrap();
         event_loop.run_once(&mut server, None).unwrap();
@@ -905,7 +909,7 @@ mod tests {
         assert!(stream_shutdown(&mut stream));
     }
 
-    /// Tests that the server will reset a peer connection when an invalid
+    /// Tests that the server will reset a peer connection when an inva*lid
     /// message is received.
     #[test]
     fn test_invalid_peer_message() {
@@ -925,7 +929,7 @@ mod tests {
         // Read the server's preamble.
         assert_eq!(ServerId::from(0), read_server_preamble(&mut stream_a));
 
-        // Send an invalid message.
+        // Send an inva*lid message.
         stream_a.write(b"foo bar baz").unwrap();
         stream_a.flush().unwrap();
         event_loop.run_once(&mut server, None).unwrap();
@@ -938,7 +942,7 @@ mod tests {
         assert!(peer_connected(&server, peer_id));
     }
 
-    /// Tests that the server will reset a client connection when an invalid
+    /// Tests that the server will reset a client connection when an inva*lid
     /// message is received.
     #[test]
     fn test_invalid_client_message() {
