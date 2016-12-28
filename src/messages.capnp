@@ -19,6 +19,8 @@ struct ConnectionPreamble {
         # further messages sent by the client will be of type ClientRequest, and
         # all replys from the server to the client will be of type
         # ClientResponse.
+
+	portal @2 :Portal;
     }
 }
 
@@ -38,6 +40,10 @@ struct Client{
   data @1 :Data;
 }
 
+struct Portal{
+  id @0 :UInt64;
+}
+
 struct Entry {
     # A log entry.
 
@@ -49,6 +55,7 @@ struct Entry {
 }
 
 struct Message {
+    logId @7 :Data;
 
     union {
         appendEntriesRequest @0 :AppendEntriesRequest;
@@ -56,7 +63,7 @@ struct Message {
         requestVoteResponse @2 :RequestVoteResponse;
         requestVoteRequest @3 :RequestVoteRequest;
         transactionBegin @4 :TransactionBegin;
-        transactionEnd @5 :TransactionEnd;
+        transactionCommit @5 :TransactionCommit;
         transactionRollback @6 :TransactionRollback;
     }
 }
@@ -65,11 +72,12 @@ struct TransactionBegin{
   session @0 :Data;
 }
 
-struct TransactionEnd{
+struct TransactionCommit{
 
 }
 
 struct TransactionRollback{
+
 }
 
 struct AppendEntriesRequest {
@@ -154,13 +162,14 @@ struct RequestVoteResponse {
 }
 
 struct ClientRequest {
+  logId @6 :Data;
   
   union {
     ping @0 :PingRequest;
     proposal @1 :ProposalRequest;
     query @2 :QueryRequest;
     transactionBegin @3 :CliTransactionBegin;
-    transactionEnd @4 :CliTransactionEnd;
+    transactionCommit @4 :CliTransactionCommit;
     transactionRollback @5 :CliTransactionRollback;
   }
 }
@@ -171,7 +180,7 @@ struct CliTransactionBegin{
   logIndex @2 :UInt64;
 }
 
-struct CliTransactionEnd{
+struct CliTransactionCommit{
 
 }
 
@@ -180,6 +189,7 @@ struct CliTransactionRollback{
 }
 
 struct ClientResponse {
+  logId @4 :Data;
 
   union {
     ping @0 :PingResponse;

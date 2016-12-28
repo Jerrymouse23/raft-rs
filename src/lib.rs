@@ -92,6 +92,8 @@ extern crate serde;
 extern crate bincode;
 extern crate rustc_serialize;
 extern crate crypto;
+#[macro_use]
+extern crate lazy_static;
 
 /// Prepares the environment testing. Should be called as the first line of every test with the
 /// name of the test as the only argument.
@@ -121,6 +123,7 @@ mod server;
 mod state;
 pub mod auth;
 mod transaction;
+mod log_manager;
 
 pub use server::Server;
 pub use state_machine::StateMachine;
@@ -323,5 +326,39 @@ impl fmt::Debug for ClientId {
 impl fmt::Display for ClientId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Display::fmt(&self.0, f)
+    }
+}
+
+/// The ID of a Raft log.
+#[derive(Copy, Clone, Hash, Eq,PartialOrd,Ord)]
+pub struct LogId(Uuid);
+impl LogId {
+    pub fn new() -> LogId {
+        LogId(Uuid::new_v4())
+    }
+
+    pub fn as_bytes(self) -> [u8; 16] {
+        *self.0.as_bytes()
+    }
+
+    pub fn from(i: String) -> std::result::Result<Self, uuid::ParseError> {
+        let id = try!(Uuid::parse_str(&i));
+        Ok(LogId(id))
+    }
+}
+impl fmt::Debug for LogId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "LogId({})", self.0)
+    }
+}
+impl fmt::Display for LogId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl PartialEq for LogId {
+    fn eq(&self, other: &LogId) -> bool {
+        if self.0 == other.0 { true } else { false }
     }
 }

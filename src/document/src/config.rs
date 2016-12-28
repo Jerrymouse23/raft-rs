@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 pub struct Config {
     pub server: ServerConfig,
     pub peers: Vec<PeerConfig>,
+    pub logs: Vec<LogConfig>,
 }
 
 #[derive(Debug,RustcDecodable,Clone)]
@@ -29,6 +30,12 @@ pub struct ServerConfig {
 pub struct PeerConfig {
     pub node_id: u64,
     pub node_address: String,
+}
+
+#[derive(Debug,RustcDecodable,Clone)]
+pub struct LogConfig {
+    pub path: String,
+    pub lid: String,
 }
 
 impl Config {

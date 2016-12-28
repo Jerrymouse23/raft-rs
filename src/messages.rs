@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use capnp::message::{Builder, HeapAllocator};
 
-use {ClientId, Term, LogIndex, ServerId};
+use {ClientId, Term, LogIndex, ServerId, LogId};
 use messages_capnp::{client_request, client_response, connection_preamble, message};
 
 // ConnectionPreamble
@@ -49,12 +49,18 @@ pub fn append_entries_request(term: Term,
                               prev_log_index: LogIndex,
                               prev_log_term: Term,
                               entries: &[(Term, &[u8])],
-                              leader_commit: LogIndex)
+                              leader_commit: LogIndex,
+                              lid: &LogId)
                               -> Rc<Builder<HeapAllocator>> {
+    let bytes = &lid.as_bytes();
+
+    assert!(bytes.len() > 0);
+
     let mut message = Builder::new_default();
     {
-        let mut request = message.init_root::<message::Builder>()
-            .init_append_entries_request();
+        let mut request = message.init_root::<message::Builder>();
+        request.set_log_id(bytes);
+        let mut request = request.init_append_entries_request();
         request.set_term(term.as_u64());
         request.set_prev_log_index(prev_log_index.as_u64());
         request.set_prev_log_term(prev_log_term.as_u64());
@@ -71,23 +77,30 @@ pub fn append_entries_request(term: Term,
 }
 
 pub fn append_entries_response_success(term: Term,
-                                       log_index: LogIndex)
+                                       log_index: LogIndex,
+                                       lid: &LogId)
                                        -> Rc<Builder<HeapAllocator>> {
+    let bytes = &lid.as_bytes();
+
+    assert!(bytes.len() > 0);
+
     let mut message = Builder::new_default();
     {
-        let mut response = message.init_root::<message::Builder>()
-            .init_append_entries_response();
+        let mut response = message.init_root::<message::Builder>();
+        response.set_log_id(bytes);
+        let mut response = response.init_append_entries_response();
         response.set_term(term.as_u64());
         response.set_success(log_index.as_u64());
     }
     Rc::new(message)
 }
 
-pub fn append_entries_response_stale_term(term: Term) -> Rc<Builder<HeapAllocator>> {
+pub fn append_entries_response_stale_term(term: Term, lid: &LogId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        let mut response = message.init_root::<message::Builder>()
-            .init_append_entries_response();
+        let mut response = message.init_root::<message::Builder>();
+        response.set_log_id(&lid.as_bytes());
+        let mut response = response.init_append_entries_response();
         response.set_term(term.as_u64());
         response.set_stale_term(());
     }
@@ -95,12 +108,14 @@ pub fn append_entries_response_stale_term(term: Term) -> Rc<Builder<HeapAllocato
 }
 
 pub fn append_entries_response_inconsistent_prev_entry(term: Term,
-                                                       index: LogIndex)
+                                                       index: LogIndex,
+                                                       lid: &LogId)
                                                        -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        let mut response = message.init_root::<message::Builder>()
-            .init_append_entries_response();
+        let mut response = message.init_root::<message::Builder>();
+        response.set_log_id(&lid.as_bytes());
+        let mut response = response.init_append_entries_response();
         response.set_term(term.as_u64());
         response.set_inconsistent_prev_entry(index.into());
     }
@@ -108,12 +123,14 @@ pub fn append_entries_response_inconsistent_prev_entry(term: Term,
 }
 
 pub fn append_entries_response_internal_error(term: Term,
-                                              error: &str)
+                                              error: &str,
+                                              lid: &LogId)
                                               -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        let mut response = message.init_root::<message::Builder>()
-            .init_append_entries_response();
+        let mut response = message.init_root::<message::Builder>();
+        response.set_log_id(&lid.as_bytes());
+        let mut response = response.init_append_entries_response();
         response.set_term(term.as_u64());
         response.set_internal_error(error);
     }
@@ -124,12 +141,14 @@ pub fn append_entries_response_internal_error(term: Term,
 
 pub fn request_vote_request(term: Term,
                             last_log_index: LogIndex,
-                            last_log_term: Term)
+                            last_log_term: Term,
+                            lid: &LogId)
                             -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        let mut request = message.init_root::<message::Builder>()
-            .init_request_vote_request();
+        let mut request = message.init_root::<message::Builder>();
+        request.set_log_id(&lid.as_bytes());
+        let mut request = request.init_request_vote_request();
         request.set_term(term.as_u64());
         request.set_last_log_index(last_log_index.as_u64());
         request.set_last_log_term(last_log_term.as_u64());
@@ -137,55 +156,65 @@ pub fn request_vote_request(term: Term,
     Rc::new(message)
 }
 
-pub fn request_vote_response_granted(term: Term) -> Rc<Builder<HeapAllocator>> {
+pub fn request_vote_response_granted(term: Term, lid: &LogId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        let mut response = message.init_root::<message::Builder>()
-            .init_request_vote_response();
+        let mut response = message.init_root::<message::Builder>();
+        response.set_log_id(&lid.as_bytes());
+        let mut response = response.init_request_vote_response();
         response.set_term(term.as_u64());
         response.set_granted(());
     }
     Rc::new(message)
 }
 
-pub fn request_vote_response_stale_term(term: Term) -> Rc<Builder<HeapAllocator>> {
+pub fn request_vote_response_stale_term(term: Term, lid: &LogId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        let mut response = message.init_root::<message::Builder>()
-            .init_request_vote_response();
+        let mut response = message.init_root::<message::Builder>();
+        response.set_log_id(&lid.as_bytes());
+        let mut response = response.init_request_vote_response();
         response.set_term(term.as_u64());
         response.set_stale_term(());
     }
     Rc::new(message)
 }
 
-pub fn request_vote_response_already_voted(term: Term) -> Rc<Builder<HeapAllocator>> {
+pub fn request_vote_response_already_voted(term: Term, lid: &LogId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        let mut response = message.init_root::<message::Builder>()
-            .init_request_vote_response();
+        let mut response = message.init_root::<message::Builder>();
+        response.set_log_id(&lid.as_bytes());
+        let mut response = response.init_request_vote_response();
         response.set_term(term.as_u64());
         response.set_already_voted(());
     }
     Rc::new(message)
 }
 
-pub fn request_vote_response_inconsistent_log(term: Term) -> Rc<Builder<HeapAllocator>> {
+pub fn request_vote_response_inconsistent_log(term: Term,
+                                              lid: &LogId)
+                                              -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        let mut response = message.init_root::<message::Builder>()
-            .init_request_vote_response();
+        let mut response = message.init_root::<message::Builder>();
+        response.set_log_id(&lid.as_bytes());
+        let mut response = response.init_request_vote_response();
         response.set_term(term.as_u64());
         response.set_inconsistent_log(());
     }
     Rc::new(message)
 }
 
-pub fn request_vote_response_internal_error(term: Term, error: &str) -> Rc<Builder<HeapAllocator>> {
+pub fn request_vote_response_internal_error(term: Term,
+                                            error: &str,
+                                            lid: &LogId)
+                                            -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        let mut response = message.init_root::<message::Builder>()
-            .init_request_vote_response();
+        let mut response = message.init_root::<message::Builder>();
+        response.set_log_id(&lid.as_bytes());
+        let mut response = response.init_request_vote_response();
         response.set_term(term.as_u64());
         response.set_internal_error(error);
     }
@@ -194,11 +223,12 @@ pub fn request_vote_response_internal_error(term: Term, error: &str) -> Rc<Build
 
 // Ping
 
-pub fn ping_request(session: &[u8]) -> Builder<HeapAllocator> {
+pub fn ping_request(session: &[u8], lid: &LogId) -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
-        let mut request = message.init_root::<client_request::Builder>()
-            .init_ping();
+        let mut request = message.init_root::<client_request::Builder>();
+        request.set_log_id(&lid.as_bytes());
+        let mut request = request.init_ping();
         request.set_session(session);
     }
     message
@@ -206,11 +236,12 @@ pub fn ping_request(session: &[u8]) -> Builder<HeapAllocator> {
 
 // Query
 
-pub fn query_request(entry: &[u8]) -> Builder<HeapAllocator> {
+pub fn query_request(entry: &[u8], lid: &LogId) -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
-        let mut request = message.init_root::<client_request::Builder>()
-            .init_query();
+        let mut request = message.init_root::<client_request::Builder>();
+        request.set_log_id(&lid.as_bytes());
+        let mut request = request.init_query();
         request.set_query(entry);
     }
     message
@@ -219,11 +250,12 @@ pub fn query_request(entry: &[u8]) -> Builder<HeapAllocator> {
 
 // Proposal
 
-pub fn proposal_request(session: &[u8], entry: &[u8]) -> Builder<HeapAllocator> {
+pub fn proposal_request(session: &[u8], entry: &[u8], lid: &LogId) -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
-        let mut request = message.init_root::<client_request::Builder>()
-            .init_proposal();
+        let mut request = message.init_root::<client_request::Builder>();
+        request.set_log_id(&lid.as_bytes());
+        let mut request = request.init_proposal();
         request.set_entry(entry);
         request.set_session(session);
     }
@@ -232,31 +264,36 @@ pub fn proposal_request(session: &[u8], entry: &[u8]) -> Builder<HeapAllocator> 
 
 // Query / Proposal Response
 
-pub fn command_response_success(data: &[u8]) -> Rc<Builder<HeapAllocator>> {
+pub fn command_response_success(data: &[u8], lid: &LogId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        message.init_root::<client_response::Builder>()
-            .init_proposal()
+        let mut response = message.init_root::<client_response::Builder>();
+        response.set_log_id(&lid.as_bytes());
+        let mut request = response.init_proposal()
             .set_success(data);
     }
     Rc::new(message)
 }
 
-pub fn command_response_unknown_leader() -> Rc<Builder<HeapAllocator>> {
+pub fn command_response_unknown_leader(lid: &LogId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        message.init_root::<client_response::Builder>()
-            .init_proposal()
+        let mut response = message.init_root::<client_response::Builder>();
+        response.set_log_id(&lid.as_bytes());
+        let mut response = response.init_proposal()
             .set_unknown_leader(());
     }
     Rc::new(message)
 }
 
-pub fn command_response_not_leader(leader_hint: &SocketAddr) -> Rc<Builder<HeapAllocator>> {
+pub fn command_response_not_leader(leader_hint: &SocketAddr,
+                                   lid: &LogId)
+                                   -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        message.init_root::<client_response::Builder>()
-            .init_proposal()
+        let mut response = message.init_root::<client_response::Builder>();
+        response.set_log_id(&lid.as_bytes());
+        let mut response = response.init_proposal()
             .set_not_leader(&format!("{}", leader_hint));
     }
     Rc::new(message)
@@ -264,79 +301,87 @@ pub fn command_response_not_leader(leader_hint: &SocketAddr) -> Rc<Builder<HeapA
 
 // Transaction
 
-pub fn transaction_begin(session: &[u8]) -> Rc<Builder<HeapAllocator>> {
+pub fn transaction_begin(session: &[u8], lid: &LogId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        let mut request = message.init_root::<message::Builder>()
-            .init_transaction_begin();
+        let mut request = message.init_root::<message::Builder>();
+        request.set_log_id(&lid.as_bytes());
+        let mut request = request.init_transaction_begin();
 
         request.set_session(session);
     }
     Rc::new(message)
 }
 
-pub fn transaction_end() -> Rc<Builder<HeapAllocator>> {
+pub fn transaction_commit(lid: &LogId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        message.init_root::<message::Builder>()
-            .init_transaction_end();
+        let mut request = message.init_root::<message::Builder>();
+        request.set_log_id(&lid.as_bytes());
+        request.init_transaction_commit();
     }
     Rc::new(message)
 }
 
-pub fn client_transaction_begin(session: &[u8]) -> Builder<HeapAllocator> {
+pub fn client_transaction_begin(session: &[u8], lid: &LogId) -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
-        let mut request = message.init_root::<client_request::Builder>()
-            .init_transaction_begin();
+        let mut request = message.init_root::<client_request::Builder>();
+        request.set_log_id(&lid.as_bytes());
+        let mut request = request.init_transaction_begin();
         request.set_session(session);
     }
     message
 }
 
-pub fn client_transaction_end() -> Builder<HeapAllocator> {
+pub fn client_transaction_commit(lid: &LogId) -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
-        message.init_root::<client_request::Builder>()
-            .init_transaction_end();
+        let mut request = message.init_root::<client_request::Builder>();
+        request.set_log_id(&lid.as_bytes());
+        request.init_transaction_commit();
     }
     message
 }
 
-pub fn client_transaction_rollback() -> Builder<HeapAllocator> {
+pub fn client_transaction_rollback(lid: &LogId) -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
-        message.init_root::<client_request::Builder>()
-            .init_transaction_rollback();
+        let mut request = message.init_root::<client_request::Builder>();
+        request.set_log_id(&lid.as_bytes());
+        request.init_transaction_rollback();
     }
     message
 }
 
-pub fn command_transaction_success(data: &[u8]) -> Rc<Builder<HeapAllocator>> {
+pub fn command_transaction_success(data: &[u8], lid: &LogId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        message.init_root::<client_response::Builder>()
-            .init_proposal()
+        let mut response = message.init_root::<client_response::Builder>();
+        response.set_log_id(&lid.as_bytes());
+        let mut response = response.init_proposal()
             .set_success(data);
     }
     Rc::new(message)
 }
 
-pub fn command_transaction_failure(data: &[u8]) -> Rc<Builder<HeapAllocator>> {
+pub fn command_transaction_failure(data: &[u8], lid: &LogId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        message.init_root::<client_response::Builder>()
-            .init_transaction()
+        let mut response = message.init_root::<client_response::Builder>();
+        response.set_log_id(&lid.as_bytes());
+        response.init_transaction()
             .set_failure(data);
     }
     Rc::new(message)
 }
 
-pub fn transaction_rollback() -> Rc<Builder<HeapAllocator>> {
+pub fn transaction_rollback(lid: &LogId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        let mut request = message.init_root::<message::Builder>()
-            .init_transaction_rollback();
+        let mut request = message.init_root::<message::Builder>();
+        request.set_log_id(&lid.as_bytes());
+        request.init_transaction_rollback();
     }
     Rc::new(message)
 }

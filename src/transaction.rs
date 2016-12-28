@@ -9,6 +9,7 @@ use messages;
 use uuid::Uuid;
 use std::rc::Rc;
 use LogIndex;
+use LogId;
 use ClientId;
 
 #[derive(Clone)]
@@ -69,21 +70,21 @@ impl Transaction {
         self.follower_state_min = None;
     }
 
-    pub fn broadcast_begin(&mut self, actions: &mut Actions) {
+    pub fn broadcast_begin(&mut self, lid: &LogId, actions: &mut Actions) {
         scoped_debug!("BROADCAST TRANSACTION BEGINS");
-        let message = messages::transaction_begin(self.session.unwrap().as_bytes());
+        let message = messages::transaction_begin(self.session.unwrap().as_bytes(), lid);
         actions.peer_messages_broadcast.push(message);
     }
 
-    pub fn broadcast_end(&self, actions: &mut Actions) {
+    pub fn broadcast_end(&self, lid: &LogId, actions: &mut Actions) {
         scoped_debug!("BROADCAST TRANSACTION ENDS");
-        let message = messages::transaction_end();
+        let message = messages::transaction_commit(lid);
         actions.peer_messages_broadcast.push(message);
     }
 
-    pub fn broadcast_rollback(&self, actions: &mut Actions) {
+    pub fn broadcast_rollback(&self, lid: &LogId, actions: &mut Actions) {
         scoped_debug!("BROADCAST TRANSACTION ROLLBACK");
-        let message = messages::transaction_rollback();
+        let message = messages::transaction_rollback(lid);
         actions.peer_messages_broadcast.push(message);
     }
 

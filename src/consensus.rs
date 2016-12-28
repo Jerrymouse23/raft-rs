@@ -16,11 +16,14 @@ use std::{cmp, fmt};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::rc::Rc;
+use std::cell::RefCell;
 
-use capnp::message::{Builder, HeapAllocator, Reader, ReaderSegments};
+use capnp::message::{Builder, Allocator, ReaderOptions, HeapAllocator, Reader, ReaderSegments};
 use rand::{self, Rng};
+use capnp::serialize::{self, OwnedSegments};
+use std::io::Cursor;
 
-use {LogIndex, Term, ServerId, ClientId, messages};
+use {LogId, LogIndex, Term, ServerId, ClientId, messages};
 use messages_capnp::{append_entries_request, append_entries_response, client_request,
                      proposal_request, query_request, message, request_vote_request,
                      request_vote_response};
@@ -30,6 +33,7 @@ use uuid::Uuid;
 use transaction::Transaction;
 use persistent_log::Log;
 use std::boxed::Box;
+use mio::Timeout as TimeoutHandle;
 
 const ELECTION_MIN: u64 = 1500;
 const ELECTION_MAX: u64 = 3000;
@@ -39,16 +43,16 @@ const HEARTBEAT_DURATION: u64 = 1000;
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum ConsensusTimeout {
     // An election timeout. Randomized value.
-    Election,
+    Election(LogId),
     // A heartbeat timeout. Stable value.
-    Heartbeat(ServerId),
+    Heartbeat(ServerId, LogId),
 }
 
 impl ConsensusTimeout {
     /// Returns the timeout period in milliseconds.
     pub fn duration_ms(&self) -> u64 {
         match *self {
-            ConsensusTimeout::Election => {
+            ConsensusTimeout::Election(..) => {
                 rand::thread_rng().gen_range::<u64>(ELECTION_MIN, ELECTION_MAX)
             }
             ConsensusTimeout::Heartbeat(..) => HEARTBEAT_DURATION,
@@ -64,13 +68,16 @@ pub struct Actions {
     /// Messages to be send to clients.
     pub client_messages: Vec<(ClientId, Rc<Builder<HeapAllocator>>)>,
     /// Whether to clear existing consensus timeouts.
-    pub clear_timeouts: bool,
+    pub clear_timeouts: Vec<LogId>,
     /// Any new timeouts to create.
     pub timeouts: Vec<ConsensusTimeout>,
     /// Whether to clear outbound peer message queues.
     pub clear_peer_messages: bool,
+    /// Messages which are in queue because there is a transaction active
+    pub transaction_queue: Vec<(LogId, ClientId, Builder<HeapAllocator>)>,
     pub peer_messages_broadcast: Vec<Rc<Builder<HeapAllocator>>>,
-    pub transaction_queue: Vec<(ClientId, Builder<HeapAllocator>)>,
+    /// Messages which will be send to all portals
+    pub portal_queue: Vec<(ServerId, Rc<Builder<HeapAllocator>>)>,
 }
 
 // TODO add transaction_queue
@@ -101,11 +108,12 @@ impl Actions {
         Actions {
             peer_messages: vec![],
             client_messages: vec![],
-            clear_timeouts: false,
+            clear_timeouts: Vec::with_capacity(1),
             timeouts: vec![],
             clear_peer_messages: false,
-            peer_messages_broadcast: vec![],
             transaction_queue: vec![],
+            peer_messages_broadcast: vec![],
+            portal_queue: vec![],
         }
     }
 }
@@ -119,9 +127,9 @@ pub struct Consensus<L, M> {
     peers: HashMap<ServerId, SocketAddr>,
 
     /// The persistent log.
-    log: L,
+    pub log: L,
     /// The client state machine to which client commands are applied.
-    state_machine: M,
+    state_machine: Rc<RefCell<M>>,
 
     /// Index of the latest entry known to be committed.
     commit_index: LogIndex,
@@ -129,14 +137,19 @@ pub struct Consensus<L, M> {
     last_applied: LogIndex,
 
     /// The current state of the `Consensus` (`Leader`, `Candidate`, or `Follower`).
-    state: ConsensusState,
+    pub state: ConsensusState,
     /// State necessary while a `Leader`. Should not be used otherwise.
-    leader_state: LeaderState,
+    pub leader_state: LeaderState,
     /// State necessary while a `Candidate`. Should not be used otherwise.
-    candidate_state: CandidateState,
+    pub candidate_state: CandidateState,
     /// State necessary while a `Follower`. Should not be used otherwise.
-    follower_state: FollowerState,
+    pub follower_state: FollowerState,
     pub transaction: Transaction,
+    /// The ID of this consensus instance for the log_manager
+    lid: LogId,
+    pub requests_in_queue: Vec<(ClientId, Builder<HeapAllocator>)>,
+    /// Currently registered consensus timeouts.
+    pub consensus_timeouts: HashMap<ConsensusTimeout, TimeoutHandle>,
 }
 
 impl<L, M> Consensus<L, M>
@@ -145,9 +158,10 @@ impl<L, M> Consensus<L, M>
 {
     /// Creates a `Consensus`.
     pub fn new(id: ServerId,
+               lid: LogId,
                peers: HashMap<ServerId, SocketAddr>,
                log: L,
-               state_machine: M)
+               state_machine: Rc<RefCell<M>>)
                -> Consensus<L, M> {
         let leader_state = LeaderState::new(log.latest_log_index().unwrap(),
                                             &peers.keys().cloned().collect());
@@ -163,13 +177,16 @@ impl<L, M> Consensus<L, M>
             candidate_state: CandidateState::new(),
             follower_state: FollowerState::new(),
             transaction: Transaction::new(),
+            lid: lid,
+            requests_in_queue: Vec::new(),
+            consensus_timeouts: HashMap::new(),
         }
     }
 
     /// Returns the set of initial action which should be executed upon startup.
     pub fn init(&self) -> Actions {
         let mut actions = Actions::new();
-        actions.timeouts.push(ConsensusTimeout::Election);
+        actions.timeouts.push(ConsensusTimeout::Election(self.lid));
         actions
     }
 
@@ -178,15 +195,26 @@ impl<L, M> Consensus<L, M>
         &self.peers
     }
 
+    pub fn handle_queue(&mut self, actions: &mut Actions) {
+        let lid = self.lid.clone();
+        if !self.transaction.isActive {
+            for (client, builder) in self.requests_in_queue.pop() {
+                self.apply_client_message(client,
+                                          &Self::into_reader(&builder)
+                                              .get_root::<client_request::Reader>()
+                                              .unwrap(),
+                                          actions);
+            }
+        }
+    }
+
     /// Applies a peer message to the consensus state machine.
-    pub fn apply_peer_message<S>(&mut self,
-                                 from: ServerId,
-                                 message: &Reader<S>,
-                                 actions: &mut Actions)
-        where S: ReaderSegments
-    {
+    pub fn apply_peer_message(&mut self,
+                              from: ServerId,
+                              message: &message::Reader,
+                              actions: &mut Actions) {
         push_log_scope!("{:?}", self);
-        let reader = message.get_root::<message::Reader>().unwrap().which().unwrap();
+        let reader = message.which().unwrap();
         match reader {
             message::Which::AppendEntriesRequest(Ok(request)) => {
                 self.append_entries_request(from, request, actions)
@@ -207,10 +235,11 @@ impl<L, M> Consensus<L, M>
                                        self.last_applied,
                                        Some(self.follower_state.min_index));
             }
-            message::Which::TransactionEnd(Ok(response)) => {
+            message::Which::TransactionCommit(Ok(response)) => {
                 self.transaction.end();
             }
             message::Which::TransactionRollback(Ok(response)) => {
+                // TODO refactor to seperate method
                 scoped_debug!("Rollback");
                 let (commit_index, last_applied, follower_state_min) = self.transaction.rollback();
                 self.follower_state.min_index = follower_state_min.unwrap();
@@ -221,26 +250,25 @@ impl<L, M> Consensus<L, M>
                     let entries_failed = self.log.rollback(commit_index).unwrap();
 
                     for &(ref term, ref command) in entries_failed.iter().rev() {
-                        self.state_machine.revert(command.as_slice());
+                        self.state_machine.borrow_mut().revert(command.as_slice());
                     }
                 }
 
                 self.log.truncate(commit_index);
-                self.state_machine.rollback();
+                self.state_machine.borrow_mut().rollback();
             }
             _ => panic!("cannot handle message"),
         };
     }
 
     /// Applies a client message to the consensus state machine.
-    pub fn apply_client_message<S>(&mut self,
-                                   from: ClientId,
-                                   message: &Reader<S>,
-                                   actions: &mut Actions)
-        where S: ReaderSegments
-    {
+    pub fn apply_client_message(&mut self,
+                                from: ClientId,
+                                message: &client_request::Reader,
+                                actions: &mut Actions) {
+
         push_log_scope!("{:?}", self);
-        let reader = message.get_root::<client_request::Reader>().unwrap().which().unwrap();
+        let reader = message.which().unwrap();
 
         match reader {
             client_request::Which::Proposal(Ok(request)) => {
@@ -249,13 +277,12 @@ impl<L, M> Consensus<L, M>
                        !self.transaction
                         .compare(Uuid::from_bytes(request.get_session().unwrap()).unwrap()) {
 
-                        // TODO reader to builder
                         let session = request.get_session().unwrap();
                         let entry = request.get_entry().unwrap();
 
-                        let message = messages::proposal_request(session, entry);
+                        let message = messages::proposal_request(session, entry, &self.lid);
 
-                        actions.transaction_queue.push((from, message));
+                        actions.transaction_queue.push((self.lid, from, message));
 
                         self.transaction.count_up();
                     } else {
@@ -269,9 +296,9 @@ impl<L, M> Consensus<L, M>
             client_request::Which::Query(Ok(query)) => {
                 if self.transaction.isActive {
                     let query = query.get_query().unwrap();
-                    let message = messages::query_request(query);
+                    let message = messages::query_request(query, &self.lid);
 
-                    actions.transaction_queue.push((from, message));
+                    actions.transaction_queue.push((self.lid, from, message));
                 } else {
                     self.query_request(from, query, actions);
                 }
@@ -281,36 +308,40 @@ impl<L, M> Consensus<L, M>
                     let session = Uuid::from_bytes(request.get_session().unwrap()).unwrap();
                     self.transaction
                         .begin(session, self.commit_index, self.last_applied, None);
-                    self.transaction.broadcast_begin(actions);
+                    self.transaction.broadcast_begin(&self.lid, actions);
 
                     let message = messages::command_transaction_success(request.get_session()
-                        .unwrap());
+                                                                            .unwrap(),
+                                                                        &self.lid);
 
                     actions.client_messages.push((from, message));
                 } else {
                     let message =
                         messages::command_response_not_leader(&self.peers[&self.follower_state
-                            .leader
-                            .unwrap()]);
+                                                                  .leader
+                                                                  .unwrap()],
+                                                              &self.lid);
                     actions.client_messages.push((from, message));
                 }
             }
-            client_request::Which::TransactionEnd(Ok(request)) => {
+            client_request::Which::TransactionCommit(Ok(request)) => {
                 if self.is_leader() {
                     self.transaction.end();
-                    self.transaction.broadcast_end(actions);
+                    self.transaction.broadcast_end(&self.lid, actions);
 
                     let message = messages::command_transaction_success("Transaction has been \
                                                                          stopped"
-                        .as_bytes());
+                                                                            .as_bytes(),
+                                                                        &self.lid);
 
                     actions.client_messages.push((from, message));
 
                 } else {
                     let message =
                         messages::command_response_not_leader(&self.peers[&self.follower_state
-                            .leader
-                            .unwrap()]);
+                                                                  .leader
+                                                                  .unwrap()],
+                                                              &self.lid);
                     actions.client_messages.push((from, message));
                 }
             }
@@ -320,9 +351,9 @@ impl<L, M> Consensus<L, M>
                     self.commit_index = commit_index;
                     self.last_applied = last_applied;
                     self.log.rollback(commit_index);
-                    self.transaction.broadcast_rollback(actions);
+                    self.transaction.broadcast_rollback(&self.lid, actions);
 
-                    let message = messages::command_transaction_success("".as_bytes());
+                    let message = messages::command_transaction_success("".as_bytes(), &self.lid);
 
                     for &peer in self.peers.keys() {
                         self.leader_state.set_next_index(peer, commit_index + 1);
@@ -332,19 +363,20 @@ impl<L, M> Consensus<L, M>
                         let entries_failed = self.log.rollback(commit_index).unwrap();
 
                         for &(ref term, ref command) in entries_failed.iter().rev() {
-                            self.state_machine.revert(command.as_slice());
+                            self.state_machine.borrow_mut().revert(command.as_slice());
                         }
                     }
 
                     self.log.truncate(commit_index);
-                    self.state_machine.rollback();
+                    self.state_machine.borrow_mut().rollback();
 
                     actions.client_messages.push((from, message));
                 } else {
                     let message =
                         messages::command_response_not_leader(&self.peers[&self.follower_state
-                            .leader
-                            .unwrap()]);
+                                                                  .leader
+                                                                  .unwrap()],
+                                                              &self.lid);
                     actions.client_messages.push((from, message));
                 }
             }
@@ -356,8 +388,8 @@ impl<L, M> Consensus<L, M>
     pub fn apply_timeout(&mut self, timeout: ConsensusTimeout, actions: &mut Actions) {
         push_log_scope!("{:?}", self);
         match timeout {
-            ConsensusTimeout::Election => self.election_timeout(actions),
-            ConsensusTimeout::Heartbeat(peer) => self.heartbeat_timeout(peer, actions),
+            ConsensusTimeout::Election(..) => self.election_timeout(actions),
+            ConsensusTimeout::Heartbeat(peer, ..) => self.heartbeat_timeout(peer, actions),
         }
     }
 
@@ -388,7 +420,8 @@ impl<L, M> Consensus<L, M>
                                                                prev_log_index,
                                                                prev_log_term,
                                                                &entries,
-                                                               self.commit_index);
+                                                               self.commit_index,
+                                                               &self.lid);
 
                 self.leader_state.set_next_index(peer, until_index);
                 actions.peer_messages.push((peer, message));
@@ -402,8 +435,10 @@ impl<L, M> Consensus<L, M>
                 let latest_index = self.latest_log_index();
                 let latest_term = self.log.latest_log_term().unwrap();
 
-                let message =
-                    messages::request_vote_request(current_term, latest_index, latest_term);
+                let message = messages::request_vote_request(current_term,
+                                                             latest_index,
+                                                             latest_term,
+                                                             &self.lid);
                 actions.peer_messages.push((peer, message));
             }
             ConsensusState::Follower => {
@@ -424,7 +459,7 @@ impl<L, M> Consensus<L, M>
         let current_term = self.current_term();
 
         if leader_term < current_term {
-            let message = messages::append_entries_response_stale_term(current_term);
+            let message = messages::append_entries_response_stale_term(current_term, &self.lid);
             actions.peer_messages.push((from, message));
             return;
         }
@@ -454,7 +489,7 @@ impl<L, M> Consensus<L, M>
                                       latest_log_index);
 
                         messages::append_entries_response_inconsistent_prev_entry(
-                            self.current_term(), leader_prev_log_index)
+                            self.current_term(), leader_prev_log_index,&self.lid)
                     } else {
                         let existing_term = if leader_prev_log_index == LogIndex::from(0) {
                             Term::from(0)
@@ -470,7 +505,7 @@ impl<L, M> Consensus<L, M>
                             // If an existing entry conflicts with a new one (same index but different terms),
                             // delete the existing entry and all that follow it
                             messages::append_entries_response_inconsistent_prev_entry(self.current_term(),
-                                leader_prev_log_index)
+                                leader_prev_log_index,&self.lid)
                         } else {
                             scoped_debug!("Everything ok");
                             if let Ok(entries) = request.get_entries() {
@@ -505,18 +540,24 @@ impl<L, M> Consensus<L, M>
                                     cmp::min(LogIndex::from(request.get_leader_commit()),
                                              new_latest_log_index);
                                 self.apply_commits();
+
                             } else {
                                 panic!("AppendEntriesRequest: no entry list")
                             }
+
                             messages::append_entries_response_success(self.current_term(),
                                                                       self.log
                                                                           .latest_log_index()
-                                                                          .unwrap())
+                                                                          .unwrap(),
+                                                                      &self.lid)
                         }
                     }
                 };
-                actions.peer_messages.push((from, message));
-                actions.timeouts.push(ConsensusTimeout::Election);
+
+                actions.clear_timeouts.push(self.lid);
+                actions.timeouts.push(ConsensusTimeout::Election(self.lid));
+                actions.peer_messages.push((from, message.clone()));
+                actions.portal_queue.push((from, message));
             }
             ConsensusState::Candidate => {
                 // recognize the new leader, return to follower state, and apply the entries
@@ -646,7 +687,8 @@ impl<L, M> Consensus<L, M>
                                                            prev_log_index,
                                                            prev_log_term,
                                                            &entries,
-                                                           self.commit_index);
+                                                           self.commit_index,
+                                                           &self.lid);
 
             self.leader_state.set_next_index(from, local_latest_log_index + 1);
             actions.peer_messages.push((from, message));
@@ -654,7 +696,7 @@ impl<L, M> Consensus<L, M>
             // If the peer is caught up, set a heartbeat timeout.
             scoped_trace!("AppendEntriesResponse: scheduling heartbeat for peer {}",
                           from);
-            let timeout = ConsensusTimeout::Heartbeat(from);
+            let timeout = ConsensusTimeout::Heartbeat(from, self.lid);
             actions.timeouts.push(timeout);
         }
     }
@@ -664,6 +706,7 @@ impl<L, M> Consensus<L, M>
                             candidate: ServerId,
                             request: request_vote_request::Reader,
                             actions: &mut Actions) {
+
         let candidate_term = Term(request.get_term());
         let candidate_log_term = Term(request.get_last_log_term());
         let candidate_log_index = LogIndex(request.get_last_log_index());
@@ -687,20 +730,20 @@ impl<L, M> Consensus<L, M>
         };
 
         let message = if candidate_term < local_term {
-            messages::request_vote_response_stale_term(new_local_term)
+            messages::request_vote_response_stale_term(new_local_term, &self.lid)
         } else if candidate_log_term < self.latest_log_term() ||
                                 candidate_log_index < self.latest_log_index() {
-            messages::request_vote_response_inconsistent_log(new_local_term)
+            messages::request_vote_response_inconsistent_log(new_local_term, &self.lid)
         } else {
             match self.log.voted_for().unwrap() {
                 None => {
                     self.log.set_voted_for(Some(candidate)).unwrap();
-                    messages::request_vote_response_granted(new_local_term)
+                    messages::request_vote_response_granted(new_local_term, &self.lid)
                 }
                 Some(voted_for) if voted_for == candidate => {
-                    messages::request_vote_response_granted(new_local_term)
+                    messages::request_vote_response_granted(new_local_term, &self.lid)
                 }
-                _ => messages::request_vote_response_already_voted(new_local_term),
+                _ => messages::request_vote_response_already_voted(new_local_term, &self.lid),
             }
         };
         actions.peer_messages.push((candidate, message));
@@ -711,6 +754,7 @@ impl<L, M> Consensus<L, M>
                              from: ServerId,
                              response: request_vote_response::Reader,
                              actions: &mut Actions) {
+
         scoped_debug!("RequestVoteResponse from peer {}", from);
 
         let local_term = self.current_term();
@@ -751,11 +795,13 @@ impl<L, M> Consensus<L, M>
                             actions: &mut Actions) {
 
         if self.is_candidate() || (self.is_follower() && self.follower_state.leader.is_none()) {
-            actions.client_messages.push((from, messages::command_response_unknown_leader()));
+            actions.client_messages
+                .push((from, messages::command_response_unknown_leader(&self.lid)));
         } else if self.is_follower() {
             let message = messages::command_response_not_leader(&self.peers[&self.follower_state
-                .leader
-                .unwrap()]);
+                                                                    .leader
+                                                                    .unwrap()],
+                                                                &self.lid);
             actions.client_messages.push((from, message));
         } else if let Ok(entry) = request.get_entry() {
             let prev_log_index = self.latest_log_index();
@@ -775,7 +821,8 @@ impl<L, M> Consensus<L, M>
                                                                prev_log_index,
                                                                prev_log_term,
                                                                &[(term, entry)],
-                                                               self.commit_index);
+                                                               self.commit_index,
+                                                               &self.lid);
                 for &peer in self.peers.keys() {
                     if self.leader_state.next_index(&peer) == log_index {
                         actions.peer_messages.push((peer, message.clone()));
@@ -793,17 +840,29 @@ impl<L, M> Consensus<L, M>
                          from: ClientId,
                          request: query_request::Reader,
                          actions: &mut Actions) {
+
         scoped_trace!("query from Client({})", from);
 
         if self.is_candidate() || (self.is_follower() && self.follower_state.leader.is_none()) {
-            actions.client_messages.push((from, messages::command_response_unknown_leader()));
+            actions.client_messages
+                .push((from, messages::command_response_unknown_leader(&self.lid)));
         } else {
             // TODO: This is probably not exactly safe.
             let query = request.get_query().unwrap();
-            let result = self.state_machine.query(query);
-            let message = messages::command_response_success(&result);
+            let result = self.state_machine.borrow().query(query);
+            let message = messages::command_response_success(&result, &self.lid);
             actions.client_messages.push((from, message));
         }
+    }
+
+    fn into_reader<C>(message: &Builder<C>) -> Reader<OwnedSegments>
+        where C: Allocator
+    {
+        let mut buf = Cursor::new(Vec::new());
+
+        serialize::write_message(&mut buf, message).unwrap();
+        buf.set_position(0);
+        serialize::read_message(&mut buf, ReaderOptions::new()).unwrap()
     }
 
     /// Triggers a heartbeat timeout for the peer.
@@ -812,15 +871,18 @@ impl<L, M> Consensus<L, M>
         scoped_debug!("HeartbeatTimeout for peer: {}", peer);
         let mut message = Builder::new_default();
         {
-            let mut request = message.init_root::<message::Builder>()
-                .init_append_entries_request();
+            let mut request = message.init_root::<message::Builder>();
+            request.set_log_id(&self.lid.as_bytes());
+            let mut request = request.init_append_entries_request();
             request.set_term(self.current_term().as_u64());
             request.set_prev_log_index(self.latest_log_index().as_u64());
             request.set_prev_log_term(self.log.latest_log_term().unwrap().as_u64());
             request.set_leader_commit(self.commit_index.as_u64());
             request.init_entries(0);
         }
-        actions.peer_messages.push((peer, Rc::new(message)));
+        let message = Rc::new(message);
+        actions.peer_messages.push((peer, message.clone()));
+        actions.portal_queue.push((peer, message));
     }
 
     /// Triggers an election timeout.
@@ -855,12 +917,13 @@ impl<L, M> Consensus<L, M>
                                                        latest_log_index,
                                                        latest_log_term,
                                                        &[],
-                                                       self.commit_index);
+                                                       self.commit_index,
+                                                       &self.lid);
         for &peer in self.peers().keys() {
             actions.peer_messages.push((peer, message.clone()));
         }
 
-        actions.clear_timeouts = true;
+        actions.clear_timeouts.push(self.lid);
         actions.clear_peer_messages = true;
     }
 
@@ -875,12 +938,13 @@ impl<L, M> Consensus<L, M>
 
         let message = messages::request_vote_request(self.current_term(),
                                                      self.latest_log_index(),
-                                                     self.log.latest_log_term().unwrap());
+                                                     self.log.latest_log_term().unwrap(),
+                                                     &self.lid);
 
         for &peer in self.peers().keys() {
             actions.peer_messages.push((peer, message.clone()));
         }
-        actions.timeouts.push(ConsensusTimeout::Election);
+        actions.timeouts.push(ConsensusTimeout::Election(self.lid));
         actions.clear_peer_messages = true;
     }
 
@@ -906,7 +970,7 @@ impl<L, M> Consensus<L, M>
                 // We know that there will be an index here since it was commited
                 // and the index is less than that which has been commited.
                 let result = results.get(&index).unwrap();
-                let message = messages::command_response_success(result);
+                let message = messages::command_response_success(result, &self.lid);
                 actions.client_messages.push((client, message));
                 self.leader_state.proposals.pop_front();
             } else {
@@ -927,7 +991,7 @@ impl<L, M> Consensus<L, M>
             };
 
             if !entry.is_empty() {
-                let result = self.state_machine.apply(entry);
+                let result = self.state_machine.borrow_mut().apply(entry);
                 results.insert(self.last_applied + 1, result);
             }
             self.last_applied = self.last_applied + 1;
@@ -943,9 +1007,9 @@ impl<L, M> Consensus<L, M>
         self.log.set_current_term(term).unwrap();
         self.state = ConsensusState::Follower;
         self.follower_state.set_leader(leader);
-        actions.clear_timeouts = true;
+        actions.clear_timeouts.push(self.lid);
         actions.clear_peer_messages = true;
-        actions.timeouts.push(ConsensusTimeout::Election);
+        actions.timeouts.push(ConsensusTimeout::Election(self.lid));
     }
 
     /// Returns whether the consensus state machine is currently a Leader.
@@ -995,19 +1059,22 @@ impl<L, M> fmt::Debug for Consensus<L, M>
         match self.state {
             ConsensusState::Follower => {
                 write!(fmt,
-                       "Follower {{ term: {}, index: {} }}",
+                       "Follower {{ lid: {}, term: {}, index: {} }}",
+                       self.lid,
                        self.current_term(),
                        self.latest_log_index())
             }
             ConsensusState::Candidate => {
                 write!(fmt,
-                       "Candidate {{ term: {}, index: {} }}",
+                       "Candidate {{ lid: {}, term: {}, index: {} }}",
+                       self.lid,
                        self.current_term(),
                        self.latest_log_index())
             }
             ConsensusState::Leader => {
                 write!(fmt,
-                       "Leader {{ term: {}, index: {} }}",
+                       "Leader {{ lid: {}, term: {}, index: {} }}",
+                       self.lid,
                        self.current_term(),
                        self.latest_log_index())
             }
@@ -1028,17 +1095,24 @@ mod tests {
 
     use capnp::serialize::{self, OwnedSegments};
     use capnp::message::{Allocator, Builder, HeapAllocator, Reader, ReaderOptions};
+    use messages_capnp::{client_request, message};
     use ClientId;
     use LogIndex;
     use ServerId;
+    use LogId;
     use Term;
     use messages;
     use consensus::{Actions, Consensus, ConsensusTimeout};
     use state_machine::NullStateMachine;
     use persistent_log::{MemLog, Log};
     use uuid::Uuid;
+    use std::cell::RefCell;
 
     type TestPeer = Consensus<MemLog, NullStateMachine>;
+
+    lazy_static!{
+        static ref lid: LogId = LogId(Uuid::new_v4());
+    }
 
     fn new_cluster(size: u64) -> HashMap<ServerId, TestPeer> {
         let ids: HashMap<ServerId, SocketAddr> = (0..size)
@@ -1050,7 +1124,12 @@ mod tests {
                 let mut peers = ids.clone();
                 peers.remove(&id);
                 let store = MemLog::new();
-                (id, Consensus::new(id, peers, store, NullStateMachine))
+                (id,
+                 Consensus::new(id,
+                                *lid,
+                                peers,
+                                store,
+                                Rc::new(RefCell::new(NullStateMachine))))
             })
             .collect()
     }
@@ -1079,8 +1158,11 @@ mod tests {
         actions.peer_messages.clear();
 
         while let Some((from, to, message)) = queue.pop_front() {
-            let reader = into_reader(&*message);
-            peers.get_mut(&to).unwrap().apply_peer_message(from, &reader, &mut actions);
+            let mut reader = into_reader(&*message);
+            let message_reader = reader.get_root::<message::Reader>().unwrap();
+            peers.get_mut(&to)
+                .unwrap()
+                .apply_peer_message(from, &message_reader, &mut actions);
             let inner_from = to;
             for (inner_to, message) in actions.peer_messages.iter().cloned() {
                 queue.push_back((inner_from, inner_to, message));
@@ -1096,7 +1178,9 @@ mod tests {
     /// The leader and the followers must be in the same term.
     fn elect_leader(leader: ServerId, peers: &mut HashMap<ServerId, TestPeer>) {
         let mut actions = Actions::new();
-        peers.get_mut(&leader).unwrap().apply_timeout(ConsensusTimeout::Election, &mut actions);
+        peers.get_mut(&leader)
+            .unwrap()
+            .apply_timeout(ConsensusTimeout::Election(*lid), &mut actions);
         let client_messages = apply_actions(leader, actions, peers);
         assert!(client_messages.is_empty());
         assert!(peers[&leader].is_leader());
@@ -1127,7 +1211,7 @@ mod tests {
         assert!(peer.is_follower());
 
         let mut actions = Actions::new();
-        peer.apply_timeout(ConsensusTimeout::Election, &mut actions);
+        peer.apply_timeout(ConsensusTimeout::Election(*lid), &mut actions);
         assert!(peer.is_leader());
         assert!(actions.peer_messages.is_empty());
         assert!(actions.client_messages.is_empty());
@@ -1174,30 +1258,32 @@ mod tests {
             assert_eq!(peer_message.0, follower_id.clone());
             peer_message.1.clone()
         };
-        let reader = into_reader(&*leader_append_entries);
+        let mut reader = into_reader(&*leader_append_entries);
+        let message_reader = reader.get_root::<message::Reader>().unwrap();
 
         // Follower responds.
         let follower_response = {
             let mut actions = Actions::new();
             let follower = peers.get_mut(&follower_id).unwrap();
-            follower.apply_peer_message(leader_id.clone(), &reader, &mut actions);
+            follower.apply_peer_message(leader_id.clone(), &message_reader, &mut actions);
 
             let election_timeout = actions.timeouts.iter().next().unwrap();
-            assert_eq!(election_timeout, &ConsensusTimeout::Election);
+            assert_eq!(election_timeout, &ConsensusTimeout::Election(*lid));
 
             let peer_message = actions.peer_messages.iter().next().unwrap();
             assert_eq!(peer_message.0, leader_id.clone());
             peer_message.1.clone()
         };
-        let reader = into_reader(&*follower_response);
+        let mut reader = into_reader(&*follower_response);
+        let message_reader = reader.get_root::<message::Reader>().unwrap();
 
         // Leader applies and sends back a heartbeat to establish leadership.
         let leader = peers.get_mut(&leader_id).unwrap();
         let mut actions = Actions::new();
-        leader.apply_peer_message(follower_id.clone(), &reader, &mut actions);
+        leader.apply_peer_message(follower_id.clone(), &message_reader, &mut actions);
         let heartbeat_timeout = actions.timeouts.iter().next().unwrap();
         assert_eq!(heartbeat_timeout,
-                   &ConsensusTimeout::Heartbeat(follower_id.clone()));
+                   &ConsensusTimeout::Heartbeat(follower_id.clone(), *lid));
     }
 
     /// Emulates a slow heartbeat message in a two-node cluster.
@@ -1219,13 +1305,14 @@ mod tests {
         let mut peer_0_actions = Actions::new();
         peers.get_mut(peer_0)
             .unwrap()
-            .apply_timeout(ConsensusTimeout::Heartbeat(*peer_1), &mut peer_0_actions);
+            .apply_timeout(ConsensusTimeout::Heartbeat(*peer_1, *lid),
+                           &mut peer_0_actions);
         assert!(peers[peer_0].is_leader());
 
         let mut peer_1_actions = Actions::new();
         peers.get_mut(peer_1)
             .unwrap()
-            .apply_timeout(ConsensusTimeout::Election, &mut peer_1_actions);
+            .apply_timeout(ConsensusTimeout::Election(*lid), &mut peer_1_actions);
         assert!(peers[peer_1].is_candidate());
 
         // Apply candidate messages.
@@ -1253,15 +1340,17 @@ mod tests {
             elect_leader(leader, &mut peers);
 
             let value: &[u8] = b"foo";
-            let proposal = into_reader(&messages::proposal_request(Uuid::new_v4().as_bytes(),
-                                                                   value));
+            let reader =
+                into_reader(&messages::proposal_request(Uuid::new_v4().as_bytes(), value, &*lid));
+            let message_reader = reader.get_root::<client_request::Reader>()
+                .unwrap();
             let mut actions = Actions::new();
 
             let client = ClientId::new();
 
             peers.get_mut(&leader)
                 .unwrap()
-                .apply_client_message(client, &proposal, &mut actions);
+                .apply_client_message(client, &message_reader, &mut actions);
 
             let client_messages = apply_actions(leader, actions, &mut peers);
             assert_eq!(1, client_messages.len());
@@ -1284,16 +1373,23 @@ mod tests {
         let mut follower = peers.get_mut(&peer_ids[0]).unwrap();
         let value: &[u8] = b"foo";
         let entries = vec![(Term(1), value), (Term(1), value)];
-        let msg1 = into_reader(&*messages::append_entries_request(Term(1),
-                                                                  LogIndex(0),
-                                                                  Term(0),
-                                                                  &entries,
-                                                                  LogIndex(0)));
-        let msg2 = into_reader(&*messages::append_entries_request(Term(1),
-                                                                  LogIndex(0),
-                                                                  Term(0),
-                                                                  &entries[0..1],
-                                                                  LogIndex(0)));
+        let reader = into_reader(&*messages::append_entries_request(Term(1),
+                                                                    LogIndex(0),
+                                                                    Term(0),
+                                                                    &entries,
+                                                                    LogIndex(0),
+                                                                    &*lid));
+
+        let msg1 = reader.get_root::<message::Reader>()
+            .unwrap();
+        let reader = into_reader(&*messages::append_entries_request(Term(1),
+                                                                    LogIndex(0),
+                                                                    Term(0),
+                                                                    &entries[0..1],
+                                                                    LogIndex(0),
+                                                                    &*lid));
+        let msg2 = reader.get_root::<message::Reader>()
+            .unwrap();
         follower.apply_peer_message(peer_ids[1], &msg1, &mut actions);
         follower.apply_peer_message(peer_ids[1], &msg2, &mut actions);
 
@@ -1323,7 +1419,10 @@ mod tests {
         elect_leader(leader, &mut peers);
 
         let value: &[u8] = b"foo";
-        let proposal = into_reader(&messages::proposal_request(Uuid::new_v4().as_bytes(), value));
+        let reader =
+            into_reader(&messages::proposal_request(Uuid::new_v4().as_bytes(), value, &*lid));
+        let message_reader = reader.get_root::<client_request::Reader>()
+            .unwrap();
         let client = ClientId::new();
 
 
@@ -1331,7 +1430,7 @@ mod tests {
             let mut actions = Actions::new();
             peers.get_mut(&leader)
                 .unwrap()
-                .apply_client_message(client, &proposal, &mut actions);
+                .apply_client_message(client, &message_reader, &mut actions);
 
             let client_messages = apply_actions(leader, actions, &mut peers);
             assert_eq!(1, client_messages.len());

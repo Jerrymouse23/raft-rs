@@ -9,10 +9,13 @@ use raft::persistent_log::Log;
 use raft::LogIndex;
 use raft::ServerId;
 use raft::Term;
+use raft::LogId;
 
 #[derive(Clone, Debug)]
 pub struct DocLog {
     entries: Vec<(Term, Vec<u8>)>,
+    logid: LogId,
+    prefix: String,
 }
 
 /// Non-instantiable error type for MemLog
@@ -37,8 +40,12 @@ impl error::Error for Error {
 }
 
 impl DocLog {
-    pub fn new() -> Self {
-        let mut d = DocLog { entries: Vec::new() };
+    pub fn new(prefix: &str, lid: LogId) -> Self {
+        let mut d = DocLog {
+            prefix: prefix.to_string(),
+            entries: Vec::new(),
+            logid: lid,
+        };
 
         d.set_current_term(Term::from(0));
 
@@ -51,7 +58,8 @@ impl Log for DocLog {
     type Error = Error;
 
     fn current_term(&self) -> result::Result<Term, Error> {
-        let mut term_handler = File::open("term").expect("Could not find term file");
+        let mut term_handler = File::open(format!("{}/{}_{}", self.prefix, self.logid, "term"))
+            .expect("Unable to read current_term");
 
         let term: Term = decode_from(&mut term_handler, SizeLimit::Infinite).unwrap();
 
@@ -63,10 +71,17 @@ impl Log for DocLog {
             .read(true)
             .write(true)
             .create(true)
-            .open("term")
-            .unwrap();
+            .open(format!("{}/{}_{}", self.prefix, self.logid, "term"))
+            .expect(&format!("Filehandler cannot open {}/{}_{}",
+                             self.prefix,
+                             self.logid,
+                             "term"));
 
-        encode_into(&term, &mut term_handler, SizeLimit::Infinite);
+        let bytes = encode(&term, SizeLimit::Infinite).expect("Cannot encode term");
+
+        term_handler.write_all(bytes.as_slice());
+
+        term_handler.flush();
 
         self.set_voted_for(None);
 
@@ -81,7 +96,9 @@ impl Log for DocLog {
     }
 
     fn voted_for(&self) -> result::Result<Option<ServerId>, Error> {
-        let mut voted_for_handler = File::open("voted_for").expect("Could not find voted_for file");
+        let mut voted_for_handler =
+            File::open(format!("{}/{}_{}", self.prefix, self.logid, "voted_for"))
+                .expect("Unable to read voted_for");
 
         let voted_for: Option<ServerId> = decode_from(&mut voted_for_handler, SizeLimit::Infinite)
             .unwrap();
@@ -94,10 +111,17 @@ impl Log for DocLog {
             .read(true)
             .write(true)
             .create(true)
-            .open("voted_for")
-            .unwrap();
+            .open(format!("{}/{}_{}", self.prefix, self.logid, "voted_for"))
+            .expect(&format!("Filehandler cannot open {}/{}_{}",
+                             self.prefix,
+                             self.logid,
+                             "voted_for"));
 
-        encode_into(&address, &mut voted_for_handler, SizeLimit::Infinite);
+        let bytes = encode(&address, SizeLimit::Infinite).expect("Cannot encode voted_for");
+
+        voted_for_handler.write_all(bytes.as_slice());
+
+        voted_for_handler.flush();
 
         Ok(())
     }
@@ -152,10 +176,16 @@ mod test {
     use std::io::prelude::*;
     use std::fs::OpenOptions;
     use std::io::SeekFrom;
+    use uuid::Uuid;
+    use raft::LogId;
+
+    lazy_static!{
+        static ref lid : LogId = LogId::from("3d30aa56-98b2-4891-aec5-847cee6e1703".to_string()).unwrap();
+    }
 
     #[test]
     fn test_current_term() {
-        let mut store = DocLog::new();
+        let mut store = DocLog::new("/tmp", *lid);
         assert_eq!(Term::from(0), store.current_term().unwrap());
         store.set_voted_for(Some(ServerId::from(0))).unwrap();
         store.set_current_term(Term::from(42)).unwrap();
@@ -167,7 +197,7 @@ mod test {
 
     #[test]
     fn test_voted_for() {
-        let mut store = DocLog::new();
+        let mut store = DocLog::new("/tmp", *lid);
         assert_eq!(None, store.voted_for().unwrap());
         let id = ServerId::from(0);
         store.set_voted_for(Some(id)).unwrap();
@@ -176,7 +206,7 @@ mod test {
 
     #[test]
     fn test_append_entries() {
-        let mut store = DocLog::new();
+        let mut store = DocLog::new("/tmp", *lid);
         assert_eq!(LogIndex::from(0), store.latest_log_index().unwrap());
         assert_eq!(Term::from(0), store.latest_log_term().unwrap());
 

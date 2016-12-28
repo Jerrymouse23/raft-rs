@@ -5,7 +5,7 @@
 
 use std::{fmt, io};
 use std::str::FromStr;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::thread::{self, JoinHandle};
 use std::rc::Rc;
@@ -14,14 +14,15 @@ use mio::tcp::TcpListener;
 use mio::util::Slab;
 use mio::{EventLoop, EventSet, Handler, PollOpt, Token};
 use mio::Timeout as TimeoutHandle;
-use capnp::serialize::{self, OwnedSegments};
 use capnp::message::{Builder, Allocator, HeapAllocator, Reader, ReaderOptions};
+use capnp::serialize::{self, OwnedSegments};
 
 use ClientId;
 use Result;
 use Error;
 use RaftError;
 use ServerId;
+use LogId;
 use messages;
 use messages_capnp::connection_preamble;
 use consensus::{Consensus, Actions, ConsensusTimeout};
@@ -31,13 +32,16 @@ use connection::{Connection, ConnectionKind};
 use std::io::Cursor;
 
 use auth::Auth;
+use log_manager::LogManager;
+
+use state::ConsensusState;
 
 const LISTENER: Token = Token(0);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 
 pub enum ServerTimeout {
-    Consensus(ConsensusTimeout),
+    Consensus(LogId, ConsensusTimeout),
     Reconnect(Token),
 }
 
@@ -62,7 +66,7 @@ pub struct Server<L, M, A>
     id: ServerId,
 
     /// Raft state machine consensus.
-    consensus: Consensus<L, M>,
+    log_manager: LogManager<L, M>,
 
     /// Connection listener.
     listener: TcpListener,
@@ -76,8 +80,8 @@ pub struct Server<L, M, A>
     /// Index of client id to connection token.
     client_tokens: HashMap<ClientId, Token>,
 
-    /// Currently registered consensus timeouts.
-    consensus_timeouts: HashMap<ConsensusTimeout, TimeoutHandle>,
+    /// Index of portal id to connection token
+    portals_tokens: HashSet<Token>,
 
     /// Currently registered reconnection timeouts.
     reconnection_timeouts: HashMap<Token, TimeoutHandle>,
@@ -88,7 +92,7 @@ pub struct Server<L, M, A>
     /// Instance of the authentification module
     auth: A,
 
-    requests_in_queue: Vec<(ClientId, Builder<HeapAllocator>)>,
+    requests_in_queue: Vec<(LogId, ClientId, Builder<HeapAllocator>)>,
 }
 
 /// The implementation of the Server.
@@ -102,28 +106,29 @@ impl<L, M, A> Server<L, M, A>
     pub fn new(id: ServerId,
                addr: SocketAddr,
                peers: HashMap<ServerId, SocketAddr>,
-               store: L,
                state_machine: M,
                community_string: String,
-               auth: A)
+               auth: A,
+               logs: Vec<(LogId, L)>)
                -> Result<(Server<L, M, A>, EventLoop<Server<L, M, A>>)> {
         if peers.contains_key(&id) {
             return Err(Error::Raft(RaftError::InvalidPeerSet));
         }
 
-        let consensus = Consensus::new(id, peers.clone(), store, state_machine);
+        let log_manager = LogManager::new(id, logs, peers.clone(), state_machine);
+
         let mut event_loop = try!(EventLoop::<Server<L, M, A>>::new());
         let listener = try!(TcpListener::bind(&addr));
         try!(event_loop.register(&listener, LISTENER, EventSet::all(), PollOpt::level()));
 
         let mut server = Server {
             id: id,
-            consensus: consensus,
+            log_manager: log_manager,
             listener: listener,
             connections: Slab::new_starting_at(Token(1), 129),
             peer_tokens: HashMap::new(),
+            portals_tokens: HashSet::new(),
             client_tokens: HashMap::new(),
-            consensus_timeouts: HashMap::new(),
             reconnection_timeouts: HashMap::new(),
             community_string: community_string.clone(),
             auth: auth,
@@ -158,20 +163,16 @@ impl<L, M, A> Server<L, M, A>
     pub fn run(id: ServerId,
                addr: SocketAddr,
                peers: HashMap<ServerId, SocketAddr>,
-               store: L,
                state_machine: M,
                community_string: String,
-               auth: A)
+               auth: A,
+               logs: Vec<(LogId, L)>)
                -> Result<()> {
-        let (mut server, mut event_loop) = try!(Server::new(id,
-                                                            addr,
-                                                            peers,
-                                                            store,
-                                                            state_machine,
-                                                            community_string,
-                                                            auth));
-        let actions = server.consensus.init();
-        server.execute_actions(&mut event_loop, actions);
+        let (mut server, mut event_loop) =
+            try!(Server::new(id, addr, peers, state_machine, community_string, auth, logs));
+
+        server.init(&mut event_loop);
+
         event_loop.run(&mut server).map_err(From::from)
     }
 
@@ -185,28 +186,28 @@ impl<L, M, A> Server<L, M, A>
     /// * `store` - The persistent log store.
     /// * `state_machine` - The client state machine to which client commands will be applied.
     /// * `communinity_string` - To allow peers to connect to each other
-    pub fn spawn(id: ServerId,
-                 addr: SocketAddr,
-                 peers: HashMap<ServerId, SocketAddr>,
-                 store: L,
-                 state_machine: M,
-                 community_string: String,
-                 auth: A)
-                 -> Result<JoinHandle<Result<()>>> {
-        thread::Builder::new()
-            .name(format!("raft::Server({})", id))
-            .spawn(move || {
-                Server::run(id,
-                            addr,
-                            peers,
-                            store,
-                            state_machine,
-                            community_string,
-                            auth)
-            })
-            .map_err(From::from)
-    }
-
+    // TODO reimplement
+    //    pub fn spawn(id: ServerId,
+    // addr: SocketAddr,
+    // peers: HashMap<ServerId, SocketAddr>,
+    // store: L,
+    // state_machine: M,
+    // community_string: String,
+    // auth: A)
+    // -> Result<JoinHandle<Result<()>>> {
+    // thread::Builder::new()
+    // .name(format!("raft::Server({})", id))
+    // .spawn(move || {
+    // Server::run(id,
+    // addr,
+    // peers,
+    // store,
+    // state_machine,
+    // community_string,
+    // auth)
+    // })
+    // .map_err(From::from)
+    // }
     /// Sends the message to the connection associated with the provided token.
     /// If sending the message fails, the connection is reset.
     fn send_message(&mut self,
@@ -235,7 +236,8 @@ impl<L, M, A> Server<L, M, A>
                       clear_timeouts,
                       clear_peer_messages,
                       peer_messages_broadcast,
-                      transaction_queue } = actions;
+                      transaction_queue,
+                      portal_queue } = actions;
 
         if clear_peer_messages {
             for &token in self.peer_tokens.values() {
@@ -267,23 +269,39 @@ impl<L, M, A> Server<L, M, A>
             }
         }
 
-        if clear_timeouts {
-            for (timeout, &handle) in &self.consensus_timeouts {
+        for lid in clear_timeouts {
+            let mut consensus = self.log_manager
+                .get_mut(lid)
+                .expect(&format!("Log {:?} is not registered in the log_manager", lid));
+
+            for (timeout, &handle) in consensus.consensus_timeouts.iter() {
                 scoped_assert!(event_loop.clear_timeout(handle),
-                               "unable to clear timeout: {:?}",
+                               "unable to clear timeout; {:?}",
                                timeout);
             }
-            self.consensus_timeouts.clear();
+
+            consensus.consensus_timeouts.clear();
         }
+
         for timeout in timeouts {
             let duration = timeout.duration_ms();
+
+            let lid = match timeout {
+                ConsensusTimeout::Election(lid) => lid,
+                ConsensusTimeout::Heartbeat(_, lid) => lid,
+            };
 
             // Registering a timeout may only fail if the maximum number of timeouts
             // is already registered, which is by default 65,536. We use a
             // maximum of one timeout per peer, so this unwrap should be safe.
-            let handle = event_loop.timeout_ms(ServerTimeout::Consensus(timeout), duration)
+            let handle = event_loop.timeout_ms(ServerTimeout::Consensus(lid, timeout), duration)
                 .unwrap();
-            self.consensus_timeouts
+
+            let mut consensus = self.log_manager
+                .get_mut(lid)
+                .expect(&format!("Log {:?} is not registered in the log_manager", lid));
+
+            consensus.consensus_timeouts
                 .insert(timeout, handle)
                 .map(|handle| {
                     scoped_assert!(event_loop.clear_timeout(handle),
@@ -291,6 +309,16 @@ impl<L, M, A> Server<L, M, A>
                                    timeout)
                 });
         }
+
+        scoped_debug!("Sending {:?}  messages to portals", portal_queue.len());
+        scoped_debug!("Sending informations to {:?} portals",
+                      self.portals_tokens.clone().len());
+        for (peer, message) in portal_queue {
+            for t in self.portals_tokens.clone() {
+                self.send_message(event_loop, t, message.clone());
+            }
+        }
+
     }
 
     /// Resets the connection corresponding to the provided token.
@@ -318,6 +346,10 @@ impl<L, M, A> Server<L, M, A>
                                "client {:?} not connected",
                                id);
             }
+            ConnectionKind::Portal => {
+                self.connections.remove(token).expect("unable to find portal connection");
+                assert_eq!(self.portals_tokens.remove(&token), true);
+            }
             ConnectionKind::Unknown => {
                 self.connections.remove(token).expect("unable to find unknown connection");
             }
@@ -333,14 +365,10 @@ impl<L, M, A> Server<L, M, A>
                 token: Token)
                 -> Result<()> {
 
-        if !self.consensus.transaction.isActive {
-            for (client, builder) in self.requests_in_queue.pop() {
-                let mut actions = Actions::new();
-                self.consensus
-                    .apply_client_message(client, &Self::into_reader(&builder), &mut actions);
-                self.execute_actions(event_loop, actions);
-            }
-        }
+        let mut actions = Actions::new();
+        self.log_manager.handle_queue(&mut actions);
+        self.execute_actions(event_loop, actions);
+
 
         scoped_trace!("{:?}: readable event", self.connections[token]);
         // Read messages from the connection until there are no more.
@@ -348,14 +376,15 @@ impl<L, M, A> Server<L, M, A>
             match *self.connections[token].kind() {
                 ConnectionKind::Peer(id) => {
                     let mut actions = Actions::new();
-                    self.consensus.apply_peer_message(id, &message, &mut actions);
+                    self.log_manager.apply_peer_message(id, &message, &mut actions);
                     self.execute_actions(event_loop, actions);
                 }
                 ConnectionKind::Client(id) => {
                     let mut actions = Actions::new();
-                    self.consensus.apply_client_message(id, &message, &mut actions);
+                    self.log_manager.apply_client_message(id, &message, &mut actions);
                     self.execute_actions(event_loop, actions);
                 }
+                ConnectionKind::Portal => unimplemented!(),
                 ConnectionKind::Unknown => {
                     let preamble = try!(message.get_root::<connection_preamble::Reader>());
                     match try!(preamble.get_id().which()) {
@@ -405,7 +434,7 @@ impl<L, M, A> Server<L, M, A>
                                 }
                                 // Notify consensus that the connection reset.
                                 let mut actions = Actions::new();
-                                self.consensus
+                                self.log_manager
                                     .peer_connection_reset(peer_id, peer_addr, &mut actions);
                                 self.execute_actions(event_loop, actions);
                             }
@@ -424,8 +453,6 @@ impl<L, M, A> Server<L, M, A>
                                                         .unwrap(),
                                                     &hashed);
 
-                            let isAuth = true;
-
                             if isAuth == false {
                                 scoped_debug!("Wrong username or password");
                             } else {
@@ -440,6 +467,14 @@ impl<L, M, A> Server<L, M, A>
                                                self,
                                                client_id);
                             }
+                        }
+                        connection_preamble::id::Which::Portal(Ok(portal)) => {
+                            scoped_debug!("received new connection from portal");
+
+                            // TODO implement auth
+
+                            self.connections[token].set_kind(ConnectionKind::Portal);
+                            let prev_token = self.portals_tokens.insert(token);
                         }
                         _ => {
                             return Err(Error::Raft(RaftError::UnknownConnectionType));
@@ -487,6 +522,13 @@ impl<L, M, A> Server<L, M, A>
 
     pub fn get_local_addr(&self) -> SocketAddr {
         self.listener.local_addr().unwrap()
+    }
+
+
+    pub fn init(&mut self, event_loop: &mut EventLoop<Server<L, M, A>>) {
+        let action = self.log_manager.init();
+
+        self.execute_actions(event_loop, action);
     }
 
     pub fn into_reader<C>(message: &Builder<C>) -> Reader<OwnedSegments>
@@ -565,12 +607,20 @@ impl<L, M, A> Handler for Server<L, M, A>
         push_log_scope!("{:?}", self);
         scoped_trace!("timeout: {:?}", &timeout);
         match timeout {
-            ServerTimeout::Consensus(consensus) => {
-                scoped_assert!(self.consensus_timeouts.remove(&consensus).is_some(),
+            ServerTimeout::Consensus(lid, ctimeout) => {
+                //
+                scoped_assert!(self.log_manager
+                                   .get_mut(lid)
+                                   .expect(&format!("Log {:?} is not registered in the \
+                                                     log_manager",
+                                                    lid))
+                                   .consensus_timeouts
+                                   .remove(&ctimeout)
+                                   .is_some(),
                                "missing timeout: {:?}",
                                timeout);
                 let mut actions = Actions::new();
-                self.consensus.apply_timeout(consensus, &mut actions);
+                self.log_manager.apply_timeout(&lid, ctimeout, &mut actions);
                 self.execute_actions(event_loop, actions);
             }
 
@@ -591,7 +641,7 @@ impl<L, M, A> Handler for Server<L, M, A>
                     .and_then(|_| self.connections[token].register(event_loop, token))
                     .map(|_| {
                         let mut actions = Actions::new();
-                        self.consensus.peer_connection_reset(id, addr, &mut actions);
+                        self.log_manager.peer_connection_reset(id, addr, &mut actions);
                         self.execute_actions(event_loop, actions);
                     })
                     .unwrap_or_else(|error| {
@@ -632,6 +682,7 @@ mod tests {
     use ClientId;
     use Result;
     use ServerId;
+    use LogId;
     use messages;
     use messages_capnp::connection_preamble;
     use consensus::Actions;
@@ -640,18 +691,24 @@ mod tests {
     use super::*;
     use auth::Auth;
     use auth::null::NullAuth;
+    use uuid::Uuid;
 
     type TestServer = Server<MemLog, NullStateMachine, NullAuth>;
+    lazy_static!{
+        static ref lid: LogId = LogId(Uuid::new_v4());
+    }
 
     fn new_test_server(peers: HashMap<ServerId, SocketAddr>)
                        -> Result<(TestServer, EventLoop<TestServer>)> {
+        let mut logs: Vec<(LogId, MemLog)> = Vec::new();
+        logs.push((*lid, MemLog::new()));
         Server::new(ServerId::from(0),
                     SocketAddr::from_str("127.0.0.1:0").unwrap(),
                     peers,
-                    MemLog::new(),
                     NullStateMachine,
                     "test".to_string(),
-                    NullAuth)
+                    NullAuth,
+                    logs)
     }
 
     /// Attempts to grab a local, unbound socket address for testing.
@@ -659,7 +716,7 @@ mod tests {
         TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap()
     }
 
-    /// Verifies that the proved stream has been sent a valid connection
+    /// Verifies that the proved stream has been sent a va*lid connection
     /// preamble.
     fn read_server_preamble<R>(read: &mut R) -> ServerId
         where R: Read
@@ -683,7 +740,6 @@ mod tests {
 
     /// Returns true if the server has an open connection with the client.
     fn client_connected(server: &TestServer, client: ClientId) -> bool {
-        println!("{:?}", server.client_tokens);
         server.client_tokens.contains_key(&client)
     }
 
@@ -703,7 +759,7 @@ mod tests {
         }
     }
 
-    /// Tests that a Server will reject an invalid peer configuration set.
+    /// Tests that a Server will reject an inva*lid peer configuration set.
     #[test]
     fn test_illegal_peer_set() {
         setup_test!("test_illegal_peer_set");
@@ -729,7 +785,7 @@ mod tests {
         // Accept the server's connection.
         let (mut stream, _) = peer_listener.accept().unwrap();
 
-        // Check that the server sends a valid preamble.
+        // Check that the server sends a va*lid preamble.
         assert_eq!(ServerId::from(0), read_server_preamble(&mut stream));
         assert!(peer_connected(&server, peer_id));
 
@@ -743,7 +799,7 @@ mod tests {
         assert!(peer_connected(&server, peer_id));
         let (mut stream, _) = peer_listener.accept().unwrap();
 
-        // Check that the server sends a valid preamble after the connection is
+        // Check that the server sends a va*lid preamble after the connection is
         // established.
         assert_eq!(ServerId::from(0), read_server_preamble(&mut stream));
         assert!(peer_connected(&server, peer_id));
@@ -765,7 +821,7 @@ mod tests {
         // Accept the server's connection.
         let (mut in_stream, _) = peer_listener.accept().unwrap();
 
-        // Check that the server sends a valid preamble.
+        // Check that the server sends a va*lid preamble.
         assert_eq!(ServerId::from(0), read_server_preamble(&mut in_stream));
         assert!(peer_connected(&server, peer_id));
 
@@ -788,7 +844,8 @@ mod tests {
 
         // Make sure that reconnecting updated the peer address
         // known to `Consensus` with the one given in the preamble.
-        assert_eq!(server.consensus.peers()[&peer_id], fake_peer_addr);
+        assert_eq!(server.log_manager.get(*lid).unwrap().peers()[&peer_id],
+                   fake_peer_addr);
         // Check that the server has closed the old connection.
         assert!(stream_shutdown(&mut in_stream));
         // Check that there's a connection which has the fake address
@@ -820,8 +877,6 @@ mod tests {
         stream.flush().unwrap();
         event_loop.run_once(&mut server, None).unwrap();
 
-        println!("{}", client_id);
-
         // Check that the server holds on to the client connection.
         assert!(client_connected(&server, client_id));
 
@@ -845,7 +900,7 @@ mod tests {
         let mut stream = TcpStream::connect(server_addr).unwrap();
         event_loop.run_once(&mut server, None).unwrap();
 
-        // Send an invalid preamble.
+        // Send an inva*lid preamble.
         stream.write(b"foo bar baz").unwrap();
         stream.flush().unwrap();
         event_loop.run_once(&mut server, None).unwrap();
@@ -854,7 +909,7 @@ mod tests {
         assert!(stream_shutdown(&mut stream));
     }
 
-    /// Tests that the server will reset a peer connection when an invalid
+    /// Tests that the server will reset a peer connection when an inva*lid
     /// message is received.
     #[test]
     fn test_invalid_peer_message() {
@@ -874,7 +929,7 @@ mod tests {
         // Read the server's preamble.
         assert_eq!(ServerId::from(0), read_server_preamble(&mut stream_a));
 
-        // Send an invalid message.
+        // Send an inva*lid message.
         stream_a.write(b"foo bar baz").unwrap();
         stream_a.flush().unwrap();
         event_loop.run_once(&mut server, None).unwrap();
@@ -887,7 +942,7 @@ mod tests {
         assert!(peer_connected(&server, peer_id));
     }
 
-    /// Tests that the server will reset a client connection when an invalid
+    /// Tests that the server will reset a client connection when an inva*lid
     /// message is received.
     #[test]
     fn test_invalid_client_message() {

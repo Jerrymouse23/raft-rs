@@ -20,6 +20,8 @@ use std::thread::spawn;
 use std::collections::HashSet;
 use std::boxed::Box;
 
+use raft::LogId;
+
 #[derive(RustcDecodable,RustcEncodable)]
 struct http_Response {
     payload: String,
@@ -53,6 +55,18 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
                move |request: &mut Request| http_get_keys(request, &context),
                "get_document_keys");
 
+    router.post("/transaction/begin",
+                move |request: &mut Request| http_begin_transaction(request, &context),
+                "begin_transaction");
+
+    router.post("/transaction/commit",
+                move |request: &mut Request| http_commit_transaction(request, &context),
+                "commit_transaction");
+
+    router.post("/transaction/rollback",
+                move |request: &mut Request| http_rollback_transaction(request, &context),
+                "rollback_transaction");
+
     fn http_get_keys(req: &mut Request, context: &Context) -> IronResult<Response> {
         let keys = read_dir("data1").unwrap();
         let mut response = "".to_owned();
@@ -85,7 +99,8 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
         let document = Handler::get(SocketAddr::V4(context.node_addr),
                                     username,
                                     password,
-                                    Uuid::parse_str(*fileId).unwrap())
+                                    Uuid::parse_str(*fileId).unwrap(),
+                                    LogId::from(0))
             .unwrap();
 
         let http_doc = http_Response {
@@ -124,7 +139,8 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
                                     username,
                                     password,
                                     document,
-                                    session) {
+                                    session,
+                                    LogId::from(0)) {
                     Ok(id) => Ok(Response::with((status::Ok, format!("{}", id)))),
                     Err(err) => {
                         Ok(Response::with((status::InternalServerError,
@@ -152,7 +168,8 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
                                         username,
                                         password,
                                         Uuid::parse_str(*fileId).unwrap(),
-                                        session) {
+                                        session,
+                                        LogId::from(0)) {
             Ok(()) => Response::with((status::Ok, "Ok")),
             Err(err) => {
                 Response::with((status::InternalServerError,
@@ -180,7 +197,8 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
                                                      password,
                                                      Uuid::parse_str(&id).unwrap(),
                                                      bytes,
-                                                     Uuid::new_v4()) {
+                                                     Uuid::new_v4(),
+                                                     LogId::from(0)) {
                             Ok(()) => Response::with((status::Ok, "Ok")),
                             Err(err) => {
                                 Response::with((status::InternalServerError,
@@ -194,6 +212,46 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
                 }
             } 
             _ => Ok(Response::with((status::InternalServerError, "No payload defined"))), 
+        }
+    }
+
+    fn http_begin_transaction(req: &mut Request, context: &Context) -> IronResult<Response> {
+        let username = "username";
+        let password = "password";
+
+        match Handler::begin_transaction(SocketAddr::V4(context.node_addr),
+                                         username,
+                                         password,
+                                         Uuid::new_v4(),
+                                         LogId::from(0)) {
+            Ok(session) => Ok(Response::with((status::Ok, session))),
+            Err(_) => Ok(Response::with((status::InternalServerError, "Something went wrong :("))),
+        }
+    }
+
+    fn http_commit_transaction(req: &mut Request, context: &Context) -> IronResult<Response> {
+        let username = "username";
+        let password = "password";
+
+        match Handler::commit_transaction(SocketAddr::V4(context.node_addr),
+                                          username,
+                                          password,
+                                          LogId::from(0)) {
+            Ok(res) => Ok(Response::with((status::Ok, res))),
+            Err(_) => Ok(Response::with((status::InternalServerError, "Something went wrong :("))),
+        }
+    }
+
+    fn http_rollback_transaction(req: &mut Request, context: &Context) -> IronResult<Response> {
+        let username = "username";
+        let password = "password";
+
+        match Handler::rollback_transaction(SocketAddr::V4(context.node_addr),
+                                            username,
+                                            password,
+                                            LogId::from(0)) {
+            Ok(res) => Ok(Response::with((status::Ok, res))),
+            Err(_) => Ok(Response::with((status::InternalServerError, "Something went wrong :("))),
         }
     }
 }

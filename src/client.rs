@@ -16,6 +16,7 @@ use capnp::message::{Allocator, Builder, ReaderOptions};
 use messages_capnp::{client_response, command_response};
 use messages;
 use ClientId;
+use LogId;
 use Result;
 use RaftError;
 use auth::Auth;
@@ -37,13 +38,15 @@ pub struct Client {
     password: String,
     /// The username to access server
     username: String,
+    lid: LogId,
 }
 
 impl Client {
     /// Creates a new client.
     pub fn new<A: Auth>(cluster: HashSet<SocketAddr>,
                         username: String,
-                        password: String)
+                        password: String,
+                        lid: LogId)
                         -> Client {
 
         // let hashed_password = Auth::generate(&password);
@@ -55,6 +58,7 @@ impl Client {
             cluster: cluster,
             password: hashed_password,
             username: username,
+            lid: lid,
         }
     }
 
@@ -63,7 +67,7 @@ impl Client {
     /// Returns `Error` when the entire cluster has an unknown leader. Try proposing again later.
     pub fn propose(&mut self, session: &[u8], entry: &[u8]) -> Result<Vec<u8>> {
         scoped_trace!("{:?}: propose", self);
-        let mut message = messages::proposal_request(session, entry);
+        let mut message = messages::proposal_request(session, entry, &self.lid);
         self.send_message(&mut message)
     }
 
@@ -71,22 +75,22 @@ impl Client {
     /// durable log. Like `.propose()` this will only communicate with the leader of the cluster.
     pub fn query(&mut self, query: &[u8]) -> Result<Vec<u8>> {
         scoped_trace!("{:?}: query", self);
-        let mut message = messages::query_request(query);
+        let mut message = messages::query_request(query, &self.lid);
         self.send_message(&mut message)
     }
 
     pub fn begin_transaction(&mut self, session: &[u8]) -> Result<Vec<u8>> {
-        let mut message = messages::client_transaction_begin(session);
+        let mut message = messages::client_transaction_begin(session, &self.lid);
         self.send_message(&mut message)
     }
 
     pub fn end_transaction(&mut self) -> Result<Vec<u8>> {
-        let mut message = messages::client_transaction_end();
+        let mut message = messages::client_transaction_commit(&self.lid);
         self.send_message(&mut message)
     }
 
     pub fn rollback_transaction(&mut self) -> Result<Vec<u8>> {
-        let mut message = messages::client_transaction_rollback();
+        let mut message = messages::client_transaction_rollback(&self.lid);
         self.send_message(&mut message)
     }
 
@@ -247,8 +251,12 @@ mod tests {
     use auth::Auth;
     use auth::null::NullAuth;
 
-    use {Client, messages, Result};
+    use {Client, messages, Result, LogId};
     use messages_capnp::{connection_preamble, client_request};
+
+    lazy_static!{
+        static ref lid: LogId = LogId(Uuid::new_v4());
+    }
 
     fn expect_preamble(connection: &mut TcpStream, client_id: Uuid) -> Result<bool> {
         let message = try!(serialize::read_message(connection, ReaderOptions::new()));
@@ -258,7 +266,7 @@ mod tests {
             connection_preamble::id::Which::Client(client) => {
                 let client = try!(client);
 
-                let id = Uuid::from_bytes(client.get_id().unwrap()).expect("valid bytes");
+                let id = Uuid::from_bytes(client.get_id().unwrap()).expect("va*lid bytes");
 
                 Ok(id == client_id)
             } 
@@ -286,8 +294,10 @@ mod tests {
         let test_addr = test_server.local_addr().unwrap();
         cluster.insert(test_addr);
 
-        let mut client =
-            Client::new::<NullAuth>(cluster, "username".to_string(), "password".to_string());
+        let mut client = Client::new::<NullAuth>(cluster,
+                                                 "username".to_string(),
+                                                 "password".to_string(),
+                                                 *lid);
         let client_id = client.id.0.clone();
         let to_propose = b"Bears";
 
@@ -301,7 +311,7 @@ mod tests {
             expect_preamble(&mut connection, client_id).unwrap();
             expect_proposal(&mut connection, to_propose).unwrap();
             // Send response! (success!)
-            let response = messages::command_response_success(b"Foxes");
+            let response = messages::command_response_success(b"Foxes", &*lid);
             serialize::write_message(&mut connection, &*response).unwrap();
             connection.flush().unwrap();
         });
@@ -324,8 +334,10 @@ mod tests {
         let test_addr = test_server.local_addr().unwrap();
         cluster.insert(test_addr);
 
-        let mut client =
-            Client::new::<NullAuth>(cluster, "username".to_string(), "password".to_string());
+        let mut client = Client::new::<NullAuth>(cluster,
+                                                 "username".to_string(),
+                                                 "password".to_string(),
+                                                 *lid);
         let to_propose = b"Bears";
 
         // The client connects on the proposal.
@@ -337,7 +349,7 @@ mod tests {
             scoped_debug!("Should get proposal. Responds UnknownLeader");
             expect_proposal(&mut connection, to_propose).unwrap();
             // Send response! (unknown leader!) Client should drop connection.
-            let response = messages::command_response_unknown_leader();
+            let response = messages::command_response_unknown_leader(&*lid);
             serialize::write_message(&mut connection, &*response).unwrap();
             connection.flush().unwrap();
         });
@@ -360,8 +372,10 @@ mod tests {
         let second_addr = second_server.local_addr().unwrap();
         cluster.insert(second_addr);
 
-        let mut client =
-            Client::new::<NullAuth>(cluster, "username".to_string(), "password".to_string());
+        let mut client = Client::new::<NullAuth>(cluster,
+                                                 "username".to_string(),
+                                                 "password".to_string(),
+                                                 *lid);
         let client_id = client.id.0.clone();
         let to_propose = b"Bears";
 
@@ -375,7 +389,7 @@ mod tests {
             expect_proposal(&mut connection, to_propose).unwrap();
 
             // Send response! (not leader!)
-            let response = messages::command_response_not_leader(&second_addr);
+            let response = messages::command_response_not_leader(&second_addr, &*lid);
             serialize::write_message(&mut connection, &*response).unwrap();
             connection.flush().unwrap();
 
@@ -386,7 +400,7 @@ mod tests {
             expect_proposal(&mut connection, to_propose).unwrap();
 
             // Send final response! (Success!)
-            let response = messages::command_response_success(b"Foxes");
+            let response = messages::command_response_success(b"Foxes", &*lid);
             serialize::write_message(&mut connection, &*response).unwrap();
         });
 
@@ -421,8 +435,10 @@ mod tests {
         let second_addr = second_server.local_addr().unwrap();
         // cluster.insert(second_addr); <--- NOT in cluster.
 
-        let mut client =
-            Client::new::<NullAuth>(cluster, "username".to_string(), "password".to_string());
+        let mut client = Client::new::<NullAuth>(cluster,
+                                                 "username".to_string(),
+                                                 "password".to_string(),
+                                                 *lid);
         let client_id = client.id.0.clone();
         let to_propose = b"Bears";
 
@@ -436,7 +452,7 @@ mod tests {
             expect_proposal(&mut connection, to_propose).unwrap();
 
             // Send response! (not leader!)
-            let response = messages::command_response_not_leader(&second_addr);
+            let response = messages::command_response_not_leader(&second_addr, &*lid);
             serialize::write_message(&mut connection, &*response).unwrap();
             connection.flush().unwrap();
 
