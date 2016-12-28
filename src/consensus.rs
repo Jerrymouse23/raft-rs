@@ -872,8 +872,9 @@ impl<L, M> Consensus<L, M>
         scoped_debug!("HeartbeatTimeout for peer: {}", peer);
         let mut message = Builder::new_default();
         {
-            let mut request = message.init_root::<message::Builder>()
-                .init_append_entries_request();
+            let mut request = message.init_root::<message::Builder>();
+            request.set_log_id(&self.lid.as_bytes());
+            let mut request = request.init_append_entries_request();
             request.set_term(self.current_term().as_u64());
             request.set_prev_log_index(self.latest_log_index().as_u64());
             request.set_prev_log_term(self.log.latest_log_term().unwrap().as_u64());
