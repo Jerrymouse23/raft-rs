@@ -294,11 +294,11 @@ fn server(serverId: ServerId,
 
     // init(binding_addr, node_addr);
 
-    let mut logs: Vec<(LogId, MemLog)> = Vec::new();
+    let mut logs: Vec<(LogId, DocLog)> = Vec::new();
 
     for l in config.logs.iter() {
-        // let p = DocLog::new(&l.path, LogId::from(l.lid.clone()).unwrap());
-        let p = MemLog::new();
+        let p = DocLog::new(&l.path, LogId::from(l.lid.clone()).unwrap());
+        // let p = MemLog::new();
         logs.push((LogId::from(l.lid.clone()).unwrap(), p));
         println!("Init {:?}", l.lid);
     }

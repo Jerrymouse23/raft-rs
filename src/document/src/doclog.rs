@@ -59,7 +59,7 @@ impl Log for DocLog {
 
     fn current_term(&self) -> result::Result<Term, Error> {
         let mut term_handler = File::open(format!("{}/{}_{}", self.prefix, self.logid, "term"))
-            .unwrap_or(return Ok(Term::from(0)));
+            .expect("Unable to read current_term");
 
         let term: Term = decode_from(&mut term_handler, SizeLimit::Infinite).unwrap();
 
@@ -72,13 +72,19 @@ impl Log for DocLog {
             .write(true)
             .create(true)
             .open(format!("{}/{}_{}", self.prefix, self.logid, "term"))
-            .unwrap();
+            .expect(&format!("Filehandler cannot open {}/{}_{}",
+                             self.prefix,
+                             self.logid,
+                             "term"));
 
-        encode_into(&term, &mut term_handler, SizeLimit::Infinite);
+        let bytes = encode(&term, SizeLimit::Infinite).expect("Cannot encode term");
+
+        term_handler.write_all(bytes.as_slice());
+
+        term_handler.flush();
 
         self.set_voted_for(None);
 
-        term_handler.flush();
         Ok(())
     }
 
@@ -92,12 +98,11 @@ impl Log for DocLog {
     fn voted_for(&self) -> result::Result<Option<ServerId>, Error> {
         let mut voted_for_handler =
             File::open(format!("{}/{}_{}", self.prefix, self.logid, "voted_for"))
-                .unwrap_or(return Ok(None));
+                .expect("Unable to read voted_for");
 
         let voted_for: Option<ServerId> = decode_from(&mut voted_for_handler, SizeLimit::Infinite)
             .unwrap();
 
-        voted_for_handler.flush();
         Ok(voted_for)
     }
 
@@ -107,9 +112,16 @@ impl Log for DocLog {
             .write(true)
             .create(true)
             .open(format!("{}/{}_{}", self.prefix, self.logid, "voted_for"))
-            .unwrap();
+            .expect(&format!("Filehandler cannot open {}/{}_{}",
+                             self.prefix,
+                             self.logid,
+                             "voted_for"));
 
-        encode_into(&address, &mut voted_for_handler, SizeLimit::Infinite);
+        let bytes = encode(&address, SizeLimit::Infinite).expect("Cannot encode voted_for");
+
+        voted_for_handler.write_all(bytes.as_slice());
+
+        voted_for_handler.flush();
 
         Ok(())
     }
