@@ -1,25 +1,17 @@
-use bincode::rustc_serialize::{encode, encode_into, decode, decode_from};
+use bincode::rustc_serialize::{encode, decode, decode_from};
 use bincode::SizeLimit;
 use uuid::Uuid;
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::collections::{HashSet, HashMap};
 use std::error::Error;
 
 use std::fs::File;
 use std::fs::OpenOptions;
-use std::fs::remove_file;
-use std::io::Read;
 use std::io::Write;
 
 use raft::state_machine;
-use raft::RaftError;
-use raft::Error as RError;
-use raft::Client;
-use raft::ServerId;
-use raft::Server;
 
 use handler::Message;
-use io_handler::ioHandler as Handler;
+use io_handler::Handler;
 
 #[derive(RustcEncodable,RustcDecodable,Debug,Clone,Eq,PartialEq)]
 pub struct Document {
@@ -97,7 +89,7 @@ impl state_machine::StateMachine for DocumentStateMachine {
         let message = decode(&new_value).unwrap();
 
         let response = match message {
-            Message::Get(id) => self.query(new_value),
+            Message::Get(_) => self.query(new_value),
             Message::Post(document) => {
                 match Handler::post(document, &self.volume) {
                     Ok(id) => {
@@ -192,9 +184,9 @@ impl state_machine::StateMachine for DocumentStateMachine {
             .write(true)
             .create(true)
             .open("./snapshot")
-            .unwrap();
+            .expect("Unable to create snapshot file");
 
-        file.write_all(&encoded);
+        file.write_all(&encoded).expect("Unable to write to the snapshot file");
 
         let v: Vec<u8> = Vec::new();
 
@@ -214,7 +206,7 @@ impl state_machine::StateMachine for DocumentStateMachine {
         let message = decode(&command).unwrap();
 
         match message {
-            Message::Get(id) => return, //cannot revert
+            Message::Get(_) => return, //cannot revert
             Message::Post(document) => {
                 match Handler::remove(document.id, &self.volume) {
                     Ok(_) => {
@@ -237,13 +229,14 @@ impl state_machine::StateMachine for DocumentStateMachine {
                     .rev() {
                     if record.id == id {
 
-                        let mut document = Document {
+                        let document = Document {
                             id: record.id,
                             payload: record.clone().old.unwrap(),
                             version: 0,
                         };
+
                         match Handler::post(document, &self.volume) {
-                            Ok(id) => {
+                            Ok(_) => {
 
                                 let mut new_record =
                                     DocumentRecord::new(record.id.clone(),
@@ -259,7 +252,7 @@ impl state_machine::StateMachine for DocumentStateMachine {
                                 self.transaction_offset += 1;
                                 break;
                             }
-                            Err(err) => panic!(),
+                            Err(err) => panic!(err),
                         }
                     }
                 }

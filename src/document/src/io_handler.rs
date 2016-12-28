@@ -2,12 +2,8 @@ use uuid::Uuid;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::fs::remove_file;
-use std::io::Read;
-use std::io::Write;
-
-use bincode::rustc_serialize::{encode, decode, encode_into, decode_from};
+use bincode::rustc_serialize::{encode_into, decode_from};
 use bincode::SizeLimit;
-use rustc_serialize::json;
 use bincode::rustc_serialize::{EncodingError, DecodingError};
 
 use std::io::Error as IoError;
@@ -15,9 +11,9 @@ use std::io::{Seek, SeekFrom};
 
 use document::Document;
 
-pub struct ioHandler;
+pub struct Handler;
 
-impl ioHandler {
+impl Handler {
     /// Decodes document from file by given id
     /// # Arguments
     ///
@@ -26,7 +22,7 @@ impl ioHandler {
     pub fn get(id: Uuid, volume: &str) -> Result<Document, DecodingError> {
         let mut handler = try!(File::open(format!("{}/{}", volume, id)));
 
-        let mut decoded: Document = try!(decode_from(&mut handler, SizeLimit::Infinite));
+        let decoded: Document = try!(decode_from(&mut handler, SizeLimit::Infinite));
 
         Ok(decoded)
     }
@@ -71,11 +67,12 @@ impl ioHandler {
         let mut document: Document = decode_from(&mut handler, SizeLimit::Infinite)
             .expect(&format!("Cannot find file {}/{}", volume, id));
 
-        handler.seek(SeekFrom::Start(0));
+        handler.seek(SeekFrom::Start(0)).unwrap();
 
         document.put(payload.to_vec());
 
-        encode_into(&document, &mut handler, SizeLimit::Infinite);
+        encode_into(&document, &mut handler, SizeLimit::Infinite)
+            .expect("Unable to override the old document");
 
         Ok("Documented updated".to_string())
     }

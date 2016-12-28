@@ -2,7 +2,7 @@ use std::{error, fmt, result};
 use std::fs::File;
 use std::io::prelude::*;
 use bincode::SizeLimit;
-use bincode::rustc_serialize::{encode_into, encode, decode, decode_from};
+use bincode::rustc_serialize::{encode, decode_from};
 use std::fs::OpenOptions;
 
 use raft::persistent_log::Log;
@@ -47,7 +47,7 @@ impl DocLog {
             logid: lid,
         };
 
-        d.set_current_term(Term::from(0));
+        d.set_current_term(Term::from(0)).unwrap();
 
         d
     }
@@ -79,19 +79,19 @@ impl Log for DocLog {
 
         let bytes = encode(&term, SizeLimit::Infinite).expect("Cannot encode term");
 
-        term_handler.write_all(bytes.as_slice());
+        term_handler.write_all(bytes.as_slice()).expect("Unable to save the current term");
 
-        term_handler.flush();
+        term_handler.flush().expect("Flushing failed");
 
-        self.set_voted_for(None);
+        self.set_voted_for(None).unwrap();
 
         Ok(())
     }
 
     fn inc_current_term(&mut self) -> result::Result<Term, Error> {
-        self.set_voted_for(None);
+        self.set_voted_for(None).unwrap();
         let new_term = self.current_term().unwrap() + 1;
-        self.set_current_term(new_term);
+        self.set_current_term(new_term).unwrap();
         self.current_term()
     }
 
@@ -119,9 +119,9 @@ impl Log for DocLog {
 
         let bytes = encode(&address, SizeLimit::Infinite).expect("Cannot encode voted_for");
 
-        voted_for_handler.write_all(bytes.as_slice());
+        voted_for_handler.write_all(bytes.as_slice()).expect("Unable to save the server vote");
 
-        voted_for_handler.flush();
+        voted_for_handler.flush().expect("Flushing failed");
 
         Ok(())
     }

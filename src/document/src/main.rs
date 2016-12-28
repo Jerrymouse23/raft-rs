@@ -30,30 +30,18 @@ pub mod handler;
 pub mod config;
 pub mod doclog;
 
-use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, Ipv4Addr};
-use bincode::rustc_serialize::{encode, decode, encode_into, decode_from};
-use bincode::SizeLimit;
-use rustc_serialize::json;
-use bincode::rustc_serialize::{EncodingError, DecodingError};
+use std::net::SocketAddr;
 use docopt::Docopt;
 
-use raft::{Client, state_machine, persistent_log, ServerId};
+use raft::ServerId;
 use std::collections::HashMap;
-use std::collections::HashSet;
 
 use std::fs::File;
-use std::fs::OpenOptions;
-use std::fs::remove_file;
 use std::io::Read;
-use std::io::Write;
 
 use uuid::Uuid;
 
-use std::error::Error;
-use std::io::ErrorKind;
-
 use raft::Server;
-use raft::RaftError;
 use raft::LogId;
 use raft::state_machine::StateMachine;
 
@@ -61,10 +49,8 @@ use document::*;
 use config::*;
 use handler::Handler;
 use doclog::DocLog;
-use raft::persistent_log::{Log, MemLog};
 
 use raft::auth::null::NullAuth;
-use raft::auth::Auth;
 
 // use http_handler::*;
 
@@ -158,7 +144,7 @@ fn main() {
     } else if args.cmd_get {
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
             Ok(id) => id,
-            Err(err) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
+            Err(_) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
         };
 
         get(parse_addr(&args.arg_node_address.unwrap()),
@@ -176,7 +162,7 @@ fn main() {
     } else if args.cmd_remove {
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
             Ok(id) => id,
-            Err(err) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
+            Err(_) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
         };
 
         remove(parse_addr(&args.arg_node_address.unwrap()),
@@ -189,7 +175,7 @@ fn main() {
 
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
             Ok(id) => id,
-            Err(err) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
+            Err(_) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
         };
 
         put(parse_addr(&args.arg_node_address.unwrap()),
@@ -231,7 +217,7 @@ fn main() {
     } else if args.cmd_transremove {
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
             Ok(id) => id,
-            Err(err) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
+            Err(_) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
         };
 
         remove(parse_addr(&args.arg_node_address.unwrap()),
@@ -243,7 +229,7 @@ fn main() {
     } else if args.cmd_transput {
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
             Ok(id) => id,
-            Err(err) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
+            Err(_) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
         };
 
         put(parse_addr(&args.arg_node_address.unwrap()),
@@ -256,7 +242,7 @@ fn main() {
     }
 }
 
-fn server(serverId: ServerId,
+fn server(server_id: ServerId,
           addr: SocketAddr,
           node_id: Vec<u64>,
           node_address: Vec<String>,
@@ -271,7 +257,7 @@ fn server(serverId: ServerId,
 
 
 
-    let mut peers = node_id.iter()
+    let peers = node_id.iter()
         .zip(node_address.iter())
         .map(|(&id, addr)| (ServerId::from(id), parse_addr(&addr)))
         .collect::<HashMap<_, _>>();
@@ -281,7 +267,7 @@ fn server(serverId: ServerId,
     match File::open("./snapshot") {
         Ok(mut handler) => {
             let mut buffer: Vec<u8> = Vec::new();
-            handler.read_to_end(&mut buffer);
+            handler.read_to_end(&mut buffer).expect("Unable to read the snapshot file to end");
 
             state_machine.restore_snapshot(buffer);
         }
@@ -306,7 +292,7 @@ fn server(serverId: ServerId,
         println!("Init {:?}", l.lid);
     }
 
-    Server::run(serverId,
+    Server::run(server_id,
                 addr,
                 peers,
                 state_machine,
@@ -327,20 +313,22 @@ fn post(addr: SocketAddr,
         password: String,
         session: Uuid,
         lid: LogId) {
-    let mut handler = File::open(&filepath).expect(&format!("Could not find file {}", filepath));
+
+    let mut handler = File::open(&filepath).expect(&format!("Unable to open the file{}", filepath));
     let mut buffer: Vec<u8> = Vec::new();
 
-    handler.read_to_end(&mut buffer);
-
-    let id = Uuid::new_v4();
+    handler.read_to_end(&mut buffer).expect(&format!("Unable read the file to end {}", filepath));
 
     let document = Document {
-        id: id,
+        id: Uuid::new_v4(),
         payload: buffer,
         version: 1,
     };
 
-    let id = Handler::post(addr, &username, &password, document, session, lid).unwrap();
+    let id = match Handler::post(addr, &username, &password, document, session, lid) {
+        Ok(id) => id,
+        Err(err) => panic!(err),
+    };
 
     println!("{}", id);
 }
@@ -352,12 +340,18 @@ fn put(addr: SocketAddr,
        password: String,
        session: Uuid,
        lid: LogId) {
-    let mut handler = File::open(&filepath).expect(&format!("Could not find file {}", filepath));
+
+    let mut handler = File::open(&filepath).expect(&format!("Unable to open the file{}", filepath));
     let mut buffer: Vec<u8> = Vec::new();
 
-    handler.read_to_end(&mut buffer);
+    handler.read_to_end(&mut buffer).expect(&format!("Unable read the file to end {}", filepath));
 
-    Handler::put(addr, &username, &password, doc_id, buffer, session, lid);
+    match Handler::put(addr, &username, &password, doc_id, buffer, session, lid) {
+        Ok(()) => {
+
+        }
+        Err(err) => panic!(err),
+    }
 }
 
 fn remove(addr: SocketAddr,
@@ -366,9 +360,10 @@ fn remove(addr: SocketAddr,
           password: String,
           session: Uuid,
           lid: LogId) {
-    Handler::remove(addr, &username, &password, doc_id, session, lid).unwrap();
-
-    println!("Ok");
+    match Handler::remove(addr, &username, &password, doc_id, session, lid) {
+        Ok(()) => println!("Ok"),
+        Err(err) => panic!(err),
+    }
 }
 
 #[cfg(test)]

@@ -1,13 +1,7 @@
 use std::fs::File;
 use std::io::Read;
-use raft::ServerId;
-use std::net::{SocketAddr, IpAddr, Ipv4Addr};
-
 use toml::{Parser, Decoder, Value, DecodeError};
-
 use rustc_serialize::Decodable;
-
-use std::collections::BTreeMap;
 
 #[derive(Debug,RustcDecodable,Clone)]
 pub struct Config {
@@ -40,12 +34,14 @@ pub struct LogConfig {
 
 impl Config {
     pub fn init(file: String) -> Result<Self, DecodeError> {
-        let mut config_file = File::open(file).unwrap();
+        let mut config_file = File::open(file.clone())
+            .expect(&format!("Unable to read the config {}", file));
 
         let mut config = String::new();
-        config_file.read_to_string(&mut config);
+        config_file.read_to_string(&mut config).expect("Unable to read the config");
 
-        let toml = Parser::new(&config).parse().unwrap();
+        let toml =
+            Parser::new(&config).parse().expect("An error occurred while parsing the config");
 
         let mut decoder = Decoder::new(Value::Table(toml));
         let config = try!(Config::decode(&mut decoder));

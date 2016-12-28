@@ -5,10 +5,8 @@ use raft::Result;
 use raft::Client;
 use raft::LogId;
 use raft::Error as RError;
-use raft::state_machine;
 use raft::RaftError;
-use raft::ServerId;
-use bincode::rustc_serialize::{encode, encode_into, decode, decode_from};
+use bincode::rustc_serialize::{encode, decode};
 use bincode::SizeLimit;
 use std::collections::HashSet;
 use std::str::from_utf8;
@@ -106,7 +104,7 @@ impl Handler {
 
         let payload = encode(&Message::Remove(id), SizeLimit::Infinite).unwrap();
 
-        let response = match client.propose(session.as_bytes(), payload.as_slice()) {
+        match client.propose(session.as_bytes(), payload.as_slice()) {
             Ok(res) => res,
             Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
                 return Handler::remove(parse_addr(&leader_str),
@@ -135,7 +133,7 @@ impl Handler {
 
         let payload = encode(&Message::Put(id, new_payload.clone()), SizeLimit::Infinite).unwrap();
 
-        let response = match client.propose(session.as_bytes(), payload.as_slice()) {
+        match client.propose(session.as_bytes(), payload.as_slice()) {
             Ok(res) => res,
             Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
                 return Handler::put(parse_addr(&leader_str),
