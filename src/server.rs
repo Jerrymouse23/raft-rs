@@ -7,7 +7,6 @@ use std::{fmt, io};
 use std::str::FromStr;
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
-use std::thread::{self, JoinHandle};
 use std::rc::Rc;
 
 use mio::tcp::TcpListener;
@@ -25,7 +24,7 @@ use ServerId;
 use LogId;
 use messages;
 use messages_capnp::connection_preamble;
-use consensus::{Consensus, Actions, ConsensusTimeout};
+use consensus::{Actions, ConsensusTimeout};
 use state_machine::StateMachine;
 use persistent_log::Log;
 use connection::{Connection, ConnectionKind};
@@ -33,8 +32,6 @@ use std::io::Cursor;
 
 use auth::Auth;
 use log_manager::LogManager;
-
-use state::ConsensusState;
 
 const LISTENER: Token = Token(0);
 
@@ -264,7 +261,7 @@ impl<L, M, A> Server<L, M, A>
         for message in peer_messages_broadcast {
             let tokens = self.peer_tokens.clone().into_iter().collect::<Vec<_>>();
 
-            for (server, t) in tokens {
+            for (_, t) in tokens {
                 self.send_message(event_loop, t, message.clone());
             }
         }
@@ -313,7 +310,7 @@ impl<L, M, A> Server<L, M, A>
         // scoped_debug!("Sending {:?}  messages to portals", portal_queue.len());
         // scoped_debug!("Sending informations to {:?} portals",
         //             self.portals_tokens.clone().len());
-        for (peer, message) in portal_queue {
+        for (_, message) in portal_queue {
             for t in self.portals_tokens.clone() {
                 self.send_message(event_loop, t, message.clone());
             }
@@ -468,7 +465,7 @@ impl<L, M, A> Server<L, M, A>
                                                client_id);
                             }
                         }
-                        connection_preamble::id::Which::Portal(Ok(portal)) => {
+                        connection_preamble::id::Which::Portal(Ok(_)) => {
                             scoped_debug!("received new connection from portal");
 
                             // TODO implement auth

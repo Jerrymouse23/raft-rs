@@ -1,9 +1,4 @@
-use Error;
-use RaftError;
-
-use capnp::message::{Builder, HeapAllocator, Reader, ReaderSegments};
-use std::sync::{Arc, Mutex, Condvar};
-use std::thread;
+use capnp::message::{Builder, HeapAllocator};
 use consensus::Actions;
 use messages;
 use uuid::Uuid;
@@ -14,7 +9,7 @@ use ClientId;
 
 #[derive(Clone)]
 pub struct Transaction {
-    pub isActive: bool,
+    pub is_active: bool,
     pub session: Option<Uuid>,
     pub queue: Vec<(ClientId, Rc<Builder<HeapAllocator>>)>,
     counter: usize,
@@ -26,7 +21,7 @@ pub struct Transaction {
 impl Transaction {
     pub fn new() -> Self {
         Transaction {
-            isActive: false,
+            is_active: false,
             session: None,
             queue: vec![],
             counter: 0,
@@ -44,7 +39,7 @@ impl Transaction {
         scoped_debug!("TRANSACTION BEGINS");
 
         self.session = Some(session);
-        self.isActive = true;
+        self.is_active = true;
         self.commit_index = commit_index;
         self.last_applied = last_applied;
         self.follower_state_min = follower_state_min;
@@ -64,7 +59,7 @@ impl Transaction {
 
         self.session = None;
         self.counter = 0;
-        self.isActive = false;
+        self.is_active = false;
         self.commit_index = LogIndex::from(0);
         self.last_applied = LogIndex::from(0);
         self.follower_state_min = None;
@@ -96,7 +91,7 @@ impl Transaction {
     }
 
     pub fn get(&self) -> bool {
-        self.isActive
+        self.is_active
     }
 
     pub fn get_counter(&self) -> usize {

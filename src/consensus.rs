@@ -18,7 +18,7 @@ use std::net::SocketAddr;
 use std::rc::Rc;
 use std::cell::RefCell;
 
-use capnp::message::{Builder, Allocator, ReaderOptions, HeapAllocator, Reader, ReaderSegments};
+use capnp::message::{Builder, Allocator, ReaderOptions, HeapAllocator, Reader};
 use rand::{self, Rng};
 use capnp::serialize::{self, OwnedSegments};
 use std::io::Cursor;
@@ -32,7 +32,6 @@ use state_machine::StateMachine;
 use uuid::Uuid;
 use transaction::Transaction;
 use persistent_log::Log;
-use std::boxed::Box;
 use mio::Timeout as TimeoutHandle;
 
 const ELECTION_MIN: u64 = 1500;
@@ -183,21 +182,13 @@ impl<L, M> Consensus<L, M>
         }
     }
 
-    /// Returns the set of initial action which should be executed upon startup.
-    pub fn init(&self) -> Actions {
-        let mut actions = Actions::new();
-        actions.timeouts.push(ConsensusTimeout::Election(self.lid));
-        actions
-    }
-
     /// Returns the consenus peers.
     pub fn peers(&self) -> &HashMap<ServerId, SocketAddr> {
         &self.peers
     }
 
     pub fn handle_queue(&mut self, actions: &mut Actions) {
-        let lid = self.lid.clone();
-        if !self.transaction.isActive {
+        if !self.transaction.is_active {
             for (client, builder) in self.requests_in_queue.pop() {
                 self.apply_client_message(client,
                                           &Self::into_reader(&builder)
@@ -235,11 +226,13 @@ impl<L, M> Consensus<L, M>
                                        self.last_applied,
                                        Some(self.follower_state.min_index));
             }
-            message::Which::TransactionCommit(Ok(response)) => {
+            message::Which::TransactionCommit(Ok(_)) => {
+                // TODO check for session
                 self.transaction.end();
             }
-            message::Which::TransactionRollback(Ok(response)) => {
+            message::Which::TransactionRollback(Ok(_)) => {
                 // TODO refactor to seperate method
+                // TODO check for session
                 scoped_debug!("Rollback");
                 let (commit_index, last_applied, follower_state_min) = self.transaction.rollback();
                 self.follower_state.min_index = follower_state_min.unwrap();
@@ -249,12 +242,12 @@ impl<L, M> Consensus<L, M>
                 {
                     let entries_failed = self.log.rollback(commit_index).unwrap();
 
-                    for &(ref term, ref command) in entries_failed.iter().rev() {
+                    for &(_, ref command) in entries_failed.iter().rev() {
                         self.state_machine.borrow_mut().revert(command.as_slice());
                     }
                 }
 
-                self.log.truncate(commit_index);
+                self.log.truncate(commit_index).unwrap();
                 self.state_machine.borrow_mut().rollback();
             }
             _ => panic!("cannot handle message"),
@@ -273,7 +266,7 @@ impl<L, M> Consensus<L, M>
         match reader {
             client_request::Which::Proposal(Ok(request)) => {
                 if self.is_leader() {
-                    if self.transaction.isActive &&
+                    if self.transaction.is_active &&
                        !self.transaction
                         .compare(Uuid::from_bytes(request.get_session().unwrap()).unwrap()) {
 
@@ -294,7 +287,7 @@ impl<L, M> Consensus<L, M>
                 }
             }
             client_request::Which::Query(Ok(query)) => {
-                if self.transaction.isActive {
+                if self.transaction.is_active {
                     let query = query.get_query().unwrap();
                     let message = messages::query_request(query, &self.lid);
 
@@ -324,7 +317,7 @@ impl<L, M> Consensus<L, M>
                     actions.client_messages.push((from, message));
                 }
             }
-            client_request::Which::TransactionCommit(Ok(request)) => {
+            client_request::Which::TransactionCommit(Ok(_)) => {
                 if self.is_leader() {
                     self.transaction.end();
                     self.transaction.broadcast_end(&self.lid, actions);
@@ -345,12 +338,12 @@ impl<L, M> Consensus<L, M>
                     actions.client_messages.push((from, message));
                 }
             }
-            client_request::Which::TransactionRollback(Ok(request)) => {
+            client_request::Which::TransactionRollback(Ok(_)) => {
                 if self.is_leader() {
-                    let (commit_index, last_applied, follower_state) = self.transaction.rollback();
+                    let (commit_index, last_applied, _) = self.transaction.rollback();
                     self.commit_index = commit_index;
                     self.last_applied = last_applied;
-                    self.log.rollback(commit_index);
+                    self.log.rollback(commit_index).expect("Transaction rollback failed");
                     self.transaction.broadcast_rollback(&self.lid, actions);
 
                     let message = messages::command_transaction_success("".as_bytes(), &self.lid);
@@ -362,12 +355,12 @@ impl<L, M> Consensus<L, M>
                     {
                         let entries_failed = self.log.rollback(commit_index).unwrap();
 
-                        for &(ref term, ref command) in entries_failed.iter().rev() {
+                        for &(_, ref command) in entries_failed.iter().rev() {
                             self.state_machine.borrow_mut().revert(command.as_slice());
                         }
                     }
 
-                    self.log.truncate(commit_index);
+                    self.log.truncate(commit_index).unwrap();
                     self.state_machine.borrow_mut().rollback();
 
                     actions.client_messages.push((from, message));
@@ -477,10 +470,6 @@ impl<L, M> Consensus<L, M>
 
                     let latest_log_index = self.latest_log_index();
 
-                    scoped_debug!("LATEST_LOG_INDEX: {} und LEADER INDEX: {}",
-                                  latest_log_index,
-                                  leader_prev_log_index);
-
                     if latest_log_index < leader_prev_log_index {
                         // If the previous entries index was not the same we'd leave a gap! Reply failure.
                         scoped_debug!("AppendEntriesRequest: inconsistent previous log index: \
@@ -507,7 +496,6 @@ impl<L, M> Consensus<L, M>
                             messages::append_entries_response_inconsistent_prev_entry(self.current_term(),
                                 leader_prev_log_index,&self.lid)
                         } else {
-                            scoped_debug!("Everything ok");
                             if let Ok(entries) = request.get_entries() {
                                 let num_entries: u32 = entries.len();
                                 let new_latest_log_index = leader_prev_log_index +
@@ -987,7 +975,7 @@ impl<L, M> Consensus<L, M>
             // Unwrap justified here since we know there is an entry here.
             let (_, entry) = match self.log.entry(self.last_applied + 1) {
                 Ok(e) => e,
-                Err(err) => break,
+                Err(_) => break,
             };
 
             if !entry.is_empty() {

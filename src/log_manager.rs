@@ -8,16 +8,10 @@ use persistent_log::Log;
 use state_machine::StateMachine;
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::io::Cursor;
 use uuid::Uuid;
 
-use capnp::message::{Builder, HeapAllocator, Allocator, Reader, ReaderSegments, ReaderOptions};
-use capnp::serialize::{self, OwnedSegments};
-use messages_capnp::{append_entries_request, append_entries_response, client_request,
-                     proposal_request, query_request, message, request_vote_request,
-                     request_vote_response};
-
-use mio::Timeout as TimeoutHandle;
+use capnp::message::{Reader, ReaderSegments};
+use messages_capnp::{client_request, message};
 
 pub struct LogManager<L, M>
     where L: Log,
@@ -56,12 +50,12 @@ impl<L, M> LogManager<L, M>
     }
 
     pub fn active_transaction(&self, logid: &LogId) -> bool {
-        self.consensus.get(logid).unwrap().transaction.isActive
+        self.consensus.get(logid).unwrap().transaction.is_active
     }
 
     pub fn init(&self) -> Actions {
         let mut actions = Actions::new();
-        for (id, ref mut consensus) in self.consensus.iter() {
+        for (id, _) in self.consensus.iter() {
             scoped_info!("Consensus Election timeout initialised: {:?}", id);
 
             actions.timeouts.push(ConsensusTimeout::Election(*id));
@@ -120,7 +114,7 @@ impl<L, M> LogManager<L, M>
                                  peer: ServerId,
                                  addr: SocketAddr,
                                  actions: &mut Actions) {
-        for (lid, mut cons) in self.consensus.iter_mut() {
+        for (_, mut cons) in self.consensus.iter_mut() {
             cons.peer_connection_reset(peer, addr, actions);
         }
     }
@@ -133,7 +127,7 @@ impl<L, M> LogManager<L, M>
     }
 
     pub fn handle_queue(&mut self, actions: &mut Actions) {
-        for (lid, mut con) in self.consensus.iter_mut() {
+        for (_, mut con) in self.consensus.iter_mut() {
             con.handle_queue(actions);
         }
     }

@@ -269,7 +269,7 @@ pub fn command_response_success(data: &[u8], lid: &LogId) -> Rc<Builder<HeapAllo
     {
         let mut response = message.init_root::<client_response::Builder>();
         response.set_log_id(&lid.as_bytes());
-        let mut request = response.init_proposal()
+        response.init_proposal()
             .set_success(data);
     }
     Rc::new(message)
@@ -280,7 +280,7 @@ pub fn command_response_unknown_leader(lid: &LogId) -> Rc<Builder<HeapAllocator>
     {
         let mut response = message.init_root::<client_response::Builder>();
         response.set_log_id(&lid.as_bytes());
-        let mut response = response.init_proposal()
+        response.init_proposal()
             .set_unknown_leader(());
     }
     Rc::new(message)
@@ -293,7 +293,7 @@ pub fn command_response_not_leader(leader_hint: &SocketAddr,
     {
         let mut response = message.init_root::<client_response::Builder>();
         response.set_log_id(&lid.as_bytes());
-        let mut response = response.init_proposal()
+        response.init_proposal()
             .set_not_leader(&format!("{}", leader_hint));
     }
     Rc::new(message)
@@ -359,7 +359,7 @@ pub fn command_transaction_success(data: &[u8], lid: &LogId) -> Rc<Builder<HeapA
     {
         let mut response = message.init_root::<client_response::Builder>();
         response.set_log_id(&lid.as_bytes());
-        let mut response = response.init_proposal()
+        response.init_proposal()
             .set_success(data);
     }
     Rc::new(message)

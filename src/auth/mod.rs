@@ -1,5 +1,4 @@
 use std::fmt::Debug;
-use std::boxed::Box;
 
 pub mod null;
 

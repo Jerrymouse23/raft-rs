@@ -4,7 +4,6 @@
 use std::collections::HashSet;
 use std::fmt;
 use std::io::Write;
-use std::time::Duration;
 use std::net::SocketAddr;
 use std::net::TcpStream;
 use std::str::FromStr;
@@ -20,8 +19,6 @@ use LogId;
 use Result;
 use RaftError;
 use auth::Auth;
-use auth::null::NullAuth;
-use uuid::Uuid;
 use Error;
 
 /// The representation of a Client connection to the cluster.

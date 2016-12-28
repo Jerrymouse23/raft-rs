@@ -1,6 +1,5 @@
+#[allow(dead_code)]
 use auth::Auth;
-use std::fs::File;
-use std::io::prelude::*;
 
 #[derive(Debug,Clone)]
 pub struct NullAuth;
