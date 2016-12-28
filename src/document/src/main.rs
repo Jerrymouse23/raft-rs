@@ -20,6 +20,9 @@ extern crate bincode;
 extern crate uuid;
 extern crate toml;
 
+#[macro_use]
+extern crate lazy_static;
+
 pub mod document;
 pub mod io_handler;
 // pub mod http_handler;

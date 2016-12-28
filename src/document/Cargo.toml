@@ -17,6 +17,7 @@ iron ="*"
 router ="*"
 params ="*"
 toml ="*"
+lazy_static ="0.1.*"
 
 [dev-dependencies]
 mio = "0.5"

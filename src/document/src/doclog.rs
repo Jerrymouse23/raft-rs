@@ -176,10 +176,16 @@ mod test {
     use std::io::prelude::*;
     use std::fs::OpenOptions;
     use std::io::SeekFrom;
+    use uuid::Uuid;
+    use raft::LogId;
+
+    lazy_static!{
+        static ref lid : LogId = LogId::from("3d30aa56-98b2-4891-aec5-847cee6e1703".to_string()).unwrap();
+    }
 
     #[test]
     fn test_current_term() {
-        let mut store = DocLog::new();
+        let mut store = DocLog::new("/tmp", *lid);
         assert_eq!(Term::from(0), store.current_term().unwrap());
         store.set_voted_for(Some(ServerId::from(0))).unwrap();
         store.set_current_term(Term::from(42)).unwrap();
@@ -191,7 +197,7 @@ mod test {
 
     #[test]
     fn test_voted_for() {
-        let mut store = DocLog::new();
+        let mut store = DocLog::new("/tmp", *lid);
         assert_eq!(None, store.voted_for().unwrap());
         let id = ServerId::from(0);
         store.set_voted_for(Some(id)).unwrap();
@@ -200,7 +206,7 @@ mod test {
 
     #[test]
     fn test_append_entries() {
-        let mut store = DocLog::new();
+        let mut store = DocLog::new("/tmp", *lid);
         assert_eq!(LogIndex::from(0), store.latest_log_index().unwrap());
         assert_eq!(Term::from(0), store.latest_log_term().unwrap());
 
