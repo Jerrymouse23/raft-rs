@@ -41,7 +41,6 @@ impl<L, M> LogManager<L, M>
         for (lid, store) in store_logs {
             let consensus: Consensus<L, M> =
                 Consensus::new(id, lid, peers.clone(), store, state_machine.clone());
-            println!("lid: {:?}", lid);
             logs.insert(lid, consensus);
         }
 
@@ -63,7 +62,7 @@ impl<L, M> LogManager<L, M>
     pub fn init(&self) -> Actions {
         let mut actions = Actions::new();
         for (id, ref mut consensus) in self.consensus.iter() {
-            println!("Consensus Election initialised: {:?}", id);
+            scoped_info!("Consensus Election timeout initialised: {:?}", id);
 
             actions.timeouts.push(ConsensusTimeout::Election(*id));
         }

@@ -453,7 +453,6 @@ impl<L, M> Consensus<L, M>
                               from: ServerId,
                               request: append_entries_request::Reader,
                               actions: &mut Actions) {
-        println!("Heartbeat {:?}", self.lid);
         scoped_trace!("AppendEntriesRequest from peer {}", &from);
 
         let leader_term = Term(request.get_term());
@@ -900,7 +899,6 @@ impl<L, M> Consensus<L, M>
             self.state = ConsensusState::Leader;
             self.leader_state.reinitialize(latest_log_index);
         } else {
-            println!("Election timeout {:?}", self.lid);
             scoped_info!("ElectionTimeout: transitioning to Candidate");
             self.transition_to_candidate(actions);
         }

@@ -239,14 +239,6 @@ impl<L, M, A> Server<L, M, A>
                       transaction_queue,
                       portal_queue } = actions;
 
-        println!("###################");
-        for (l, i) in self.log_manager.consensus.iter() {
-            println!("{:?} {:?} > {:?}",
-                     l,
-                     i.state,
-                     i.log.current_term().unwrap());
-        }
-
         if clear_peer_messages {
             for &token in self.peer_tokens.values() {
                 self.connections[token].clear_messages();
@@ -283,7 +275,6 @@ impl<L, M, A> Server<L, M, A>
                 .expect(&format!("Log {:?} is not registered in the log_manager", lid));
 
             for (timeout, &handle) in consensus.consensus_timeouts.iter() {
-                println!("Clear timeout {:?}", timeout);
                 scoped_assert!(event_loop.clear_timeout(handle),
                                "unable to clear timeout; {:?}",
                                timeout);
@@ -328,18 +319,6 @@ impl<L, M, A> Server<L, M, A>
             }
         }
 
-        // for (lid, cons) in self.log_manager.consensus.iter() {
-        //
-        // println!("----------------------");
-        // println!("LogId: {:?}", lid);
-        // match cons.state {
-        // ConsensusState::Leader => println!("{:?}", cons.leader_state),
-        // ConsensusState::Candidate => println!("{:?}", cons.candidate_state),
-        // ConsensusState::Follower => println!("{:?}", cons.follower_state),
-        // }
-        // }
-        //
-        //
     }
 
     /// Resets the connection corresponding to the provided token.
