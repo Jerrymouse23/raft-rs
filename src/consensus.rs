@@ -35,8 +35,8 @@ use persistent_log::Log;
 use std::boxed::Box;
 use mio::Timeout as TimeoutHandle;
 
-const ELECTION_MIN: u64 = 8000;
-const ELECTION_MAX: u64 = 12000;
+const ELECTION_MIN: u64 = 1500;
+const ELECTION_MAX: u64 = 3000;
 const HEARTBEAT_DURATION: u64 = 1000;
 
 /// Consensus timeout types.
