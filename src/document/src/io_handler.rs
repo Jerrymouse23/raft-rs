@@ -80,10 +80,10 @@ impl Handler {
 
 #[cfg(test)]
 mod tests {
+    use io_handler::Handler as ioHandler;
     use document::Document;
     use uuid::Uuid;
     use std::fs::{create_dir, remove_dir, File, metadata};
-    use io_handler::ioHandler;
 
     static VOLUME: &'static str = "test_dir";
 
