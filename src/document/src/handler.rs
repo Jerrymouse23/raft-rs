@@ -44,8 +44,6 @@ impl Handler {
                lid: LogId)
                -> Result<Document> {
 
-        println!("{:?}", lid);
-
         let mut client = Self::new_client(addr, username, plain_password, lid);
 
         let payload = encode(&Message::Get(id), SizeLimit::Infinite).unwrap();
@@ -55,7 +53,7 @@ impl Handler {
             Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
                 return Handler::get(parse_addr(&leader_str), username, plain_password, id, lid);
             } 
-            Err(err) => panic!(err),
+            Err(err) => panic!("{}", err),
         };
 
         let document: Document = decode(response.as_slice()).unwrap();
@@ -85,7 +83,7 @@ impl Handler {
                                      session,
                                      lid);
             } 
-            Err(err) => panic!(err),
+            Err(err) => panic!("{}", err),
         };
 
         let uid: Uuid = decode(response.as_slice()).unwrap();
@@ -114,7 +112,7 @@ impl Handler {
                                        session,
                                        lid);
             } 
-            Err(err) => panic!(err),
+            Err(err) => panic!("{}", err),
         };
 
         Ok(())
@@ -144,7 +142,7 @@ impl Handler {
                                     session,
                                     lid);
             } 
-            Err(err) => panic!(err),
+            Err(err) => panic!("{}", err),
         };
 
         Ok(())
