@@ -25,16 +25,14 @@ impl<L, M> LogManager<L, M>
           M: StateMachine
 {
     pub fn new(id: ServerId,
-               store_logs: Vec<(LogId, L)>,
-               peers: HashMap<ServerId, SocketAddr>,
-               state_machine: M)
+               store_logs: Vec<(LogId, L, M)>,
+               peers: HashMap<ServerId, SocketAddr>)
                -> Self {
         let mut logs: HashMap<LogId, Consensus<L, M>> = HashMap::new();
-        let state_machine = Rc::new(RefCell::new(state_machine));
 
-        for (lid, store) in store_logs {
+        for (lid, log, state_machine) in store_logs {
             let consensus: Consensus<L, M> =
-                Consensus::new(id, lid, peers.clone(), store, state_machine.clone());
+                Consensus::new(id, lid, peers.clone(), log, state_machine);
             logs.insert(lid, consensus);
         }
 

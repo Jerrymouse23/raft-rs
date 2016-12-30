@@ -103,16 +103,15 @@ impl<L, M, A> Server<L, M, A>
     pub fn new(id: ServerId,
                addr: SocketAddr,
                peers: HashMap<ServerId, SocketAddr>,
-               state_machine: M,
                community_string: String,
                auth: A,
-               logs: Vec<(LogId, L)>)
+               logs: Vec<(LogId, L, M)>)
                -> Result<(Server<L, M, A>, EventLoop<Server<L, M, A>>)> {
         if peers.contains_key(&id) {
             return Err(Error::Raft(RaftError::InvalidPeerSet));
         }
 
-        let log_manager = LogManager::new(id, logs, peers.clone(), state_machine);
+        let log_manager = LogManager::new(id, logs, peers.clone());
 
         let mut event_loop = try!(EventLoop::<Server<L, M, A>>::new());
         let listener = try!(TcpListener::bind(&addr));
@@ -160,13 +159,12 @@ impl<L, M, A> Server<L, M, A>
     pub fn run(id: ServerId,
                addr: SocketAddr,
                peers: HashMap<ServerId, SocketAddr>,
-               state_machine: M,
                community_string: String,
                auth: A,
-               logs: Vec<(LogId, L)>)
+               logs: Vec<(LogId, L, M)>)
                -> Result<()> {
         let (mut server, mut event_loop) =
-            try!(Server::new(id, addr, peers, state_machine, community_string, auth, logs));
+            try!(Server::new(id, addr, peers, community_string, auth, logs));
 
         server.init(&mut event_loop);
 
@@ -697,12 +695,11 @@ mod tests {
 
     fn new_test_server(peers: HashMap<ServerId, SocketAddr>)
                        -> Result<(TestServer, EventLoop<TestServer>)> {
-        let mut logs: Vec<(LogId, MemLog)> = Vec::new();
-        logs.push((*lid, MemLog::new()));
+        let mut logs: Vec<(LogId, MemLog, NullStateMachine)> = Vec::new();
+        logs.push((*lid, MemLog::new(), NullStateMachine));
         Server::new(ServerId::from(0),
                     SocketAddr::from_str("127.0.0.1:0").unwrap(),
                     peers,
-                    NullStateMachine,
                     "test".to_string(),
                     NullAuth,
                     logs)

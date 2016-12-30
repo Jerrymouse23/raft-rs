@@ -51,6 +51,10 @@ impl DocLog {
 
         d
     }
+
+    pub fn get_volume(&self) -> String {
+        format!("{}", self.prefix)
+    }
 }
 
 // TODO error handling for IO

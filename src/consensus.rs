@@ -16,7 +16,6 @@ use std::{cmp, fmt};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 use capnp::message::{Builder, Allocator, ReaderOptions, HeapAllocator, Reader};
 use rand::{self, Rng};
@@ -128,7 +127,7 @@ pub struct Consensus<L, M> {
     /// The persistent log.
     pub log: L,
     /// The client state machine to which client commands are applied.
-    state_machine: Rc<RefCell<M>>,
+    state_machine: M,
 
     /// Index of the latest entry known to be committed.
     commit_index: LogIndex,
@@ -160,7 +159,7 @@ impl<L, M> Consensus<L, M>
                lid: LogId,
                peers: HashMap<ServerId, SocketAddr>,
                log: L,
-               state_machine: Rc<RefCell<M>>)
+               state_machine: M)
                -> Consensus<L, M> {
         let leader_state = LeaderState::new(log.latest_log_index().unwrap(),
                                             &peers.keys().cloned().collect());
@@ -243,12 +242,12 @@ impl<L, M> Consensus<L, M>
                     let entries_failed = self.log.rollback(commit_index).unwrap();
 
                     for &(_, ref command) in entries_failed.iter().rev() {
-                        self.state_machine.borrow_mut().revert(command.as_slice());
+                        self.state_machine.revert(command.as_slice());
                     }
                 }
 
                 self.log.truncate(commit_index).unwrap();
-                self.state_machine.borrow_mut().rollback();
+                self.state_machine.rollback();
             }
             _ => panic!("cannot handle message"),
         };
@@ -356,12 +355,12 @@ impl<L, M> Consensus<L, M>
                         let entries_failed = self.log.rollback(commit_index).unwrap();
 
                         for &(_, ref command) in entries_failed.iter().rev() {
-                            self.state_machine.borrow_mut().revert(command.as_slice());
+                            self.state_machine.revert(command.as_slice());
                         }
                     }
 
                     self.log.truncate(commit_index).unwrap();
-                    self.state_machine.borrow_mut().rollback();
+                    self.state_machine.rollback();
 
                     actions.client_messages.push((from, message));
                 } else {
@@ -837,7 +836,7 @@ impl<L, M> Consensus<L, M>
         } else {
             // TODO: This is probably not exactly safe.
             let query = request.get_query().unwrap();
-            let result = self.state_machine.borrow().query(query);
+            let result = self.state_machine.query(query);
             let message = messages::command_response_success(&result, &self.lid);
             actions.client_messages.push((from, message));
         }
@@ -979,7 +978,7 @@ impl<L, M> Consensus<L, M>
             };
 
             if !entry.is_empty() {
-                let result = self.state_machine.borrow_mut().apply(entry);
+                let result = self.state_machine.apply(entry);
                 results.insert(self.last_applied + 1, result);
             }
             self.last_applied = self.last_applied + 1;
@@ -1112,12 +1111,7 @@ mod tests {
                 let mut peers = ids.clone();
                 peers.remove(&id);
                 let store = MemLog::new();
-                (id,
-                 Consensus::new(id,
-                                *lid,
-                                peers,
-                                store,
-                                Rc::new(RefCell::new(NullStateMachine))))
+                (id, Consensus::new(id, *lid, peers, store, NullStateMachine))
             })
             .collect()
     }

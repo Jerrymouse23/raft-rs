@@ -262,19 +262,7 @@ fn server(server_id: ServerId,
         .map(|(&id, addr)| (ServerId::from(id), parse_addr(&addr)))
         .collect::<HashMap<_, _>>();
 
-    let mut state_machine = DocumentStateMachine::new(config.server.volume.clone());
 
-    match File::open("./snapshot") {
-        Ok(mut handler) => {
-            let mut buffer: Vec<u8> = Vec::new();
-            handler.read_to_end(&mut buffer).expect("Unable to read the snapshot file to end");
-
-            state_machine.restore_snapshot(buffer);
-        }
-        Err(_) => {
-            println!("No snapshot found! Start from the beginning");
-        }
-    }
 
     let node_addr = match parse_addr(&node_address[0]) {
         SocketAddr::V4(b) => b,
@@ -283,23 +271,32 @@ fn server(server_id: ServerId,
 
     // init(binding_addr, node_addr);
 
-    let mut logs: Vec<(LogId, DocLog)> = Vec::new();
+    let mut logs: Vec<(LogId, DocLog, DocumentStateMachine)> = Vec::new();
 
     for l in config.logs.iter() {
-        let p = DocLog::new(&l.path, LogId::from(l.lid.clone()).unwrap());
-        // let p = MemLog::new();
-        logs.push((LogId::from(l.lid.clone()).unwrap(), p));
+        let logid = LogId::from(l.lid.clone())
+            .expect(&format!("The logid given was invalid {:?}", l.lid));
+        let log = DocLog::new(&l.path, LogId::from(l.lid.clone()).unwrap());
+        let mut state_machine = DocumentStateMachine::new(log.clone());
+        logs.push((logid, log, state_machine));
         println!("Init {:?}", l.lid);
     }
 
-    Server::run(server_id,
-                addr,
-                peers,
-                state_machine,
-                community_string,
-                NullAuth,
-                logs)
-        .unwrap();
+    // TODO implement snapshot
+    // match File::open("./snapshot") {
+    // Ok(mut handler) => {
+    // let mut buffer: Vec<u8> = Vec::new();
+    // handler.read_to_end(&mut buffer).expect("Unable to read the snapshot file to end");
+    //
+    // state_machine.restore_snapshot(buffer);
+    // }
+    // Err(_) => {
+    // println!("No snapshot found! Start from the beginning");
+    // }
+    // }
+    //
+
+    Server::run(server_id, addr, peers, community_string, NullAuth, logs).unwrap();
 }
 
 fn get(addr: SocketAddr, doc_id: Uuid, username: String, password: String, lid: LogId) {

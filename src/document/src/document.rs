@@ -12,6 +12,7 @@ use raft::state_machine;
 
 use handler::Message;
 use io_handler::Handler;
+use doclog::DocLog;
 
 #[derive(RustcEncodable,RustcDecodable,Debug,Clone,Eq,PartialEq)]
 pub struct Document {
@@ -69,15 +70,17 @@ impl DocumentRecord {
 
 #[derive(Debug,Clone)]
 pub struct DocumentStateMachine {
-    volume: String,
     map: Vec<DocumentRecord>,
     transaction_offset: usize,
+    log: DocLog,
 }
 
 impl DocumentStateMachine {
-    pub fn new(volume: String) -> Self {
+    // We get a clone from DocLog. Which is ok because we are only using the .get_volume() which
+    // won't be changed during the entire execution of the application
+    pub fn new(log: DocLog) -> Self {
         DocumentStateMachine {
-            volume: volume,
+            log: log,
             map: Vec::new(),
             transaction_offset: 0,
         }
@@ -91,12 +94,12 @@ impl state_machine::StateMachine for DocumentStateMachine {
         let response = match message {
             Message::Get(_) => self.query(new_value),
             Message::Post(document) => {
-                match Handler::post(document, &self.volume) {
+                match Handler::post(document, &self.log.get_volume()) {
                     Ok(id) => {
 
                         self.map.push(DocumentRecord::new(id.clone(),
                                                           format!("{}/{}",
-                                                                  &self.volume,
+                                                                  &self.log.get_volume(),
                                                                   &id.to_string()),
                                                           ActionType::Post));
                         self.snapshot();
@@ -107,17 +110,18 @@ impl state_machine::StateMachine for DocumentStateMachine {
                 }
             }
             Message::Remove(id) => {
-                let mut document = File::open(format!("{}/{}", &self.volume, &id))
-                    .expect(&format!("{}/{}", &self.volume, &id));
+                let mut document = File::open(format!("{}/{}", &self.log.get_volume(), &id))
+                    .expect(&format!("{}/{}", &self.log.get_volume(), &id));
 
                 let old_payload = decode_from(&mut document, SizeLimit::Infinite).unwrap();
 
-                match Handler::remove(id, &self.volume) {
+                match Handler::remove(id, &self.log.get_volume()) {
                     Ok(_) => {
 
-                        let mut record = DocumentRecord::new(id,
-                                                             format!("{}/{}", &self.volume, &id),
-                                                             ActionType::Remove);
+                        let mut record =
+                            DocumentRecord::new(id,
+                                                format!("{}/{}", &self.log.get_volume(), &id),
+                                                ActionType::Remove);
 
                         record.set_old_payload(old_payload);
 
@@ -132,13 +136,15 @@ impl state_machine::StateMachine for DocumentStateMachine {
                 }
             }
             Message::Put(id, new_payload) => {
-                match Handler::put(id, new_payload.as_slice(), &self.volume) {
+                match Handler::put(id, new_payload.as_slice(), &self.log.get_volume()) {
                     Ok(_) => {
-                        let mut record = DocumentRecord::new(id,
-                                                             format!("{}/{}", &self.volume, &id),
-                                                             ActionType::Remove);
+                        let mut record =
+                            DocumentRecord::new(id,
+                                                format!("{}/{}", &self.log.get_volume(), &id),
+                                                ActionType::Remove);
 
-                        let mut document = File::open(format!("{}/{}", &self.volume, &id)).unwrap();
+                        let mut document =
+                            File::open(format!("{}/{}", &self.log.get_volume(), &id)).unwrap();
 
                         record.set_old_payload(decode_from(&mut document, SizeLimit::Infinite)
                             .unwrap());
@@ -161,7 +167,7 @@ impl state_machine::StateMachine for DocumentStateMachine {
 
         let response = match message {
             Message::Get(id) => {
-                match Handler::get(id, &self.volume) {
+                match Handler::get(id, &self.log.get_volume()) {
                     Ok(document) => encode(&document, SizeLimit::Infinite).unwrap(),
                     Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
                 }
@@ -208,12 +214,13 @@ impl state_machine::StateMachine for DocumentStateMachine {
         match message {
             Message::Get(_) => return, //cannot revert
             Message::Post(document) => {
-                match Handler::remove(document.id, &self.volume) {
+                match Handler::remove(document.id, &self.log.get_volume()) {
                     Ok(_) => {
-                        let mut record =
-                            DocumentRecord::new(document.id,
-                                                format!("{}/{}", &self.volume, &document.id),
-                                                ActionType::Remove);
+                        let mut record = DocumentRecord::new(document.id,
+                                                             format!("{}/{}",
+                                                                     &self.log.get_volume(),
+                                                                     &document.id),
+                                                             ActionType::Remove);
 
                         record.set_old_payload(encode(&document, SizeLimit::Infinite).unwrap());
 
@@ -235,13 +242,14 @@ impl state_machine::StateMachine for DocumentStateMachine {
                             version: 0,
                         };
 
-                        match Handler::post(document, &self.volume) {
+                        match Handler::post(document, &self.log.get_volume()) {
                             Ok(_) => {
 
-                                let mut new_record =
-                                    DocumentRecord::new(record.id.clone(),
-                                                        format!("{}/{}", &self.volume, &record.id),
-                                                        ActionType::Post);
+                                let mut new_record = DocumentRecord::new(record.id.clone(),
+                                                                         format!("{}/{}",
+                                                                &self.log.get_volume(),
+                                                                &record.id),
+                                                                         ActionType::Post);
 
                                 new_record.set_old_payload(record.clone().old.unwrap());
 
@@ -267,12 +275,13 @@ impl state_machine::StateMachine for DocumentStateMachine {
 
                         match Handler::put(id,
                                            record.clone().old.unwrap().as_slice(),
-                                           &self.volume) {
+                                           &self.log.get_volume()) {
                             Ok(_) => {
-                                let mut new_record =
-                                    DocumentRecord::new(record.id.clone(),
-                                                        format!("{}/{}", &self.volume, &record.id),
-                                                        ActionType::Put);
+                                let mut new_record = DocumentRecord::new(record.id.clone(),
+                                                                         format!("{}/{}",
+                                                                &self.log.get_volume(),
+                                                                &record.id),
+                                                                         ActionType::Put);
 
                                 new_record.set_old_payload(new_payload.clone());
 
