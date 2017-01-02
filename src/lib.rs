@@ -120,7 +120,7 @@ mod connection;
 mod messages;
 mod consensus;
 mod server;
-mod state;
+pub mod state;
 pub mod auth;
 mod transaction;
 mod log_manager;
