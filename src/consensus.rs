@@ -33,6 +33,8 @@ use transaction::Transaction;
 use persistent_log::Log;
 use mio::Timeout as TimeoutHandle;
 
+use std::sync::{Arc, RwLock};
+
 const ELECTION_MIN: u64 = 1500;
 const ELECTION_MAX: u64 = 3000;
 const HEARTBEAT_DURATION: u64 = 1000;
@@ -137,11 +139,11 @@ pub struct Consensus<L, M> {
     /// The current state of the `Consensus` (`Leader`, `Candidate`, or `Follower`).
     pub state: ConsensusState,
     /// State necessary while a `Leader`. Should not be used otherwise.
-    pub leader_state: LeaderState,
+    pub leader_state: Arc<RwLock<LeaderState>>,
     /// State necessary while a `Candidate`. Should not be used otherwise.
-    pub candidate_state: CandidateState,
+    pub candidate_state: Arc<RwLock<CandidateState>>,
     /// State necessary while a `Follower`. Should not be used otherwise.
-    pub follower_state: FollowerState,
+    pub follower_state: Arc<RwLock<FollowerState>>,
     pub transaction: Transaction,
     /// The ID of this consensus instance for the log_manager
     lid: LogId,
@@ -171,9 +173,9 @@ impl<L, M> Consensus<L, M>
             commit_index: LogIndex(0),
             last_applied: LogIndex(0),
             state: ConsensusState::Follower,
-            leader_state: leader_state,
-            candidate_state: CandidateState::new(),
-            follower_state: FollowerState::new(),
+            leader_state: Arc::new(RwLock::new(leader_state)),
+            candidate_state: Arc::new(RwLock::new(CandidateState::new())),
+            follower_state: Arc::new(RwLock::new(FollowerState::new())),
             transaction: Transaction::new(),
             lid: lid,
             requests_in_queue: Vec::new(),
@@ -223,7 +225,7 @@ impl<L, M> Consensus<L, M>
                 self.transaction.begin(session,
                                        self.commit_index,
                                        self.last_applied,
-                                       Some(self.follower_state.min_index));
+                                       Some(self.follower_state.read().unwrap().min_index));
             }
             message::Which::TransactionCommit(Ok(_)) => {
                 // TODO check for session
@@ -234,7 +236,7 @@ impl<L, M> Consensus<L, M>
                 // TODO check for session
                 scoped_debug!("Rollback");
                 let (commit_index, last_applied, follower_state_min) = self.transaction.rollback();
-                self.follower_state.min_index = follower_state_min.unwrap();
+                self.follower_state.write().unwrap().min_index = follower_state_min.unwrap();
                 self.commit_index = commit_index;
                 self.last_applied = last_applied;
 
@@ -310,6 +312,8 @@ impl<L, M> Consensus<L, M>
                 } else {
                     let message =
                         messages::command_response_not_leader(&self.peers[&self.follower_state
+                                                                  .read()
+                                                                  .unwrap()
                                                                   .leader
                                                                   .unwrap()],
                                                               &self.lid);
@@ -331,6 +335,8 @@ impl<L, M> Consensus<L, M>
                 } else {
                     let message =
                         messages::command_response_not_leader(&self.peers[&self.follower_state
+                                                                  .read()
+                                                                  .unwrap()
                                                                   .leader
                                                                   .unwrap()],
                                                               &self.lid);
@@ -347,8 +353,9 @@ impl<L, M> Consensus<L, M>
 
                     let message = messages::command_transaction_success("".as_bytes(), &self.lid);
 
+                    let mut leader_state = self.leader_state.write().unwrap();
                     for &peer in self.peers.keys() {
-                        self.leader_state.set_next_index(peer, commit_index + 1);
+                        leader_state.set_next_index(peer, commit_index + 1);
                     }
 
                     {
@@ -366,6 +373,8 @@ impl<L, M> Consensus<L, M>
                 } else {
                     let message =
                         messages::command_response_not_leader(&self.peers[&self.follower_state
+                                                                  .read()
+                                                                  .unwrap()
                                                                   .leader
                                                                   .unwrap()],
                                                               &self.lid);
@@ -397,7 +406,8 @@ impl<L, M> Consensus<L, M>
             ConsensusState::Leader => {
                 // Send any outstanding entries to the peer, or an empty heartbeat if there are no
                 // outstanding entries.
-                let from_index = self.leader_state.next_index(&peer);
+                let mut leader_state = self.leader_state.write().unwrap();
+                let from_index = leader_state.next_index(&peer);
                 let until_index = self.latest_log_index() + 1;
 
                 let prev_log_index = from_index - 1;
@@ -415,12 +425,12 @@ impl<L, M> Consensus<L, M>
                                                                self.commit_index,
                                                                &self.lid);
 
-                self.leader_state.set_next_index(peer, until_index);
+                leader_state.set_next_index(peer, until_index);
                 actions.peer_messages.push((peer, message));
             }
             ConsensusState::Candidate => {
                 // Resend the request vote request if a response has not yet been receieved.
-                if self.candidate_state.peer_voted(peer) {
+                if self.candidate_state.read().unwrap().peer_voted(peer) {
                     return;
                 }
                 let current_term = self.current_term();
@@ -461,7 +471,7 @@ impl<L, M> Consensus<L, M>
                 let message = {
                     if current_term < leader_term {
                         self.log.set_current_term(leader_term).unwrap();
-                        self.follower_state.set_leader(from);
+                        self.follower_state.write().unwrap().set_leader(from);
                     }
 
                     let leader_prev_log_index = LogIndex(request.get_prev_log_index());
@@ -500,11 +510,11 @@ impl<L, M> Consensus<L, M>
                                 let new_latest_log_index = leader_prev_log_index +
                                                            num_entries as u64;
 
-                                if new_latest_log_index < self.follower_state.min_index {
+                                if new_latest_log_index <
+                                   self.follower_state.read().unwrap().min_index {
                                     // Stale entry; ignore. This guards against overwriting a
                                     // possibly committed part of the log if messages get
                                     // rearranged; see ktoso/akka-raft#66.
-                                    scoped_debug!("RETURNED");
                                     return;
                                 }
                                 scoped_debug!("AppendEntriesRequest: {} entries from leader: {}",
@@ -521,7 +531,8 @@ impl<L, M> Consensus<L, M>
                                 self.log
                                     .append_entries(leader_prev_log_index + 1, &entries_vec)
                                     .unwrap();
-                                self.follower_state.min_index = new_latest_log_index;
+                                self.follower_state.write().unwrap().min_index =
+                                    new_latest_log_index;
                                 // We are matching the leader's log up to and including `new_latest_log_index`.
                                 self.commit_index =
                                     cmp::min(LogIndex::from(request.get_leader_commit()),
@@ -616,7 +627,7 @@ impl<L, M> Consensus<L, M>
                 let follower_latest_log_index = LogIndex::from(follower_latest_log_index);
                 // scoped_assert!(follower_latest_log_index <= local_latest_log_index);
                 scoped_debug!("Follower_log_index {}", follower_latest_log_index);
-                self.leader_state.set_match_index(from, follower_latest_log_index);
+                self.leader_state.write().unwrap().set_match_index(from, follower_latest_log_index);
                 self.advance_commit_index(actions);
             }
             Ok(append_entries_response::Which::InconsistentPrevEntry(next_index)) => {
@@ -625,7 +636,7 @@ impl<L, M> Consensus<L, M>
                               inconsistent previous entry index: {}",
                               from,
                               next_index);
-                self.leader_state.set_next_index(from, LogIndex::from(next_index));
+                self.leader_state.write().unwrap().set_next_index(from, LogIndex::from(next_index));
             }
             Ok(append_entries_response::Which::StaleTerm(..)) => {
                 // The peer is reporting a stale term, but the term number matches the local term.
@@ -649,7 +660,7 @@ impl<L, M> Consensus<L, M>
             }
         }
 
-        let next_index = self.leader_state.next_index(&from);
+        let next_index = self.leader_state.write().unwrap().next_index(&from);
         if next_index <= local_latest_log_index {
             // If the peer is behind, send it entries to catch up.
             scoped_debug!("AppendEntriesResponse: peer {} is missing at least {} entries; \
@@ -677,7 +688,7 @@ impl<L, M> Consensus<L, M>
                                                            self.commit_index,
                                                            &self.lid);
 
-            self.leader_state.set_next_index(from, local_latest_log_index + 1);
+            self.leader_state.write().unwrap().set_next_index(from, local_latest_log_index + 1);
             actions.peer_messages.push((from, message));
         } else {
             // If the peer is caught up, set a heartbeat timeout.
@@ -765,8 +776,10 @@ impl<L, M> Consensus<L, M>
         } else if self.is_candidate() {
             // A vote was received!
             if let Ok(request_vote_response::Granted(_)) = response.which() {
-                self.candidate_state.record_vote(from.clone());
-                if self.candidate_state.count_votes() >= majority {
+                {
+                    self.candidate_state.write().unwrap().record_vote(from.clone());
+                }
+                if self.candidate_state.read().unwrap().count_votes() >= majority {
                     scoped_info!("election for term {} won; transitioning to Leader",
                                  local_term);
                     self.transition_to_leader(actions);
@@ -781,11 +794,14 @@ impl<L, M> Consensus<L, M>
                             request: proposal_request::Reader,
                             actions: &mut Actions) {
 
-        if self.is_candidate() || (self.is_follower() && self.follower_state.leader.is_none()) {
+        if self.is_candidate() ||
+           (self.is_follower() && self.follower_state.read().unwrap().leader.is_none()) {
             actions.client_messages
                 .push((from, messages::command_response_unknown_leader(&self.lid)));
         } else if self.is_follower() {
             let message = messages::command_response_not_leader(&self.peers[&self.follower_state
+                                                                    .read()
+                                                                    .unwrap()
                                                                     .leader
                                                                     .unwrap()],
                                                                 &self.lid);
@@ -796,7 +812,7 @@ impl<L, M> Consensus<L, M>
             let term = self.current_term();
             let log_index = prev_log_index + 1;
             self.log.append_entries(log_index, &[(term, entry)]).unwrap();
-            self.leader_state.proposals.push_back((from, log_index));
+            self.leader_state.write().unwrap().proposals.push_back((from, log_index));
             if self.peers.is_empty() {
                 scoped_debug!("ProposalRequest from client {}: entry {}", from, log_index);
                 self.advance_commit_index(actions);
@@ -810,10 +826,11 @@ impl<L, M> Consensus<L, M>
                                                                &[(term, entry)],
                                                                self.commit_index,
                                                                &self.lid);
+                let mut leader_state = self.leader_state.write().unwrap();
                 for &peer in self.peers.keys() {
-                    if self.leader_state.next_index(&peer) == log_index {
+                    if leader_state.next_index(&peer) == log_index {
                         actions.peer_messages.push((peer, message.clone()));
-                        self.leader_state.set_next_index(peer, log_index + 1);
+                        leader_state.set_next_index(peer, log_index + 1);
                     }
                 }
             }
@@ -828,9 +845,8 @@ impl<L, M> Consensus<L, M>
                          request: query_request::Reader,
                          actions: &mut Actions) {
 
-        scoped_trace!("query from Client({})", from);
-
-        if self.is_candidate() || (self.is_follower() && self.follower_state.leader.is_none()) {
+        if self.is_candidate() ||
+           (self.is_follower() && self.follower_state.read().unwrap().leader.is_none()) {
             actions.client_messages
                 .push((from, messages::command_response_unknown_leader(&self.lid)));
         } else {
@@ -884,7 +900,7 @@ impl<L, M> Consensus<L, M>
             self.log.set_voted_for(Some(self.id)).unwrap();
             let latest_log_index = self.latest_log_index();
             self.state = ConsensusState::Leader;
-            self.leader_state.reinitialize(latest_log_index);
+            self.leader_state.write().unwrap().reinitialize(latest_log_index);
         } else {
             scoped_info!("ElectionTimeout: transitioning to Candidate");
             self.transition_to_candidate(actions);
@@ -898,7 +914,7 @@ impl<L, M> Consensus<L, M>
         let latest_log_index = self.latest_log_index();
         let latest_log_term = self.log.latest_log_term().unwrap();
         self.state = ConsensusState::Leader;
-        self.leader_state.reinitialize(latest_log_index);
+        self.leader_state.write().unwrap().reinitialize(latest_log_index);
 
         let message = messages::append_entries_request(current_term,
                                                        latest_log_index,
@@ -920,8 +936,9 @@ impl<L, M> Consensus<L, M>
         self.log.inc_current_term().unwrap();
         self.log.set_voted_for(Some(self.id)).unwrap();
         self.state = ConsensusState::Candidate;
-        self.candidate_state.clear();
-        self.candidate_state.record_vote(self.id);
+        let mut candidate_state = self.candidate_state.write().unwrap();
+        candidate_state.clear();
+        candidate_state.record_vote(self.id);
 
         let message = messages::request_vote_request(self.current_term(),
                                                      self.latest_log_index(),
@@ -939,19 +956,24 @@ impl<L, M> Consensus<L, M>
     fn advance_commit_index(&mut self, actions: &mut Actions) {
         scoped_assert!(self.is_leader());
         let majority = self.majority();
-        // TODO: Figure out failure condition here.
-        while self.commit_index < self.log.latest_log_index().unwrap() {
-            if self.leader_state.count_match_indexes(self.commit_index + 1) >= majority {
-                self.commit_index = self.commit_index + 1;
-                scoped_debug!("commit index advanced to {}", self.commit_index);
-            } else {
-                break; // If there isn't a majority now, there won't be one later.
+        {
+            let leader_state = self.leader_state.read().unwrap();
+            // TODO: Figure out failure condition here.
+            while self.commit_index < self.log.latest_log_index().unwrap() {
+                if leader_state.count_match_indexes(self.commit_index + 1) >= majority {
+                    self.commit_index = self.commit_index + 1;
+                    scoped_debug!("commit index advanced to {}", self.commit_index);
+                } else {
+                    break; // If there isn't a majority now, there won't be one later.
+                }
             }
         }
 
         let results = self.apply_commits();
+        let mut leader_state = self.leader_state.write().unwrap();
 
-        while let Some(&(client, index)) = self.leader_state.proposals.get(0) {
+        // TODO: Figure out failure condition here.
+        while let Some(&(client, index)) = leader_state.proposals.get(0) {
             if index <= self.commit_index {
                 scoped_trace!("responding to client {} for entry {}", client, index);
                 // We know that there will be an index here since it was commited
@@ -959,7 +981,7 @@ impl<L, M> Consensus<L, M>
                 let result = results.get(&index).unwrap();
                 let message = messages::command_response_success(result, &self.lid);
                 actions.client_messages.push((client, message));
-                self.leader_state.proposals.pop_front();
+                leader_state.proposals.pop_front();
             } else {
                 break;
             }
@@ -993,7 +1015,7 @@ impl<L, M> Consensus<L, M>
         scoped_trace!("transitioning to Follower");
         self.log.set_current_term(term).unwrap();
         self.state = ConsensusState::Follower;
-        self.follower_state.set_leader(leader);
+        self.follower_state.write().unwrap().set_leader(leader);
         actions.clear_timeouts.push(self.lid);
         actions.clear_peer_messages = true;
         actions.timeouts.push(ConsensusTimeout::Election(self.lid));

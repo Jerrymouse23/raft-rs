@@ -12,7 +12,7 @@ use ServerId;
 /// * `Candidate` -  which campaigns in an election and may become a `Leader`
 ///                  (if it gets enough votes) or a `Follower`, if it hears from
 ///                  a `Leader`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Copy,Clone, Debug, PartialEq, Eq)]
 pub enum ConsensusState {
     Follower,
     Candidate,

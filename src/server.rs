@@ -306,8 +306,8 @@ impl<L, M, A> Server<L, M, A>
         }
 
         // scoped_debug!("Sending {:?}  messages to portals", portal_queue.len());
-        // scoped_debug!("Sending informations to {:?} portals",
-        //             self.portals_tokens.clone().len());
+        scoped_debug!("Sending informations to {:?} portals",
+                      self.portals_tokens.clone().len());
         for (_, message) in portal_queue {
             for t in self.portals_tokens.clone() {
                 self.send_message(event_loop, t, message.clone());
