@@ -21,6 +21,9 @@ use std::collections::HashSet;
 use std::boxed::Box;
 
 use raft::LogId;
+use raft::state::{LeaderState, CandidateState, FollowerState};
+
+use std::sync::{Arc, RwLock};
 
 #[derive(RustcDecodable,RustcEncodable)]
 struct http_Response {
@@ -33,7 +36,11 @@ struct Context {
     node_addr: SocketAddrV4,
 }
 
-pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
+pub fn init(binding_addr: SocketAddr,
+            node_addr: SocketAddrV4,
+            leader_state: Arc<RwLock<LeaderState>>,
+            candidate_state: Arc<RwLock<CandidateState>>,
+            follower_state: Arc<RwLock<FollowerState>>) {
     let mut router = Router::new();
 
     let context = Context { node_addr: node_addr };
@@ -66,6 +73,48 @@ pub fn init(binding_addr: SocketAddr, node_addr: SocketAddrV4) {
     router.post("/transaction/rollback",
                 move |request: &mut Request| http_rollback_transaction(request, &context),
                 "rollback_transaction");
+
+    router.get("/meta/state/leader",
+               move |request: &mut Request| {
+                   http_meta_state_leader(request, &context, leader_state.clone())
+               },
+               "meta_state_leader");
+
+    router.get("/meta/state/candidate",
+               move |request: &mut Request| {
+                   http_meta_state_candidate(request, &context, candidate_state.clone())
+               },
+               "meta_state_candidate");
+
+    router.get("/meta/state/follower",
+               move |request: &mut Request| {
+                   http_meta_state_follower(request, &context, follower_state.clone())
+               },
+               "meta_state_follower");
+
+    fn http_meta_state_leader(req: &mut Request,
+                              context: &Context,
+                              state: Arc<RwLock<LeaderState>>)
+                              -> IronResult<Response> {
+        let lock = state.read().unwrap();
+        Ok(Response::with((status::Ok, "meta_state_leader")))
+    }
+
+    fn http_meta_state_candidate(req: &mut Request,
+                                 context: &Context,
+                                 state: Arc<RwLock<CandidateState>>)
+                                 -> IronResult<Response> {
+        let lock = state.read().unwrap();
+        Ok(Response::with((status::Ok, "http_meta_state_candidate")))
+    }
+
+    fn http_meta_state_follower(req: &mut Request,
+                                context: &Context,
+                                state: Arc<RwLock<FollowerState>>)
+                                -> IronResult<Response> {
+        let lock = state.read().unwrap();
+        Ok(Response::with((status::Ok, "http_meta_state_follower")))
+    }
 
     fn http_get_keys(req: &mut Request, context: &Context) -> IronResult<Response> {
         let keys = read_dir("data1").unwrap();

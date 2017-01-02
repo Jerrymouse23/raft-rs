@@ -25,7 +25,7 @@ extern crate lazy_static;
 
 pub mod document;
 pub mod io_handler;
-// pub mod http_handler;
+pub mod http_handler;
 pub mod handler;
 pub mod config;
 pub mod doclog;
@@ -52,7 +52,7 @@ use doclog::DocLog;
 
 use raft::auth::null::NullAuth;
 
-// use http_handler::*;
+use http_handler::*;
 
 static USAGE: &'static str = "
 A replicated document database.
@@ -269,7 +269,6 @@ fn server(server_id: ServerId,
         _ => panic!("The node_address must be IPv4"),
     };
 
-    // init(binding_addr, node_addr);
 
     let mut logs: Vec<(LogId, DocLog, DocumentStateMachine)> = Vec::new();
 
@@ -296,7 +295,25 @@ fn server(server_id: ServerId,
     // }
     //
 
-    Server::run(server_id, addr, peers, community_string, NullAuth, logs).unwrap();
+    let (mut server, mut event_loop) =
+        Server::new(server_id, addr, peers, community_string, NullAuth, logs).unwrap();
+
+    {
+        let cons = server.log_manager
+            .get(LogId::from("3d30aa56-98b2-4891-aec5-847cee6e1703".to_string()).unwrap())
+            .unwrap();
+
+        init(binding_addr,
+             node_addr,
+             cons.leader_state.clone(),
+             cons.candidate_state.clone(),
+             cons.follower_state
+                 .clone());
+    }
+
+    server.init(&mut event_loop);
+
+    event_loop.run(&mut server);
 }
 
 fn get(addr: SocketAddr, doc_id: Uuid, username: String, password: String, lid: LogId) {
