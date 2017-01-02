@@ -62,8 +62,9 @@ pub struct Server<L, M, A>
     /// Id of this server.
     id: ServerId,
 
+    // TODO implement getter for states
     /// Raft state machine consensus.
-    log_manager: LogManager<L, M>,
+    pub log_manager: LogManager<L, M>,
 
     /// Connection listener.
     listener: TcpListener,
@@ -162,13 +163,15 @@ impl<L, M, A> Server<L, M, A>
                community_string: String,
                auth: A,
                logs: Vec<(LogId, L, M)>)
-               -> Result<()> {
+               -> Self {
         let (mut server, mut event_loop) =
-            try!(Server::new(id, addr, peers, community_string, auth, logs));
+            Server::new(id, addr, peers, community_string, auth, logs).unwrap();
 
         server.init(&mut event_loop);
 
-        event_loop.run(&mut server).map_err(From::from)
+        event_loop.run(&mut server);
+
+        server
     }
 
     /// Spawns a new Raft server in a background thread.
