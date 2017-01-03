@@ -23,6 +23,7 @@ use std::boxed::Box;
 use raft::LogId;
 use raft::state::{LeaderState, CandidateState, FollowerState};
 
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 #[derive(RustcDecodable,RustcEncodable)]
@@ -38,11 +39,12 @@ struct Context {
 
 pub fn init(binding_addr: SocketAddr,
             node_addr: SocketAddrV4,
-            leader_state: Arc<RwLock<LeaderState>>,
-            candidate_state: Arc<RwLock<CandidateState>>,
-            follower_state: Arc<RwLock<FollowerState>>) {
+            states: HashMap<LogId,
+                            (Arc<RwLock<LeaderState>>,
+                             Arc<RwLock<CandidateState>>,
+                             Arc<RwLock<FollowerState>>)>) {
     let mut router = Router::new();
-
+    let states = Arc::new(states);
     let context = Context { node_addr: node_addr };
 
     router.get("/document/:fileId",
@@ -74,45 +76,71 @@ pub fn init(binding_addr: SocketAddr,
                 move |request: &mut Request| http_rollback_transaction(request, &context),
                 "rollback_transaction");
 
-    router.get("/meta/state/leader",
-               move |request: &mut Request| {
-                   http_meta_state_leader(request, &context, leader_state.clone())
-               },
-               "meta_state_leader");
-
-    router.get("/meta/state/candidate",
-               move |request: &mut Request| {
-                   http_meta_state_candidate(request, &context, candidate_state.clone())
-               },
-               "meta_state_candidate");
-
-    router.get("/meta/state/follower",
-               move |request: &mut Request| {
-                   http_meta_state_follower(request, &context, follower_state.clone())
-               },
-               "meta_state_follower");
-
+    {
+        let states = states.clone();
+        router.get("/meta/:lid/state/leader",
+                   move |request: &mut Request| {
+                       http_meta_state_leader(request, &context, states.clone())
+                   },
+                   "meta_state_leader");
+    }
+    {
+        let states = states.clone();
+        router.get("/meta/:lid/state/candidate",
+                   move |request: &mut Request| {
+                       http_meta_state_candidate(request, &context, states.clone())
+                   },
+                   "meta_state_candidate");
+    }
+    {
+        router.get("/meta/:lid/state/follower",
+                   move |request: &mut Request| {
+                       http_meta_state_follower(request, &context, states.clone())
+                   },
+                   "meta_state_follower");
+    }
     fn http_meta_state_leader(req: &mut Request,
                               context: &Context,
-                              state: Arc<RwLock<LeaderState>>)
+                              state: Arc<HashMap<LogId,
+                                                 (Arc<RwLock<LeaderState>>,
+                                                  Arc<RwLock<CandidateState>>,
+                                                  Arc<RwLock<FollowerState>>)>>)
                               -> IronResult<Response> {
-        let lock = state.read().unwrap();
+
+        let raw_lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
+        let lid = LogId::from(raw_lid.to_string()).unwrap();
+        let lock = state.get(&lid).unwrap().0.read().unwrap();
+
         Ok(Response::with((status::Ok, "meta_state_leader")))
     }
 
     fn http_meta_state_candidate(req: &mut Request,
                                  context: &Context,
-                                 state: Arc<RwLock<CandidateState>>)
+                                 state: Arc<HashMap<LogId,
+                                                    (Arc<RwLock<LeaderState>>,
+                                                     Arc<RwLock<CandidateState>>,
+                                                     Arc<RwLock<FollowerState>>)>>)
                                  -> IronResult<Response> {
-        let lock = state.read().unwrap();
+
+        let raw_lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
+        let lid = LogId::from(raw_lid.to_string()).unwrap();
+        let lock = state.get(&lid).unwrap().1.read().unwrap();
+
         Ok(Response::with((status::Ok, "http_meta_state_candidate")))
     }
 
     fn http_meta_state_follower(req: &mut Request,
                                 context: &Context,
-                                state: Arc<RwLock<FollowerState>>)
+                                state: Arc<HashMap<LogId,
+                                                   (Arc<RwLock<LeaderState>>,
+                                                    Arc<RwLock<CandidateState>>,
+                                                    Arc<RwLock<FollowerState>>)>>)
                                 -> IronResult<Response> {
-        let lock = state.read().unwrap();
+
+        let raw_lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
+        let lid = LogId::from(raw_lid.to_string()).unwrap();
+        let lock = state.get(&lid).unwrap().2.read().unwrap();
+
         Ok(Response::with((status::Ok, "http_meta_state_follower")))
     }
 

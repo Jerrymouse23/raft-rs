@@ -10,6 +10,10 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use uuid::Uuid;
 
+use std::sync::{Arc, RwLock};
+
+use state::{LeaderState, CandidateState, FollowerState};
+
 use capnp::message::{Reader, ReaderSegments};
 use messages_capnp::{client_request, message};
 
@@ -128,5 +132,25 @@ impl<L, M> LogManager<L, M>
         for (_, mut con) in self.consensus.iter_mut() {
             con.handle_queue(actions);
         }
+    }
+
+    pub fn get_states(&self)
+                      -> HashMap<LogId,
+                                 (Arc<RwLock<LeaderState>>,
+                                  Arc<RwLock<CandidateState>>,
+                                  Arc<RwLock<FollowerState>>)> {
+        let mut result: HashMap<LogId,
+                                (Arc<RwLock<LeaderState>>,
+                                 Arc<RwLock<CandidateState>>,
+                                 Arc<RwLock<FollowerState>>)> = HashMap::new();
+        for (&lid, cons) in self.consensus.iter() {
+            let leader_state = cons.leader_state.clone();
+            let candidate_state = cons.candidate_state.clone();
+            let follower_state = cons.follower_state.clone();
+
+            result.insert(lid, (leader_state, candidate_state, follower_state));
+        }
+
+        result
     }
 }

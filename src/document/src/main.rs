@@ -299,16 +299,9 @@ fn server(server_id: ServerId,
         Server::new(server_id, addr, peers, community_string, NullAuth, logs).unwrap();
 
     {
-        let cons = server.log_manager
-            .get(LogId::from("3d30aa56-98b2-4891-aec5-847cee6e1703".to_string()).unwrap())
-            .unwrap();
+        let states = server.log_manager.get_states();
 
-        init(binding_addr,
-             node_addr,
-             cons.leader_state.clone(),
-             cons.candidate_state.clone(),
-             cons.follower_state
-                 .clone());
+        init(binding_addr, node_addr, states);
     }
 
     server.init(&mut event_loop);

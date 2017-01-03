@@ -345,6 +345,10 @@ impl LogId {
         let id = try!(Uuid::parse_str(&i));
         Ok(LogId(id))
     }
+
+    pub fn LogId(&self) -> LogId {
+        *self
+    }
 }
 impl fmt::Debug for LogId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
