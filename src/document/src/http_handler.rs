@@ -78,6 +78,12 @@ pub fn init(binding_addr: SocketAddr,
 
     {
         let states = states.clone();
+        router.get("/meta/logs",
+                   move |request: &mut Request| http_logs(request, &context, states.clone()),
+                   "meta_logs");
+    }
+    {
+        let states = states.clone();
         router.get("/meta/:lid/state/leader",
                    move |request: &mut Request| {
                        http_meta_state_leader(request, &context, states.clone())
@@ -98,6 +104,25 @@ pub fn init(binding_addr: SocketAddr,
                        http_meta_state_follower(request, &context, states.clone())
                    },
                    "meta_state_follower");
+    }
+
+    fn http_logs(req: &mut Request,
+                 context: &Context,
+                 state: Arc<HashMap<LogId,
+                                    (Arc<RwLock<LeaderState>>,
+                                     Arc<RwLock<CandidateState>>,
+                                     Arc<RwLock<FollowerState>>)>>)
+                 -> IronResult<Response> {
+        let keys = state.keys();
+
+        let mut logs = String::new();
+
+        for k in keys {
+            logs.push('\n');
+            logs.push_str(&format!("{}", k));
+        }
+
+        Ok(Response::with((status::Ok, format!("{}", &logs))))
     }
 
     fn http_meta_state_leader(req: &mut Request,
