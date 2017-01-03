@@ -99,6 +99,7 @@ pub fn init(binding_addr: SocketAddr,
                    },
                    "meta_state_follower");
     }
+
     fn http_meta_state_leader(req: &mut Request,
                               context: &Context,
                               state: Arc<HashMap<LogId,
@@ -111,7 +112,7 @@ pub fn init(binding_addr: SocketAddr,
         let lid = LogId::from(raw_lid).unwrap();
         let lock = state.get(&lid).unwrap().0.read().unwrap();
 
-        Ok(Response::with((status::Ok, "meta_state_leader")))
+        Ok(Response::with((status::Ok, format!("{:?}", *lock))))
     }
 
     fn http_meta_state_candidate(req: &mut Request,
@@ -126,7 +127,7 @@ pub fn init(binding_addr: SocketAddr,
         let lid = LogId::from(raw_lid).unwrap();
         let lock = state.get(&lid).unwrap().1.read().unwrap();
 
-        Ok(Response::with((status::Ok, "http_meta_state_candidate")))
+        Ok(Response::with((status::Ok, format!("{:?}", *lock))))
     }
 
     fn http_meta_state_follower(req: &mut Request,
@@ -141,7 +142,7 @@ pub fn init(binding_addr: SocketAddr,
         let lid = LogId::from(raw_lid).unwrap();
         let lock = state.get(&lid).unwrap().2.read().unwrap();
 
-        Ok(Response::with((status::Ok, "http_meta_state_follower")))
+        Ok(Response::with((status::Ok, format!("{:?}", *lock))))
     }
 
     fn http_get_keys(req: &mut Request, context: &Context) -> IronResult<Response> {
