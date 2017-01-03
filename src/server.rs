@@ -33,8 +33,6 @@ use std::io::Cursor;
 use auth::Auth;
 use log_manager::LogManager;
 
-use std::sync::{Arc, RwLock};
-
 const LISTENER: Token = Token(0);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -66,7 +64,7 @@ pub struct Server<L, M, A>
 
     // TODO implement getter for states
     /// Raft state machine consensus.
-    pub log_manager: Arc<RwLock<LogManager<L, M>>>,
+    pub log_manager: LogManager<L, M>,
 
     /// Connection listener.
     listener: TcpListener,
@@ -122,7 +120,7 @@ impl<L, M, A> Server<L, M, A>
 
         let mut server = Server {
             id: id,
-            log_manager: Arc::new(RwLock::new(log_manager)),
+            log_manager: log_manager,
             listener: listener,
             connections: Slab::new_starting_at(Token(1), 129),
             peer_tokens: HashMap::new(),
@@ -270,8 +268,8 @@ impl<L, M, A> Server<L, M, A>
         }
 
         for lid in clear_timeouts {
-            let mut log_manager = self.log_manager.write().unwrap();
-            let mut consensus = log_manager.get_mut(lid)
+            let mut consensus = self.log_manager
+                .get_mut(lid)
                 .expect(&format!("Log {:?} is not registered in the log_manager", lid));
 
             for (timeout, &handle) in consensus.consensus_timeouts.iter() {
@@ -297,8 +295,8 @@ impl<L, M, A> Server<L, M, A>
             let handle = event_loop.timeout_ms(ServerTimeout::Consensus(lid, timeout), duration)
                 .unwrap();
 
-            let mut log_manager = self.log_manager.write().unwrap();
-            let mut consensus = log_manager.get_mut(lid)
+            let mut consensus = self.log_manager
+                .get_mut(lid)
                 .expect(&format!("Log {:?} is not registered in the log_manager", lid));
 
             consensus.consensus_timeouts
@@ -366,7 +364,7 @@ impl<L, M, A> Server<L, M, A>
                 -> Result<()> {
 
         let mut actions = Actions::new();
-        self.log_manager.write().unwrap().handle_queue(&mut actions);
+        self.log_manager.handle_queue(&mut actions);
         self.execute_actions(event_loop, actions);
 
 
@@ -376,18 +374,12 @@ impl<L, M, A> Server<L, M, A>
             match *self.connections[token].kind() {
                 ConnectionKind::Peer(id) => {
                     let mut actions = Actions::new();
-                    self.log_manager
-                        .write()
-                        .unwrap()
-                        .apply_peer_message(id, &message, &mut actions);
+                    self.log_manager.apply_peer_message(id, &message, &mut actions);
                     self.execute_actions(event_loop, actions);
                 }
                 ConnectionKind::Client(id) => {
                     let mut actions = Actions::new();
-                    self.log_manager
-                        .write()
-                        .unwrap()
-                        .apply_client_message(id, &message, &mut actions);
+                    self.log_manager.apply_client_message(id, &message, &mut actions);
                     self.execute_actions(event_loop, actions);
                 }
                 ConnectionKind::Portal => unimplemented!(),
@@ -441,8 +433,6 @@ impl<L, M, A> Server<L, M, A>
                                 // Notify consensus that the connection reset.
                                 let mut actions = Actions::new();
                                 self.log_manager
-                                    .write()
-                                    .unwrap()
                                     .peer_connection_reset(peer_id, peer_addr, &mut actions);
                                 self.execute_actions(event_loop, actions);
                             }
@@ -534,7 +524,7 @@ impl<L, M, A> Server<L, M, A>
 
 
     pub fn init(&mut self, event_loop: &mut EventLoop<Server<L, M, A>>) {
-        let action = self.log_manager.write().unwrap().init();
+        let action = self.log_manager.init();
 
         self.execute_actions(event_loop, action);
     }
@@ -618,8 +608,6 @@ impl<L, M, A> Handler for Server<L, M, A>
             ServerTimeout::Consensus(lid, ctimeout) => {
                 //
                 scoped_assert!(self.log_manager
-                                   .write()
-                                   .unwrap()
                                    .get_mut(lid)
                                    .expect(&format!("Log {:?} is not registered in the \
                                                      log_manager",
@@ -630,7 +618,7 @@ impl<L, M, A> Handler for Server<L, M, A>
                                "missing timeout: {:?}",
                                timeout);
                 let mut actions = Actions::new();
-                self.log_manager.write().unwrap().apply_timeout(&lid, ctimeout, &mut actions);
+                self.log_manager.apply_timeout(&lid, ctimeout, &mut actions);
                 self.execute_actions(event_loop, actions);
             }
 
@@ -651,10 +639,7 @@ impl<L, M, A> Handler for Server<L, M, A>
                     .and_then(|_| self.connections[token].register(event_loop, token))
                     .map(|_| {
                         let mut actions = Actions::new();
-                        self.log_manager
-                            .write()
-                            .unwrap()
-                            .peer_connection_reset(id, addr, &mut actions);
+                        self.log_manager.peer_connection_reset(id, addr, &mut actions);
                         self.execute_actions(event_loop, actions);
                     })
                     .unwrap_or_else(|error| {
