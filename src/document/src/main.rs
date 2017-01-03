@@ -151,14 +151,14 @@ fn main() {
             id,
             args.arg_username.unwrap(),
             args.arg_password.unwrap(),
-            LogId::from(args.arg_lid.unwrap()).unwrap());
+            LogId::from(&args.arg_lid.unwrap()).unwrap());
     } else if args.cmd_post {
         post(parse_addr(&args.arg_node_address.unwrap()),
              &args.arg_filepath,
              args.arg_username.unwrap(),
              args.arg_password.unwrap(),
              Uuid::new_v4(),
-             LogId::from(args.arg_lid.unwrap()).unwrap());
+             LogId::from(&args.arg_lid.unwrap()).unwrap());
     } else if args.cmd_remove {
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
             Ok(id) => id,
@@ -170,7 +170,7 @@ fn main() {
                args.arg_username.unwrap(),
                args.arg_password.unwrap(),
                Uuid::new_v4(),
-               LogId::from(args.arg_lid.unwrap()).unwrap());
+               LogId::from(&args.arg_lid.unwrap()).unwrap());
     } else if args.cmd_put {
 
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
@@ -184,26 +184,26 @@ fn main() {
             args.arg_username.unwrap(),
             args.arg_password.unwrap(),
             Uuid::new_v4(),
-            LogId::from(args.arg_lid.unwrap()).unwrap());
+            LogId::from(&args.arg_lid.unwrap()).unwrap());
     } else if args.cmd_begintrans {
         let res = Handler::begin_transaction(parse_addr(&args.arg_node_address.unwrap()),
                                              &args.arg_username.unwrap(),
                                              &args.arg_password.unwrap(),
                                              Uuid::new_v4(),
-                                             LogId::from(args.arg_lid.unwrap()).unwrap());
+                                             LogId::from(&args.arg_lid.unwrap()).unwrap());
 
         println!("{}", res.unwrap());
     } else if args.cmd_endtrans {
         let res = Handler::commit_transaction(parse_addr(&args.arg_node_address.unwrap()),
                                               &args.arg_username.unwrap(),
                                               &args.arg_password.unwrap(),
-                                              LogId::from(args.arg_lid.unwrap()).unwrap());
+                                              LogId::from(&args.arg_lid.unwrap()).unwrap());
         println!("{}", res.unwrap());
     } else if args.cmd_rollback {
         let res = Handler::rollback_transaction(parse_addr(&args.arg_node_address.unwrap()),
                                                 &args.arg_username.unwrap(),
                                                 &args.arg_password.unwrap(),
-                                                LogId::from(args.arg_lid.unwrap()).unwrap());
+                                                LogId::from(&args.arg_lid.unwrap()).unwrap());
 
         println!("{}", res.unwrap());
     } else if args.cmd_transpost {
@@ -212,7 +212,7 @@ fn main() {
              args.arg_username.unwrap(),
              args.arg_password.unwrap(),
              Uuid::parse_str(&args.arg_transid.unwrap()).unwrap(),
-             LogId::from(args.arg_lid.unwrap()).unwrap());
+             LogId::from(&args.arg_lid.unwrap()).unwrap());
 
     } else if args.cmd_transremove {
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
@@ -225,7 +225,7 @@ fn main() {
                args.arg_username.unwrap(),
                args.arg_password.unwrap(),
                Uuid::parse_str(&args.arg_transid.unwrap()).unwrap(),
-               LogId::from(args.arg_lid.unwrap()).unwrap());
+               LogId::from(&args.arg_lid.unwrap()).unwrap());
     } else if args.cmd_transput {
         let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
             Ok(id) => id,
@@ -238,7 +238,7 @@ fn main() {
             args.arg_username.unwrap(),
             args.arg_password.unwrap(),
             Uuid::parse_str(&args.arg_transid.unwrap()).unwrap(),
-            LogId::from(args.arg_lid.unwrap()).unwrap());
+            LogId::from(&args.arg_lid.unwrap()).unwrap());
     }
 }
 
@@ -273,9 +273,8 @@ fn server(server_id: ServerId,
     let mut logs: Vec<(LogId, DocLog, DocumentStateMachine)> = Vec::new();
 
     for l in config.logs.iter() {
-        let logid = LogId::from(l.lid.clone())
-            .expect(&format!("The logid given was invalid {:?}", l.lid));
-        let log = DocLog::new(&l.path, LogId::from(l.lid.clone()).unwrap());
+        let logid = LogId::from(&l.lid).expect(&format!("The logid given was invalid {:?}", l.lid));
+        let log = DocLog::new(&l.path, LogId::from(&l.lid).unwrap());
         let mut state_machine = DocumentStateMachine::new(log.clone());
         logs.push((logid, log, state_machine));
         println!("Init {:?}", l.lid);

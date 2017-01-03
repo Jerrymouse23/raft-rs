@@ -341,7 +341,7 @@ impl LogId {
         *self.0.as_bytes()
     }
 
-    pub fn from(i: String) -> std::result::Result<Self, uuid::ParseError> {
+    pub fn from(i: &str) -> std::result::Result<Self, uuid::ParseError> {
         let id = try!(Uuid::parse_str(&i));
         Ok(LogId(id))
     }

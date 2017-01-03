@@ -108,7 +108,7 @@ pub fn init(binding_addr: SocketAddr,
                               -> IronResult<Response> {
 
         let raw_lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
-        let lid = LogId::from(raw_lid.to_string()).unwrap();
+        let lid = LogId::from(raw_lid).unwrap();
         let lock = state.get(&lid).unwrap().0.read().unwrap();
 
         Ok(Response::with((status::Ok, "meta_state_leader")))
@@ -123,7 +123,7 @@ pub fn init(binding_addr: SocketAddr,
                                  -> IronResult<Response> {
 
         let raw_lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
-        let lid = LogId::from(raw_lid.to_string()).unwrap();
+        let lid = LogId::from(raw_lid).unwrap();
         let lock = state.get(&lid).unwrap().1.read().unwrap();
 
         Ok(Response::with((status::Ok, "http_meta_state_candidate")))
@@ -138,7 +138,7 @@ pub fn init(binding_addr: SocketAddr,
                                 -> IronResult<Response> {
 
         let raw_lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
-        let lid = LogId::from(raw_lid.to_string()).unwrap();
+        let lid = LogId::from(raw_lid).unwrap();
         let lock = state.get(&lid).unwrap().2.read().unwrap();
 
         Ok(Response::with((status::Ok, "http_meta_state_follower")))
@@ -178,7 +178,7 @@ pub fn init(binding_addr: SocketAddr,
                                     username,
                                     password,
                                     Uuid::parse_str(*fileId).unwrap(),
-                                    LogId::from(lid.to_string()).unwrap())
+                                    LogId::from(lid).unwrap())
             .unwrap();
 
         let http_doc = http_Response {
@@ -216,7 +216,7 @@ pub fn init(binding_addr: SocketAddr,
                             password,
                             document,
                             session,
-                            LogId::from(lid.to_string()).unwrap()) {
+                            LogId::from(lid).unwrap()) {
             Ok(id) => Ok(Response::with((status::Ok, format!("{}", id)))),
             Err(err) => {
                 Ok(Response::with((status::InternalServerError,
@@ -244,7 +244,7 @@ pub fn init(binding_addr: SocketAddr,
                                         password,
                                         Uuid::parse_str(*fileId).unwrap(),
                                         session,
-                                        LogId::from(lid.to_string()).unwrap()) {
+                                        LogId::from(lid).unwrap()) {
             Ok(()) => Response::with((status::Ok, "Ok")),
             Err(err) => {
                 Response::with((status::InternalServerError,
@@ -271,7 +271,7 @@ pub fn init(binding_addr: SocketAddr,
                                      Uuid::parse_str(&id).unwrap(),
                                      bytes,
                                      Uuid::new_v4(),
-                                     LogId::from(lid.to_string()).unwrap()) {
+                                     LogId::from(lid).unwrap()) {
             Ok(()) => Response::with((status::Ok, "Ok")),
             Err(err) => {
                 Response::with((status::InternalServerError,
@@ -291,7 +291,7 @@ pub fn init(binding_addr: SocketAddr,
                                          username,
                                          password,
                                          Uuid::new_v4(),
-                                         LogId::from(lid.to_string()).unwrap()) {
+                                         LogId::from(lid).unwrap()) {
             Ok(session) => Ok(Response::with((status::Ok, session))),
             Err(_) => Ok(Response::with((status::InternalServerError, "Something went wrong :("))),
         }
@@ -305,7 +305,7 @@ pub fn init(binding_addr: SocketAddr,
         match Handler::commit_transaction(SocketAddr::V4(context.node_addr),
                                           username,
                                           password,
-                                          LogId::from(lid.to_string()).unwrap()) {
+                                          LogId::from(lid).unwrap()) {
             Ok(res) => Ok(Response::with((status::Ok, res))),
             Err(_) => Ok(Response::with((status::InternalServerError, "Something went wrong :("))),
         }
@@ -319,7 +319,7 @@ pub fn init(binding_addr: SocketAddr,
         match Handler::rollback_transaction(SocketAddr::V4(context.node_addr),
                                             username,
                                             password,
-                                            LogId::from(lid.to_string()).unwrap()) {
+                                            LogId::from(lid).unwrap()) {
             Ok(res) => Ok(Response::with((status::Ok, res))),
             Err(_) => Ok(Response::with((status::InternalServerError, "Something went wrong :("))),
         }
