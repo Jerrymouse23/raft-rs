@@ -184,7 +184,7 @@ mod test {
     use raft::LogId;
 
     lazy_static!{
-        static ref lid : LogId = LogId::from("3d30aa56-98b2-4891-aec5-847cee6e1703".to_string()).unwrap();
+        static ref lid : LogId = LogId::from("3d30aa56-98b2-4891-aec5-847cee6e1703").unwrap();
     }
 
     #[test]
