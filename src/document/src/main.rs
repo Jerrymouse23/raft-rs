@@ -104,167 +104,136 @@ struct Args {
     arg_transid: Option<String>,
     arg_lid: Option<String>,
 }
+
+impl Args {
+    pub fn get_doc_id(&self) -> Uuid {
+        let doc_id = self.arg_doc_id.clone().unwrap();
+        Uuid::parse_str(&doc_id).expect(&format!("{} is not a valid id", doc_id))
+    }
+
+    pub fn get_node_addr(&self) -> SocketAddr {
+        self.arg_node_address.clone().unwrap().parse().expect("Given IP is not valid")
+    }
+
+    pub fn get_lid(&self) -> LogId {
+        LogId::from(&self.arg_lid.clone().unwrap()).expect("Given LogId is not valid")
+    }
+
+    pub fn get_trans_id(&self) -> Uuid {
+        let tid = self.arg_transid.clone().unwrap();
+        Uuid::parse_str(&tid).expect(&format!("{} is not a valid transaction id", tid))
+    }
+}
+
 fn main() {
+
     env_logger::init().unwrap();
 
     let args: Args = Docopt::new(USAGE)
         .and_then(|d| d.decode())
         .unwrap_or_else(|e| e.exit());
 
+    let username = args.arg_username.clone().unwrap();
+    let password = args.arg_password.clone().unwrap();
+    let lid = args.get_lid();
+    let node_addr = args.get_node_addr();
+
     if args.cmd_server {
-
-        let config = match Config::init(args.arg_config_path.unwrap()) {
-            Ok(config) => config,
-            Err(err) => panic!("{}", err),
-        };
-
-        let mut node_ids: Vec<u64> = Vec::new();
-        let mut node_addresses: Vec<String> = Vec::new();
-
-        for peer in config.peers.clone() {
-            node_ids.push(peer.node_id);
-            node_addresses.push(peer.node_address);
-        }
-
-        let local_addr = parse_addr(&config.server.node_address);
-
-        let node_addr = match parse_addr(&config.server.node_address) {
-            SocketAddr::V4(v) => v,
-            _ => panic!("The node address given must be IPv4"),
-        };
-
-        // http_handler::init(parse_addr(&config.server.binding_addr), node_addr);
-        server(ServerId::from(config.server.node_id),
-               local_addr,
-               node_ids,
-               node_addresses,
-               config.server.community_string.to_string(),
-               parse_addr(&config.server.binding_addr),
-               &config);
+        server(&args);
     } else if args.cmd_get {
-        let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
-            Ok(id) => id,
-            Err(_) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
-        };
+        let id = args.get_doc_id();
 
-        get(parse_addr(&args.arg_node_address.unwrap()),
-            id,
-            args.arg_username.unwrap(),
-            args.arg_password.unwrap(),
-            LogId::from(&args.arg_lid.unwrap()).unwrap());
+        get(&node_addr, &id, &username, &password, &lid);
+
     } else if args.cmd_post {
-        post(parse_addr(&args.arg_node_address.unwrap()),
+
+        post(&node_addr,
              &args.arg_filepath,
-             args.arg_username.unwrap(),
-             args.arg_password.unwrap(),
-             Uuid::new_v4(),
-             LogId::from(&args.arg_lid.unwrap()).unwrap());
+             &username,
+             &password,
+             &Uuid::new_v4(),
+             &lid);
     } else if args.cmd_remove {
-        let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
-            Ok(id) => id,
-            Err(_) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
-        };
+        let id = args.get_doc_id();
 
-        remove(parse_addr(&args.arg_node_address.unwrap()),
-               id,
-               args.arg_username.unwrap(),
-               args.arg_password.unwrap(),
-               Uuid::new_v4(),
-               LogId::from(&args.arg_lid.unwrap()).unwrap());
+        remove(&node_addr, &id, &username, &password, &Uuid::new_v4(), &lid);
     } else if args.cmd_put {
+        let id = args.get_doc_id();
 
-        let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
-            Ok(id) => id,
-            Err(_) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
-        };
-
-        put(parse_addr(&args.arg_node_address.unwrap()),
-            id,
-            args.arg_filepath,
-            args.arg_username.unwrap(),
-            args.arg_password.unwrap(),
-            Uuid::new_v4(),
-            LogId::from(&args.arg_lid.unwrap()).unwrap());
+        put(&node_addr,
+            &id,
+            &args.arg_filepath,
+            &username,
+            &password,
+            &Uuid::new_v4(),
+            &lid);
     } else if args.cmd_begintrans {
-        let res = Handler::begin_transaction(parse_addr(&args.arg_node_address.unwrap()),
-                                             &args.arg_username.unwrap(),
-                                             &args.arg_password.unwrap(),
-                                             Uuid::new_v4(),
-                                             LogId::from(&args.arg_lid.unwrap()).unwrap());
+        let res =
+            Handler::begin_transaction(&node_addr, &username, &password, &Uuid::new_v4(), &lid);
 
         println!("{}", res.unwrap());
     } else if args.cmd_endtrans {
-        let res = Handler::commit_transaction(parse_addr(&args.arg_node_address.unwrap()),
-                                              &args.arg_username.unwrap(),
-                                              &args.arg_password.unwrap(),
-                                              LogId::from(&args.arg_lid.unwrap()).unwrap());
+        let res = Handler::commit_transaction(&node_addr, &username, &password, &lid);
         println!("{}", res.unwrap());
     } else if args.cmd_rollback {
-        let res = Handler::rollback_transaction(parse_addr(&args.arg_node_address.unwrap()),
-                                                &args.arg_username.unwrap(),
-                                                &args.arg_password.unwrap(),
-                                                LogId::from(&args.arg_lid.unwrap()).unwrap());
+        let res = Handler::rollback_transaction(&node_addr, &username, &password, &lid);
 
         println!("{}", res.unwrap());
     } else if args.cmd_transpost {
-        post(parse_addr(&args.arg_node_address.unwrap()),
+        let tid = args.get_trans_id();
+
+        post(&node_addr,
              &args.arg_filepath,
-             args.arg_username.unwrap(),
-             args.arg_password.unwrap(),
-             Uuid::parse_str(&args.arg_transid.unwrap()).unwrap(),
-             LogId::from(&args.arg_lid.unwrap()).unwrap());
+             &username,
+             &password,
+             &tid,
+             &lid);
 
     } else if args.cmd_transremove {
-        let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
-            Ok(id) => id,
-            Err(_) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
-        };
+        let id = args.get_doc_id();
+        let tid = args.get_trans_id();
 
-        remove(parse_addr(&args.arg_node_address.unwrap()),
-               id,
-               args.arg_username.unwrap(),
-               args.arg_password.unwrap(),
-               Uuid::parse_str(&args.arg_transid.unwrap()).unwrap(),
-               LogId::from(&args.arg_lid.unwrap()).unwrap());
+        remove(&node_addr, &id, &username, &password, &tid, &lid);
     } else if args.cmd_transput {
-        let id: Uuid = match Uuid::parse_str(&args.arg_doc_id.clone().unwrap()) {
-            Ok(id) => id,
-            Err(_) => panic!("{} is not a valid id", args.arg_doc_id.clone().unwrap()),
-        };
+        let id = args.get_doc_id();
+        let tid = args.get_trans_id();
 
-        put(parse_addr(&args.arg_node_address.unwrap()),
-            id,
-            args.arg_filepath,
-            args.arg_username.unwrap(),
-            args.arg_password.unwrap(),
-            Uuid::parse_str(&args.arg_transid.unwrap()).unwrap(),
-            LogId::from(&args.arg_lid.unwrap()).unwrap());
+        put(&node_addr,
+            &id,
+            &args.arg_filepath,
+            &username,
+            &password,
+            &tid,
+            &lid);
     }
 }
 
-fn server(server_id: ServerId,
-          addr: SocketAddr,
-          node_id: Vec<u64>,
-          node_address: Vec<String>,
-          community_string: String,
-          binding_addr: SocketAddr,
-          config: &Config) {
+fn server(args: &Args) {
+    let arg_config_path = args.clone().arg_config_path.unwrap();
 
-    // let persistent_log1 = DocLog::new("node1", LogId::from(0));
-    // let persistent_log2 = DocLog::new("node2", LogId::from(1));
-    //    let persistent_log3 = DocLog::new();
-    //   let persistent_log4 = DocLog::new();
+    let config_path = arg_config_path.as_str();
+
+    let config = Config::init(&config_path).expect("Config is invalid");
+
+    let server_addr = config.get_node_addr();
+
+    let node_addr = match server_addr {
+        SocketAddr::V4(v) => v,
+        _ => panic!("The node address given must be IPv4"),
+    };
 
 
+    let mut node_ids: Vec<u64> = Vec::new();
+    let mut node_addresses: Vec<String> = Vec::new();
 
-    let peers = node_id.iter()
-        .zip(node_address.iter())
+    let (mut node_ids, mut node_addresses) = config.get_nodes();
+
+    let peers = node_ids.iter()
+        .zip(node_addresses.iter())
         .map(|(&id, addr)| (ServerId::from(id), parse_addr(&addr)))
         .collect::<HashMap<_, _>>();
 
-
-
-    let node_addr = match parse_addr(&node_address[0]) {
+    let node_addr = match parse_addr(&node_addresses[0]) {
         SocketAddr::V4(b) => b,
         _ => panic!("The node_address must be IPv4"),
     };
@@ -294,13 +263,18 @@ fn server(server_id: ServerId,
     // }
     //
 
-    let (mut server, mut event_loop) =
-        Server::new(server_id, addr, peers, community_string, NullAuth, logs).unwrap();
+    let (mut server, mut event_loop) = Server::new(ServerId::from(config.server.node_id),
+                                                   server_addr,
+                                                   peers,
+                                                   config.server.community_string.to_string(),
+                                                   NullAuth,
+                                                   logs)
+        .unwrap();
 
     {
         let states = server.log_manager.get_states();
 
-        init(binding_addr, node_addr, states);
+        init(config.get_binding_addr(), node_addr, states);
     }
 
     server.init(&mut event_loop);
@@ -308,17 +282,17 @@ fn server(server_id: ServerId,
     event_loop.run(&mut server);
 }
 
-fn get(addr: SocketAddr, doc_id: Uuid, username: String, password: String, lid: LogId) {
+fn get(addr: &SocketAddr, doc_id: &Uuid, username: &str, password: &str, lid: &LogId) {
     let document = Handler::get(addr, &username, &password, doc_id, lid);
     println!("{:?}", document);
 }
 
-fn post(addr: SocketAddr,
+fn post(addr: &SocketAddr,
         filepath: &str,
-        username: String,
-        password: String,
-        session: Uuid,
-        lid: LogId) {
+        username: &str,
+        password: &str,
+        session: &Uuid,
+        lid: &LogId) {
 
     let mut handler = File::open(&filepath).expect(&format!("Unable to open the file{}", filepath));
     let mut buffer: Vec<u8> = Vec::new();
@@ -339,15 +313,15 @@ fn post(addr: SocketAddr,
     println!("{}", id);
 }
 
-fn put(addr: SocketAddr,
-       doc_id: Uuid,
-       filepath: String,
-       username: String,
-       password: String,
-       session: Uuid,
-       lid: LogId) {
+fn put(addr: &SocketAddr,
+       doc_id: &Uuid,
+       filepath: &str,
+       username: &str,
+       password: &str,
+       session: &Uuid,
+       lid: &LogId) {
 
-    let mut handler = File::open(&filepath).expect(&format!("Unable to open the file{}", filepath));
+    let mut handler = File::open(filepath).expect(&format!("Unable to open the file{}", filepath));
     let mut buffer: Vec<u8> = Vec::new();
 
     handler.read_to_end(&mut buffer).expect(&format!("Unable read the file to end {}", filepath));
@@ -360,20 +334,14 @@ fn put(addr: SocketAddr,
     }
 }
 
-fn remove(addr: SocketAddr,
-          doc_id: Uuid,
-          username: String,
-          password: String,
-          session: Uuid,
-          lid: LogId) {
+fn remove(addr: &SocketAddr,
+          doc_id: &Uuid,
+          username: &str,
+          password: &str,
+          session: &Uuid,
+          lid: &LogId) {
     match Handler::remove(addr, &username, &password, doc_id, session, lid) {
         Ok(()) => println!("Ok"),
         Err(err) => panic!(err),
     }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {}
 }

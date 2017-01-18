@@ -200,11 +200,11 @@ pub fn init(binding_addr: SocketAddr,
         let username = "username";
         let password = "password";
 
-        let document = Handler::get(SocketAddr::V4(context.node_addr),
-                                    username,
-                                    password,
-                                    Uuid::parse_str(*fileId).unwrap(),
-                                    LogId::from(lid).unwrap())
+        let document = Handler::get(&SocketAddr::V4(context.node_addr),
+                                    &username,
+                                    &password,
+                                    &Uuid::parse_str(*fileId).unwrap(),
+                                    &LogId::from(lid).unwrap())
             .unwrap();
 
         let http_doc = http_Response {
@@ -237,12 +237,12 @@ pub fn init(binding_addr: SocketAddr,
 
         let session = Uuid::new_v4();
 
-        match Handler::post(SocketAddr::V4(context.node_addr),
-                            username,
-                            password,
+        match Handler::post(&SocketAddr::V4(context.node_addr),
+                            &username,
+                            &password,
                             document,
-                            session,
-                            LogId::from(lid).unwrap()) {
+                            &session,
+                            &LogId::from(lid).unwrap()) {
             Ok(id) => Ok(Response::with((status::Ok, format!("{}", id)))),
             Err(err) => {
                 Ok(Response::with((status::InternalServerError,
@@ -265,12 +265,12 @@ pub fn init(binding_addr: SocketAddr,
 
         let session = Uuid::new_v4();
 
-        let res = match Handler::remove(SocketAddr::V4(context.node_addr),
-                                        username,
-                                        password,
-                                        Uuid::parse_str(*fileId).unwrap(),
-                                        session,
-                                        LogId::from(lid).unwrap()) {
+        let res = match Handler::remove(&SocketAddr::V4(context.node_addr),
+                                        &username,
+                                        &password,
+                                        &Uuid::parse_str(*fileId).unwrap(),
+                                        &session,
+                                        &LogId::from(lid).unwrap()) {
             Ok(()) => Response::with((status::Ok, "Ok")),
             Err(err) => {
                 Response::with((status::InternalServerError,
@@ -291,13 +291,13 @@ pub fn init(binding_addr: SocketAddr,
 
         let bytes = payload.from_base64().expect("Payload is not base64");
 
-        let res = match Handler::put(SocketAddr::V4(context.node_addr),
-                                     username,
-                                     password,
-                                     Uuid::parse_str(&id).unwrap(),
+        let res = match Handler::put(&SocketAddr::V4(context.node_addr),
+                                     &username,
+                                     &password,
+                                     &Uuid::parse_str(&id).unwrap(),
                                      bytes,
-                                     Uuid::new_v4(),
-                                     LogId::from(lid).unwrap()) {
+                                     &Uuid::new_v4(),
+                                     &LogId::from(lid).unwrap()) {
             Ok(()) => Response::with((status::Ok, "Ok")),
             Err(err) => {
                 Response::with((status::InternalServerError,
@@ -313,11 +313,11 @@ pub fn init(binding_addr: SocketAddr,
         let password = "password";
         let ref lid = req.extensions.get::<Router>().unwrap().find("logid").unwrap();
 
-        match Handler::begin_transaction(SocketAddr::V4(context.node_addr),
-                                         username,
-                                         password,
-                                         Uuid::new_v4(),
-                                         LogId::from(lid).unwrap()) {
+        match Handler::begin_transaction(&SocketAddr::V4(context.node_addr),
+                                         &username,
+                                         &password,
+                                         &Uuid::new_v4(),
+                                         &LogId::from(lid).unwrap()) {
             Ok(session) => Ok(Response::with((status::Ok, session))),
             Err(_) => Ok(Response::with((status::InternalServerError, "Something went wrong :("))),
         }
@@ -328,10 +328,10 @@ pub fn init(binding_addr: SocketAddr,
         let password = "password";
         let ref lid = req.extensions.get::<Router>().unwrap().find("logid").unwrap();
 
-        match Handler::commit_transaction(SocketAddr::V4(context.node_addr),
-                                          username,
-                                          password,
-                                          LogId::from(lid).unwrap()) {
+        match Handler::commit_transaction(&SocketAddr::V4(context.node_addr),
+                                          &username,
+                                          &password,
+                                          &LogId::from(lid).unwrap()) {
             Ok(res) => Ok(Response::with((status::Ok, res))),
             Err(_) => Ok(Response::with((status::InternalServerError, "Something went wrong :("))),
         }
@@ -342,10 +342,10 @@ pub fn init(binding_addr: SocketAddr,
         let password = "password";
         let ref lid = req.extensions.get::<Router>().unwrap().find("logid").unwrap();
 
-        match Handler::rollback_transaction(SocketAddr::V4(context.node_addr),
-                                            username,
-                                            password,
-                                            LogId::from(lid).unwrap()) {
+        match Handler::rollback_transaction(&SocketAddr::V4(context.node_addr),
+                                            &username,
+                                            &password,
+                                            &LogId::from(lid).unwrap()) {
             Ok(res) => Ok(Response::with((status::Ok, res))),
             Err(_) => Ok(Response::with((status::InternalServerError, "Something went wrong :("))),
         }

@@ -30,28 +30,32 @@ impl Handler {
         hashset
     }
 
-    fn new_client(addr: SocketAddr, username: &str, password: &str, lid: LogId) -> Client {
-        Client::new::<NullAuth>(Self::to_hashset(addr),
+    fn new_client(addr: &SocketAddr, username: &str, password: &str, lid: &LogId) -> Client {
+        Client::new::<NullAuth>(Self::to_hashset(*addr),
                                 username.to_string(),
                                 password.to_string(),
-                                lid)
+                                *lid)
     }
 
-    pub fn get(addr: SocketAddr,
+    pub fn get(addr: &SocketAddr,
                username: &str,
                plain_password: &str,
-               id: Uuid,
-               lid: LogId)
+               id: &Uuid,
+               lid: &LogId)
                -> Result<Document> {
 
         let mut client = Self::new_client(addr, username, plain_password, lid);
 
-        let payload = encode(&Message::Get(id), SizeLimit::Infinite).unwrap();
+        let payload = encode(&Message::Get(*id), SizeLimit::Infinite).unwrap();
 
         let response = match client.query(payload.as_slice()) {
             Ok(res) => res,
             Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
-                return Handler::get(parse_addr(&leader_str), username, plain_password, id, lid);
+                return Handler::get(&parse_addr(&leader_str),
+                                    &username,
+                                    &plain_password,
+                                    &id,
+                                    &lid);
             } 
             Err(err) => panic!("{}", err),
         };
@@ -61,12 +65,12 @@ impl Handler {
         Ok(document)
     }
 
-    pub fn post(addr: SocketAddr,
+    pub fn post(addr: &SocketAddr,
                 username: &str,
                 plain_password: &str,
                 document: Document,
-                session: Uuid,
-                lid: LogId)
+                session: &Uuid,
+                lid: &LogId)
                 -> Result<Uuid> {
 
         let mut client = Self::new_client(addr, username, plain_password, lid);
@@ -76,12 +80,12 @@ impl Handler {
         let response = match client.propose(session.as_bytes(), payload.as_slice()) {
             Ok(res) => res,
             Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
-                return Handler::post(parse_addr(&leader_str),
-                                     username,
-                                     plain_password,
+                return Handler::post(&parse_addr(&leader_str),
+                                     &username,
+                                     &plain_password,
                                      document,
-                                     session,
-                                     lid);
+                                     &session,
+                                     &lid);
             } 
             Err(err) => panic!("{}", err),
         };
@@ -91,26 +95,26 @@ impl Handler {
         Ok(uid)
     }
 
-    pub fn remove(addr: SocketAddr,
+    pub fn remove(addr: &SocketAddr,
                   username: &str,
                   plain_password: &str,
-                  id: Uuid,
-                  session: Uuid,
-                  lid: LogId)
+                  id: &Uuid,
+                  session: &Uuid,
+                  lid: &LogId)
                   -> Result<()> {
         let mut client = Self::new_client(addr, username, plain_password, lid);
 
-        let payload = encode(&Message::Remove(id), SizeLimit::Infinite).unwrap();
+        let payload = encode(&Message::Remove(*id), SizeLimit::Infinite).unwrap();
 
         match client.propose(session.as_bytes(), payload.as_slice()) {
             Ok(res) => res,
             Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
-                return Handler::remove(parse_addr(&leader_str),
-                                       username,
-                                       plain_password,
-                                       id,
-                                       session,
-                                       lid);
+                return Handler::remove(&parse_addr(&leader_str),
+                                       &username,
+                                       &plain_password,
+                                       &id,
+                                       &session,
+                                       &lid);
             } 
             Err(err) => panic!("{}", err),
         };
@@ -118,29 +122,29 @@ impl Handler {
         Ok(())
     }
 
-    pub fn put(addr: SocketAddr,
+    pub fn put(addr: &SocketAddr,
                username: &str,
                plain_password: &str,
-               id: Uuid,
+               id: &Uuid,
                new_payload: Vec<u8>,
-               session: Uuid,
-               lid: LogId)
+               session: &Uuid,
+               lid: &LogId)
                -> Result<()> {
 
         let mut client = Self::new_client(addr, username, plain_password, lid);
 
-        let payload = encode(&Message::Put(id, new_payload.clone()), SizeLimit::Infinite).unwrap();
+        let payload = encode(&Message::Put(*id, new_payload.clone()), SizeLimit::Infinite).unwrap();
 
         match client.propose(session.as_bytes(), payload.as_slice()) {
             Ok(res) => res,
             Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
-                return Handler::put(parse_addr(&leader_str),
-                                    username,
-                                    plain_password,
-                                    id,
+                return Handler::put(&parse_addr(&leader_str),
+                                    &username,
+                                    &plain_password,
+                                    &id,
                                     new_payload,
-                                    session,
-                                    lid);
+                                    &session,
+                                    &lid);
             } 
             Err(err) => panic!("{}", err),
         };
@@ -148,11 +152,11 @@ impl Handler {
         Ok(())
     }
 
-    pub fn begin_transaction(addr: SocketAddr,
+    pub fn begin_transaction(addr: &SocketAddr,
                              username: &str,
                              password: &str,
-                             session: Uuid,
-                             lid: LogId)
+                             session: &Uuid,
+                             lid: &LogId)
                              -> Result<String> {
         let mut client = Self::new_client(addr, username, password, lid);
 
@@ -161,10 +165,10 @@ impl Handler {
         Ok(Uuid::from_bytes(res.unwrap().as_slice()).unwrap().hyphenated().to_string())
     }
 
-    pub fn commit_transaction(addr: SocketAddr,
+    pub fn commit_transaction(addr: &SocketAddr,
                               username: &str,
                               password: &str,
-                              lid: LogId)
+                              lid: &LogId)
                               -> Result<String> {
         let mut client = Self::new_client(addr, username, password, lid);
 
@@ -173,10 +177,10 @@ impl Handler {
         Ok(from_utf8(res.unwrap().as_slice()).unwrap().to_string())
     }
 
-    pub fn rollback_transaction(addr: SocketAddr,
+    pub fn rollback_transaction(addr: &SocketAddr,
                                 username: &str,
                                 password: &str,
-                                lid: LogId)
+                                lid: &LogId)
                                 -> Result<String> {
         let mut client = Self::new_client(addr, username, password, lid);
 
