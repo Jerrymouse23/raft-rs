@@ -1,9 +1,11 @@
 use std::fs::File;
 use std::io::Read;
-use toml::{Parser, Decoder, Value, DecodeError};
 use rustc_serialize::Decodable;
 use std::net::SocketAddr;
 use uuid::Uuid;
+use parser::Parser;
+use parser::toml::Parser as tParser;
+use toml::DecodeError;
 
 #[derive(Debug,RustcDecodable,Clone)]
 pub struct Config {
@@ -41,13 +43,7 @@ impl Config {
         let mut config = String::new();
         config_file.read_to_string(&mut config).expect("Unable to read the config");
 
-        let toml =
-            Parser::new(&config).parse().expect("An error occurred while parsing the config");
-
-        let mut decoder = Decoder::new(Value::Table(toml));
-        let config = try!(Config::decode(&mut decoder));
-
-        Ok(config)
+        tParser::parse(&config)
     }
 
     pub fn get_node_addr(&self) -> SocketAddr {

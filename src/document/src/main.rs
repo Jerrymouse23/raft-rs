@@ -29,6 +29,7 @@ pub mod http_handler;
 pub mod handler;
 pub mod config;
 pub mod doclog;
+mod parser;
 
 use std::net::SocketAddr;
 use docopt::Docopt;
