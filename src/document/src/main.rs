@@ -134,78 +134,80 @@ fn main() {
         .and_then(|d| d.decode())
         .unwrap_or_else(|e| e.exit());
 
-    let username = args.arg_username.clone().unwrap();
-    let password = args.arg_password.clone().unwrap();
-    let lid = args.get_lid();
-    let node_addr = args.get_node_addr();
-
     if args.cmd_server {
         server(&args);
-    } else if args.cmd_get {
-        let id = args.get_doc_id();
+    } else {
+        let username = args.arg_username.clone().unwrap();
+        let password = args.arg_password.clone().unwrap();
+        let lid = args.get_lid();
+        let node_addr = args.get_node_addr();
 
-        get(&node_addr, &id, &username, &password, &lid);
+        if args.cmd_get {
+            let id = args.get_doc_id();
 
-    } else if args.cmd_post {
+            get(&node_addr, &id, &username, &password, &lid);
 
-        post(&node_addr,
-             &args.arg_filepath,
-             &username,
-             &password,
-             &Uuid::new_v4(),
-             &lid);
-    } else if args.cmd_remove {
-        let id = args.get_doc_id();
+        } else if args.cmd_post {
 
-        remove(&node_addr, &id, &username, &password, &Uuid::new_v4(), &lid);
-    } else if args.cmd_put {
-        let id = args.get_doc_id();
+            post(&node_addr,
+                 &args.arg_filepath,
+                 &username,
+                 &password,
+                 &Uuid::new_v4(),
+                 &lid);
+        } else if args.cmd_remove {
+            let id = args.get_doc_id();
 
-        put(&node_addr,
-            &id,
-            &args.arg_filepath,
-            &username,
-            &password,
-            &Uuid::new_v4(),
-            &lid);
-    } else if args.cmd_begintrans {
-        let res =
-            Handler::begin_transaction(&node_addr, &username, &password, &Uuid::new_v4(), &lid);
+            remove(&node_addr, &id, &username, &password, &Uuid::new_v4(), &lid);
+        } else if args.cmd_put {
+            let id = args.get_doc_id();
 
-        println!("{}", res.unwrap());
-    } else if args.cmd_endtrans {
-        let res = Handler::commit_transaction(&node_addr, &username, &password, &lid);
-        println!("{}", res.unwrap());
-    } else if args.cmd_rollback {
-        let res = Handler::rollback_transaction(&node_addr, &username, &password, &lid);
+            put(&node_addr,
+                &id,
+                &args.arg_filepath,
+                &username,
+                &password,
+                &Uuid::new_v4(),
+                &lid);
+        } else if args.cmd_begintrans {
+            let res =
+                Handler::begin_transaction(&node_addr, &username, &password, &Uuid::new_v4(), &lid);
 
-        println!("{}", res.unwrap());
-    } else if args.cmd_transpost {
-        let tid = args.get_trans_id();
+            println!("{}", res.unwrap());
+        } else if args.cmd_endtrans {
+            let res = Handler::commit_transaction(&node_addr, &username, &password, &lid);
+            println!("{}", res.unwrap());
+        } else if args.cmd_rollback {
+            let res = Handler::rollback_transaction(&node_addr, &username, &password, &lid);
 
-        post(&node_addr,
-             &args.arg_filepath,
-             &username,
-             &password,
-             &tid,
-             &lid);
+            println!("{}", res.unwrap());
+        } else if args.cmd_transpost {
+            let tid = args.get_trans_id();
 
-    } else if args.cmd_transremove {
-        let id = args.get_doc_id();
-        let tid = args.get_trans_id();
+            post(&node_addr,
+                 &args.arg_filepath,
+                 &username,
+                 &password,
+                 &tid,
+                 &lid);
 
-        remove(&node_addr, &id, &username, &password, &tid, &lid);
-    } else if args.cmd_transput {
-        let id = args.get_doc_id();
-        let tid = args.get_trans_id();
+        } else if args.cmd_transremove {
+            let id = args.get_doc_id();
+            let tid = args.get_trans_id();
 
-        put(&node_addr,
-            &id,
-            &args.arg_filepath,
-            &username,
-            &password,
-            &tid,
-            &lid);
+            remove(&node_addr, &id, &username, &password, &tid, &lid);
+        } else if args.cmd_transput {
+            let id = args.get_doc_id();
+            let tid = args.get_trans_id();
+
+            put(&node_addr,
+                &id,
+                &args.arg_filepath,
+                &username,
+                &password,
+                &tid,
+                &lid);
+        }
     }
 }
 
