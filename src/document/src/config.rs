@@ -7,14 +7,14 @@ use parser::Parser;
 use parser::toml::Parser as tParser;
 use toml::DecodeError;
 
-#[derive(Debug,RustcDecodable,Clone)]
+#[derive(Debug,Deserialize,Clone)]
 pub struct Config {
     pub server: ServerConfig,
     pub peers: Vec<PeerConfig>,
     pub logs: Vec<LogConfig>,
 }
 
-#[derive(Debug,RustcDecodable,Clone)]
+#[derive(Debug,Deserialize,Clone)]
 pub struct ServerConfig {
     pub node_id: u64,
     pub node_address: String,
@@ -23,13 +23,13 @@ pub struct ServerConfig {
     pub volume: String,
 }
 
-#[derive(Debug,RustcDecodable,Clone)]
+#[derive(Debug,Deserialize,Clone)]
 pub struct PeerConfig {
     pub node_id: u64,
     pub node_address: String,
 }
 
-#[derive(Debug,RustcDecodable,Clone)]
+#[derive(Debug,Deserialize,Clone)]
 pub struct LogConfig {
     pub path: String,
     pub lid: String,

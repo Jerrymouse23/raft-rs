@@ -71,7 +71,6 @@
 //! least the majority of the cluster and has been commited. `.query()` will perform better if
 //! you wish to only read data and not have it pass through the persisted log.
 //!
-
 #![cfg_attr(test, feature(test))]
 extern crate bufstream;
 extern crate capnp;
@@ -87,11 +86,13 @@ extern crate scoped_log;
 extern crate wrapped_enum;
 #[cfg(test)]
 extern crate env_logger;
-extern crate rustc_serialize;
 extern crate bincode;
 extern crate crypto;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate serde_derive;
+extern crate serde_json;
 
 /// Prepares the environment testing. Should be called as the first line of every test with the
 /// name of the test as the only argument.
@@ -190,7 +191,7 @@ impl fmt::Display for Error {
 }
 
 /// The term of a log entry.
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord,RustcEncodable,RustcDecodable)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord,Serialize,Deserialize)]
 pub struct Term(u64);
 impl Term {
     pub fn as_u64(self) -> u64 {
@@ -226,7 +227,7 @@ impl fmt::Display for Term {
 }
 
 /// The index of a log entry.
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord,RustcEncodable,RustcDecodable)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord,Serialize,Deserialize)]
 pub struct LogIndex(u64);
 impl LogIndex {
     pub fn as_u64(self) -> u64 {
@@ -270,7 +271,7 @@ impl fmt::Display for LogIndex {
 
 /// The ID of a Raft server. Must be unique among the participants in a
 /// consensus group.
-#[derive(Copy, Clone, Hash, PartialEq, Eq, RustcDecodable, RustcEncodable)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ServerId(u64);
 impl ServerId {
     fn as_u64(self) -> u64 {
@@ -299,7 +300,7 @@ impl fmt::Display for ServerId {
 }
 
 /// The ID of a Raft client.
-#[derive(Copy, Clone, Hash, PartialEq, Eq,RustcEncodable,RustcDecodable)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, Serialize,Deserialize)]
 pub struct ClientId(Uuid);
 impl ClientId {
     fn new() -> ClientId {
@@ -327,7 +328,7 @@ impl fmt::Display for ClientId {
 }
 
 /// The ID of a Raft log.
-#[derive(Copy, Clone, Hash, Eq,PartialOrd,Ord,RustcEncodable,RustcDecodable)]
+#[derive(Copy, Clone, Hash, Eq,PartialOrd,Ord,Serialize,Deserialize)]
 pub struct LogId(Uuid);
 impl LogId {
     pub fn new() -> LogId {

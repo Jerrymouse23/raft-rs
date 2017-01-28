@@ -14,7 +14,7 @@ use handler::Message;
 use io_handler::Handler;
 use doclog::DocLog;
 
-#[derive(RustcEncodable,RustcDecodable,Debug,Clone,Eq,PartialEq)]
+#[derive(Serialize,Deserialize,Debug,Clone,Eq,PartialEq)]
 pub struct Document {
     pub id: Uuid,
     pub payload: Vec<u8>,
@@ -37,7 +37,7 @@ pub fn parse_addr(addr: &str) -> SocketAddr {
         .unwrap()
 }
 
-#[derive(Debug,Clone,RustcEncodable,RustcDecodable)]
+#[derive(Debug,Clone,Serialize,Deserialize)]
 pub enum ActionType {
     Get,
     Put,
@@ -45,7 +45,7 @@ pub enum ActionType {
     Remove,
 }
 
-#[derive(Debug,Clone,RustcDecodable,RustcEncodable)]
+#[derive(Debug,Clone,Deserialize,Serialize)]
 struct DocumentRecord {
     id: Uuid,
     path: String,

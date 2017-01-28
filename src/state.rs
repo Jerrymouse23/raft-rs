@@ -4,9 +4,6 @@ use ClientId;
 use LogIndex;
 use ServerId;
 
-use std::collections::BTreeMap;
-use rustc_serialize::json::{self, Json, ToJson};
-
 /// Consensus modules can be in one of three state:
 ///
 /// * `Follower` - which replicates AppendEntries requests and votes for it's leader.
@@ -23,7 +20,7 @@ pub enum ConsensusState {
 }
 
 /// The state associated with a Raft consensus module in the `Leader` state.
-#[derive(Clone, Debug,RustcEncodable)]
+#[derive(Clone, Debug,Serialize)]
 pub struct LeaderState {
     next_index: HashMap<ServerId, LogIndex>,
     match_index: HashMap<ServerId, LogIndex>,
@@ -85,7 +82,7 @@ impl LeaderState {
 }
 
 /// The state associated with a Raft consensus module in the `Candidate` state.
-#[derive(Clone, Debug,RustcEncodable)]
+#[derive(Clone, Debug,Serialize)]
 pub struct CandidateState {
     granted_votes: HashSet<ServerId>,
 }
@@ -118,7 +115,7 @@ impl CandidateState {
 }
 
 /// The state associated with a Raft consensus module in the `Follower` state.
-#[derive(Clone, Debug,RustcEncodable)]
+#[derive(Clone, Debug,Serialize)]
 pub struct FollowerState {
     /// The most recent leader of the follower. The leader is not guaranteed to be active, so this
     /// should only be used as a hint.

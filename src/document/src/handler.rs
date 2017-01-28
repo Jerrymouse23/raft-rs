@@ -13,7 +13,7 @@ use std::str::from_utf8;
 
 use raft::auth::null::NullAuth;
 
-#[derive(Debug,RustcEncodable,RustcDecodable)]
+#[derive(Debug,Serialize,Deserialize)]
 pub enum Message {
     Get(Uuid),
     Post(Document),

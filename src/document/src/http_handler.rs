@@ -26,7 +26,7 @@ use raft::state::{LeaderState, CandidateState, FollowerState};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-#[derive(RustcDecodable,RustcEncodable)]
+#[derive(Deserialize,Serialize)]
 struct http_Response {
     payload: String,
     version: usize,
