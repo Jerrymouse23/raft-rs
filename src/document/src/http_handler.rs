@@ -44,6 +44,7 @@ pub fn init(binding_addr: SocketAddr,
                              Arc<RwLock<CandidateState>>,
                              Arc<RwLock<FollowerState>>)>) {
     let mut router = Router::new();
+    
     let states = Arc::new(states);
     let context = Context { node_addr: node_addr };
 
@@ -133,11 +134,16 @@ pub fn init(binding_addr: SocketAddr,
                                                   Arc<RwLock<FollowerState>>)>>)
                               -> IronResult<Response> {
 
-        let raw_lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
-        let lid = LogId::from(raw_lid).unwrap();
+        let raw_lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),(status::BadRequest,"No lid found"));
+        let lid = itry!(LogId::from(raw_lid),(status::BadRequest,"LogId is invalid"));
+
         let lock = state.get(&lid).unwrap().0.read().unwrap();
 
-        Ok(Response::with((status::Ok, format!("{:?}", *lock))))
+        let ref lock = *lock;
+
+        let json = json::encode(&lock.clone()).expect("Cannot encode json");
+
+        Ok(Response::with((status::Ok,format!("{:?}",json))))
     }
 
     fn http_meta_state_candidate(req: &mut Request,
@@ -152,7 +158,7 @@ pub fn init(binding_addr: SocketAddr,
         let lid = LogId::from(raw_lid).unwrap();
         let lock = state.get(&lid).unwrap().1.read().unwrap();
 
-        Ok(Response::with((status::Ok, format!("{:?}", *lock))))
+        Ok(Response::with((status::Ok, format!("{}", json::encode(&*lock).unwrap()))))
     }
 
     fn http_meta_state_follower(req: &mut Request,
@@ -167,7 +173,7 @@ pub fn init(binding_addr: SocketAddr,
         let lid = LogId::from(raw_lid).unwrap();
         let lock = state.get(&lid).unwrap().2.read().unwrap();
 
-        Ok(Response::with((status::Ok, format!("{:?}", *lock))))
+        Ok(Response::with((status::Ok, format!("{}", json::encode(&*lock).unwrap()))))
     }
 
     fn http_get_keys(req: &mut Request, context: &Context) -> IronResult<Response> {

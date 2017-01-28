@@ -87,10 +87,8 @@ extern crate scoped_log;
 extern crate wrapped_enum;
 #[cfg(test)]
 extern crate env_logger;
-#[cfg(feature = "serde")]
-extern crate serde;
-extern crate bincode;
 extern crate rustc_serialize;
+extern crate bincode;
 extern crate crypto;
 #[macro_use]
 extern crate lazy_static;
@@ -131,7 +129,6 @@ pub use persistent_log::Log;
 pub use client::Client;
 
 use std::{io, net, ops, fmt};
-
 use uuid::Uuid;
 
 /// A simple convienence type.
@@ -229,7 +226,7 @@ impl fmt::Display for Term {
 }
 
 /// The index of a log entry.
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord,RustcEncodable,RustcDecodable)]
 pub struct LogIndex(u64);
 impl LogIndex {
     pub fn as_u64(self) -> u64 {
@@ -273,7 +270,7 @@ impl fmt::Display for LogIndex {
 
 /// The ID of a Raft server. Must be unique among the participants in a
 /// consensus group.
-#[derive(Copy, Clone, Hash, PartialEq, Eq, RustcEncodable, RustcDecodable)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, RustcDecodable, RustcEncodable)]
 pub struct ServerId(u64);
 impl ServerId {
     fn as_u64(self) -> u64 {
@@ -302,7 +299,7 @@ impl fmt::Display for ServerId {
 }
 
 /// The ID of a Raft client.
-#[derive(Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq,RustcEncodable,RustcDecodable)]
 pub struct ClientId(Uuid);
 impl ClientId {
     fn new() -> ClientId {
@@ -330,7 +327,7 @@ impl fmt::Display for ClientId {
 }
 
 /// The ID of a Raft log.
-#[derive(Copy, Clone, Hash, Eq,PartialOrd,Ord)]
+#[derive(Copy, Clone, Hash, Eq,PartialOrd,Ord,RustcEncodable,RustcDecodable)]
 pub struct LogId(Uuid);
 impl LogId {
     pub fn new() -> LogId {

@@ -4,6 +4,9 @@ use ClientId;
 use LogIndex;
 use ServerId;
 
+use std::collections::BTreeMap;
+use rustc_serialize::json::{self, Json, ToJson};
+
 /// Consensus modules can be in one of three state:
 ///
 /// * `Follower` - which replicates AppendEntries requests and votes for it's leader.
@@ -20,7 +23,7 @@ pub enum ConsensusState {
 }
 
 /// The state associated with a Raft consensus module in the `Leader` state.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug,RustcEncodable)]
 pub struct LeaderState {
     next_index: HashMap<ServerId, LogIndex>,
     match_index: HashMap<ServerId, LogIndex>,
@@ -82,7 +85,7 @@ impl LeaderState {
 }
 
 /// The state associated with a Raft consensus module in the `Candidate` state.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug,RustcEncodable)]
 pub struct CandidateState {
     granted_votes: HashSet<ServerId>,
 }
@@ -115,7 +118,7 @@ impl CandidateState {
 }
 
 /// The state associated with a Raft consensus module in the `Follower` state.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug,RustcEncodable)]
 pub struct FollowerState {
     /// The most recent leader of the follower. The leader is not guaranteed to be active, so this
     /// should only be used as a hint.
@@ -147,9 +150,11 @@ impl FollowerState {
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
+    use rustc_serialize::json;
 
-    use {LogIndex, ServerId};
-    use state::LeaderState;
+    use {LogIndex, ServerId,ClientId};
+    use std::sync::{RwLock,Arc};
+    use state::{LeaderState,CandidateState,FollowerState};
 
     /// Tests the `LeaderState`'s  `.count_match_indexes()` function and makes sure it adequately
     /// produces the correct values.
@@ -178,5 +183,53 @@ mod tests {
         leader_state.set_match_index(ServerId(1), LogIndex(1));
         leader_state.set_match_index(ServerId(2), LogIndex(1));
         assert_eq!(3, leader_state.count_match_indexes(LogIndex(1)));
+    }
+
+    #[test]
+    fn test_leaderstate_json_encoding(){
+        let index = LogIndex(0);
+        let mut peers = HashSet::new();
+        let mut object = LeaderState::new(index,&peers);
+        object.proposals.push_back((ClientId::new(),LogIndex(5)));
+
+        let json = json::encode(&object);
+
+        assert_eq!(json.is_ok(),true);
+    }
+
+    #[test]
+    fn test_candidatestate_json_encoding(){
+        let object = CandidateState::new();
+
+        let json = json::encode(&object);
+
+        assert_eq!(json.is_ok(),true);
+    }
+
+    #[test]
+    fn test_followerstate_json_encoding(){
+        let object = FollowerState::new();
+
+        let json = json::encode(&object);
+
+        assert_eq!(json.is_ok(),true);
+    }
+
+    #[test]
+    fn test_leaderstate_json_encoding_with_wrapped(){
+        let index = LogIndex(0);
+        let mut peers = HashSet::new();
+        peers.insert(ServerId(0));
+        peers.insert(ServerId(1));
+        let mut object = LeaderState::new(index,&peers);
+        object.proposals.push_back((ClientId::new(),LogIndex(5)));
+        
+        let wrapped : Arc<RwLock<LeaderState>> = Arc::new(RwLock::new(object));
+
+        let json = json::encode(&*wrapped.read().unwrap());
+
+        println!("{:?}",json);
+
+        assert_eq!(json.is_ok(),true);
     }
 }
