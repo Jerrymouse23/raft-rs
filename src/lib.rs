@@ -93,7 +93,6 @@ extern crate lazy_static;
 #[macro_use]
 extern crate serde;
 #[macro_use]
-#![feature(proc_macro)]
 extern crate serde_derive;
 extern crate serde_json;
 
