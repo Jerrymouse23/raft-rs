@@ -20,6 +20,7 @@ extern crate serde;
 #[macro_use]
 extern crate serde_json;
 #[macro_use]
+#![feature(proc_macro)]
 extern crate serde_derive;
 
 
