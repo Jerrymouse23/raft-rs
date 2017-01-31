@@ -1,4 +1,7 @@
-use bincode::rustc_serialize::{encode, decode, decode_from};
+// use bincode::rustc_serialize::{encode, decode, decode_from};
+use bincode::serde::serialize as encode;
+use bincode::serde::deserialize as decode;
+use bincode::serde::deserialize_from as decode_from;
 use bincode::SizeLimit;
 use uuid::Uuid;
 use std::net::{SocketAddr, ToSocketAddrs};

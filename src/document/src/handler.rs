@@ -6,7 +6,9 @@ use raft::Client;
 use raft::LogId;
 use raft::Error as RError;
 use raft::RaftError;
-use bincode::rustc_serialize::{encode, decode};
+
+use bincode::serde::serialize as encode;
+use bincode::serde::deserialize as decode;
 use bincode::SizeLimit;
 use std::collections::HashSet;
 use std::str::from_utf8;

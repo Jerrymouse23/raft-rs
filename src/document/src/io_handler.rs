@@ -2,9 +2,12 @@ use uuid::Uuid;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::fs::remove_file;
-use bincode::rustc_serialize::{encode_into, decode_from};
+use bincode::serde::serialize as encode;
+use bincode::serde::deserialize as decode;
+use bincode::serde::serialize_into as encode_into;
+use bincode::serde::deserialize_from as decode_from;
 use bincode::SizeLimit;
-use bincode::rustc_serialize::{EncodingError, DecodingError};
+use bincode::serde::{SerializeError, DeserializeError};
 
 use std::io::Error as IoError;
 use std::io::{Seek, SeekFrom};
@@ -19,7 +22,7 @@ impl Handler {
     ///
     /// * `id` - The uuid of the document in order to find the document
     /// * `volume` - The folder where the documents are saved
-    pub fn get(id: Uuid, volume: &str) -> Result<Document, DecodingError> {
+    pub fn get(id: Uuid, volume: &str) -> Result<Document, DeserializeError> {
         let mut handler = try!(File::open(format!("{}/{}", volume, id)));
 
         let decoded: Document = try!(decode_from(&mut handler, SizeLimit::Infinite));
@@ -32,7 +35,7 @@ impl Handler {
     ///
     /// * `document` - The document which will be encoded
     /// * `volume` - The folder where the documents are saved
-    pub fn post(document: Document, volume: &str) -> Result<Uuid, EncodingError> {
+    pub fn post(document: Document, volume: &str) -> Result<Uuid, SerializeError> {
         // TODO implement error-handling
         let mut handler = OpenOptions::new()
             .read(false)
@@ -41,7 +44,7 @@ impl Handler {
             .open(format!("{}/{}", volume, &document.id))
             .unwrap();
 
-        try!(encode_into(&document, &mut handler, SizeLimit::Infinite));
+        try!(encode_into(&mut handler, &document, SizeLimit::Infinite));
 
         Ok(document.id)
     }
@@ -71,7 +74,7 @@ impl Handler {
 
         document.put(payload.to_vec());
 
-        encode_into(&document, &mut handler, SizeLimit::Infinite)
+        encode_into(&mut handler, &document, SizeLimit::Infinite)
             .expect("Unable to override the old document");
 
         Ok("Documented updated".to_string())

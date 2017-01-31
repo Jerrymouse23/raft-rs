@@ -15,7 +15,9 @@ extern crate params;
 
 extern crate docopt;
 extern crate bincode;
+extern crate rustc_serialize;
 extern crate serde;
+#[macro_use]
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
@@ -84,7 +86,7 @@ Usage:
     document transput <lid> <node-address> <doc-id> <filepath> <username> <password> <transid>
 ";
 
-#[derive(Debug,Deserialize,Clone)]
+#[derive(Debug,RustcDecodable,Clone)]
 struct Args {
     cmd_server: bool,
     cmd_get: bool,

@@ -9,10 +9,6 @@ use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, Ipv4Addr};
 
 use std::error::Error;
 
-use rustc_serialize::json;
-use rustc_serialize::base64::{self, ToBase64, FromBase64, STANDARD};
-use rustc_serialize::hex::{ToHex, FromHex};
-
 use document::*;
 use handler::Handler;
 
@@ -25,6 +21,9 @@ use raft::state::{LeaderState, CandidateState, FollowerState};
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+
+use rustc_serialize::base64::{self, ToBase64, FromBase64, STANDARD};
+use serde_json::to_string as to_json;
 
 #[derive(Deserialize,Serialize)]
 struct http_Response {
@@ -44,7 +43,7 @@ pub fn init(binding_addr: SocketAddr,
                              Arc<RwLock<CandidateState>>,
                              Arc<RwLock<FollowerState>>)>) {
     let mut router = Router::new();
-    
+
     let states = Arc::new(states);
     let context = Context { node_addr: node_addr };
 
@@ -134,16 +133,18 @@ pub fn init(binding_addr: SocketAddr,
                                                   Arc<RwLock<FollowerState>>)>>)
                               -> IronResult<Response> {
 
-        let raw_lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),(status::BadRequest,"No lid found"));
-        let lid = itry!(LogId::from(raw_lid),(status::BadRequest,"LogId is invalid"));
+        let raw_lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
+                               (status::BadRequest, "No lid found"));
+        let lid = itry!(LogId::from(raw_lid),
+                        (status::BadRequest, "LogId is invalid"));
 
         let lock = state.get(&lid).unwrap().0.read().unwrap();
 
         let ref lock = *lock;
 
-        let json = json::encode(&lock.clone()).expect("Cannot encode json");
+        let json = to_json(&lock.clone()).expect("Cannot encode json");
 
-        Ok(Response::with((status::Ok,format!("{:?}",json))))
+        Ok(Response::with((status::Ok, format!("{:?}", json))))
     }
 
     fn http_meta_state_candidate(req: &mut Request,
@@ -158,7 +159,7 @@ pub fn init(binding_addr: SocketAddr,
         let lid = LogId::from(raw_lid).unwrap();
         let lock = state.get(&lid).unwrap().1.read().unwrap();
 
-        Ok(Response::with((status::Ok, format!("{}", json::encode(&*lock).unwrap()))))
+        Ok(Response::with((status::Ok, format!("{}", to_json(&*lock).unwrap()))))
     }
 
     fn http_meta_state_follower(req: &mut Request,
@@ -173,7 +174,7 @@ pub fn init(binding_addr: SocketAddr,
         let lid = LogId::from(raw_lid).unwrap();
         let lock = state.get(&lid).unwrap().2.read().unwrap();
 
-        Ok(Response::with((status::Ok, format!("{}", json::encode(&*lock).unwrap()))))
+        Ok(Response::with((status::Ok, format!("{}", to_json(&*lock).unwrap()))))
     }
 
     fn http_get_keys(req: &mut Request, context: &Context) -> IronResult<Response> {
@@ -218,7 +219,7 @@ pub fn init(binding_addr: SocketAddr,
             payload: document.payload.as_slice().to_base64(STANDARD),
         };
 
-        let encoded = json::encode(&http_doc).unwrap();
+        let encoded = to_json(&http_doc).unwrap();
 
         Ok(Response::with((status::Ok, encoded)))
     }

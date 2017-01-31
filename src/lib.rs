@@ -91,6 +91,8 @@ extern crate crypto;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
+extern crate serde;
+#[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
 
@@ -191,7 +193,7 @@ impl fmt::Display for Error {
 }
 
 /// The term of a log entry.
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord,Serialize,Deserialize)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord,Serialize, Deserialize)]
 pub struct Term(u64);
 impl Term {
     pub fn as_u64(self) -> u64 {
@@ -300,7 +302,7 @@ impl fmt::Display for ServerId {
 }
 
 /// The ID of a Raft client.
-#[derive(Copy, Clone, Hash, PartialEq, Eq, Serialize,Deserialize)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClientId(Uuid);
 impl ClientId {
     fn new() -> ClientId {

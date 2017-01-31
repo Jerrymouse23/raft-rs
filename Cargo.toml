@@ -56,7 +56,7 @@ bincode = "*"
 env_logger = "*"
 rust-crypto = "^0.2"
 lazy_static = "0.1.*"
-serde ="*"
-serde_json="*"
-serde_derive="*"
-uuid = {git="https://github.com/rushmorem/uuid",branch="update-serde",features=["serde","v4"]}
+serde ="0.8"
+serde_json="0.8"
+serde_derive="0.8"
+uuid = {version="*",features=["serde","v4"]}

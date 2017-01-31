@@ -1,6 +1,5 @@
 use std::fs::File;
 use std::io::Read;
-use rustc_serialize::Decodable;
 use std::net::SocketAddr;
 use uuid::Uuid;
 use parser::Parser;

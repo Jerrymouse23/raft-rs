@@ -2,7 +2,8 @@ use std::{error, fmt, result};
 use std::fs::File;
 use std::io::prelude::*;
 use bincode::SizeLimit;
-use bincode::rustc_serialize::{encode, decode_from};
+use bincode::serde::serialize as encode;
+use bincode::serde::deserialize_from as decode_from;
 use std::fs::OpenOptions;
 
 use raft::persistent_log::Log;

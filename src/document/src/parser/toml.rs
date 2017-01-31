@@ -1,4 +1,4 @@
-use toml::{Parser as omlParser, decode_str, DecodeError};
+use toml::{Parser as omlParser, decode, DecodeError};
 use parser::Parser as tParser;
 use config::Config;
 
@@ -11,7 +11,7 @@ impl tParser for Parser {
         let toml =
             omlParser::new(&input).parse().expect("An error occurred while parsing the config");
 
-        let decoded: Config = decode_str(input).unwrap();
+        let decoded: Config = decode(input.parse().unwrap()).unwrap();
 
         Ok(decoded)
     }

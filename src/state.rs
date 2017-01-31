@@ -147,11 +147,12 @@ impl FollowerState {
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
-    use rustc_serialize::json;
 
-    use {LogIndex, ServerId,ClientId};
-    use std::sync::{RwLock,Arc};
-    use state::{LeaderState,CandidateState,FollowerState};
+    use {LogIndex, ServerId, ClientId};
+    use std::sync::{RwLock, Arc};
+    use state::{LeaderState, CandidateState, FollowerState};
+
+    use serde_json::to_string as to_json;
 
     /// Tests the `LeaderState`'s  `.count_match_indexes()` function and makes sure it adequately
     /// produces the correct values.
@@ -183,50 +184,50 @@ mod tests {
     }
 
     #[test]
-    fn test_leaderstate_json_encoding(){
+    fn test_leaderstate_json_encoding() {
         let index = LogIndex(0);
         let mut peers = HashSet::new();
-        let mut object = LeaderState::new(index,&peers);
-        object.proposals.push_back((ClientId::new(),LogIndex(5)));
+        let mut object = LeaderState::new(index, &peers);
+        object.proposals.push_back((ClientId::new(), LogIndex(5)));
 
-        let json = json::encode(&object);
+        let json = to_json(&object);
 
-        assert_eq!(json.is_ok(),true);
+        assert_eq!(json.is_ok(), true);
     }
 
     #[test]
-    fn test_candidatestate_json_encoding(){
+    fn test_candidatestate_json_encoding() {
         let object = CandidateState::new();
 
-        let json = json::encode(&object);
+        let json = to_json(&object);
 
-        assert_eq!(json.is_ok(),true);
+        assert_eq!(json.is_ok(), true);
     }
 
     #[test]
-    fn test_followerstate_json_encoding(){
+    fn test_followerstate_json_encoding() {
         let object = FollowerState::new();
 
-        let json = json::encode(&object);
+        let json = to_json(&object);
 
-        assert_eq!(json.is_ok(),true);
+        assert_eq!(json.is_ok(), true);
     }
 
     #[test]
-    fn test_leaderstate_json_encoding_with_wrapped(){
+    fn test_leaderstate_json_encoding_with_wrapped() {
         let index = LogIndex(0);
         let mut peers = HashSet::new();
         peers.insert(ServerId(0));
         peers.insert(ServerId(1));
-        let mut object = LeaderState::new(index,&peers);
-        object.proposals.push_back((ClientId::new(),LogIndex(5)));
-        
-        let wrapped : Arc<RwLock<LeaderState>> = Arc::new(RwLock::new(object));
+        let mut object = LeaderState::new(index, &peers);
+        object.proposals.push_back((ClientId::new(), LogIndex(5)));
 
-        let json = json::encode(&*wrapped.read().unwrap());
+        let wrapped: Arc<RwLock<LeaderState>> = Arc::new(RwLock::new(object));
 
-        println!("{:?}",json);
+        let json = to_json(&*wrapped.read().unwrap());
 
-        assert_eq!(json.is_ok(),true);
+        println!("{:?}", json);
+
+        assert_eq!(json.is_ok(), true);
     }
 }
