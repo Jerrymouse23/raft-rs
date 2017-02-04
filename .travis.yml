@@ -36,7 +36,7 @@ addons:
 
 # We need to install Cap'n Proto.
 install:
-    - git clone https://github.com/kentonv/capnproto.git
+    - git clone https://github.com/sandstorm-io/capnproto.git
     - cd capnproto/c++
     # Use master to avoid autotools breakage (13 May 2016)
     #- git checkout release-0.5.3
