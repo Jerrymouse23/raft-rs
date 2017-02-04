@@ -6,9 +6,9 @@
 //! *Note:* Your consuming application should not necessarily interface with this data. It is meant
 //! for internal use by the library, we simply chose not to be opinionated about how data is stored.
 
-// pub mod mem;
+pub mod mem;
 
-// pub use persistent_log::mem::{MemLog, Error};
+pub use persistent_log::mem::{MemLog, Error};
 
 use std::error;
 use std::fmt::Debug;
