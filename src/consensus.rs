@@ -76,8 +76,6 @@ pub struct Actions {
     /// Messages which are in queue because there is a transaction active
     pub transaction_queue: Vec<(LogId, ClientId, Builder<HeapAllocator>)>,
     pub peer_messages_broadcast: Vec<Rc<Builder<HeapAllocator>>>,
-    /// Messages which will be send to all portals
-    pub portal_queue: Vec<(ServerId, Rc<Builder<HeapAllocator>>)>,
 }
 
 // TODO add transaction_queue
@@ -113,7 +111,6 @@ impl Actions {
             clear_peer_messages: false,
             transaction_queue: vec![],
             peer_messages_broadcast: vec![],
-            portal_queue: vec![],
         }
     }
 }
@@ -555,7 +552,6 @@ impl<L, M> Consensus<L, M>
                 actions.clear_timeouts.push(self.lid);
                 actions.timeouts.push(ConsensusTimeout::Election(self.lid));
                 actions.peer_messages.push((from, message.clone()));
-                actions.portal_queue.push((from, message));
             }
             ConsensusState::Candidate => {
                 // recognize the new leader, return to follower state, and apply the entries
@@ -885,7 +881,6 @@ impl<L, M> Consensus<L, M>
         }
         let message = Rc::new(message);
         actions.peer_messages.push((peer, message.clone()));
-        actions.portal_queue.push((peer, message));
     }
 
     /// Triggers an election timeout.
