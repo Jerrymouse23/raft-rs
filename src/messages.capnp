@@ -1,4 +1,4 @@
-@0xbdca3d7c76dab735;
+@0x9293205eb3070c0f;
 
 struct ConnectionPreamble {
     # Every connection opened to a Raft server, whether it is from a peer server
