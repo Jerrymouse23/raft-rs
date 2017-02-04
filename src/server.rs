@@ -78,6 +78,9 @@ pub struct Server<L, M, A>
     /// Index of client id to connection token.
     client_tokens: HashMap<ClientId, Token>,
 
+    /// Index of portal id to connection token
+    portals_tokens: HashSet<Token>,
+
     /// Currently registered reconnection timeouts.
     reconnection_timeouts: HashMap<Token, TimeoutHandle>,
 
@@ -121,6 +124,7 @@ impl<L, M, A> Server<L, M, A>
             listener: listener,
             connections: Slab::new_starting_at(Token(1), 129),
             peer_tokens: HashMap::new(),
+            portals_tokens: HashSet::new(),
             client_tokens: HashMap::new(),
             reconnection_timeouts: HashMap::new(),
             community_string: community_string.clone(),
@@ -230,7 +234,8 @@ impl<L, M, A> Server<L, M, A>
                       clear_timeouts,
                       clear_peer_messages,
                       peer_messages_broadcast,
-                      transaction_queue } = actions;
+                      transaction_queue,
+                      portal_queue } = actions;
 
         if clear_peer_messages {
             for &token in self.peer_tokens.values() {
@@ -302,6 +307,16 @@ impl<L, M, A> Server<L, M, A>
                                    timeout)
                 });
         }
+
+        // scoped_debug!("Sending {:?}  messages to portals", portal_queue.len());
+        scoped_debug!("Sending informations to {:?} portals",
+                      self.portals_tokens.clone().len());
+        for (_, message) in portal_queue {
+            for t in self.portals_tokens.clone() {
+                self.send_message(event_loop, t, message.clone());
+            }
+        }
+
     }
 
     /// Resets the connection corresponding to the provided token.
@@ -328,6 +343,10 @@ impl<L, M, A> Server<L, M, A>
                 scoped_assert!(self.client_tokens.remove(id).is_some(),
                                "client {:?} not connected",
                                id);
+            }
+            ConnectionKind::Portal => {
+                self.connections.remove(token).expect("unable to find portal connection");
+                assert_eq!(self.portals_tokens.remove(&token), true);
             }
             ConnectionKind::Unknown => {
                 self.connections.remove(token).expect("unable to find unknown connection");
@@ -363,6 +382,7 @@ impl<L, M, A> Server<L, M, A>
                     self.log_manager.apply_client_message(id, &message, &mut actions);
                     self.execute_actions(event_loop, actions);
                 }
+                ConnectionKind::Portal => unimplemented!(),
                 ConnectionKind::Unknown => {
                     let preamble = try!(message.get_root::<connection_preamble::Reader>());
                     match try!(preamble.get_id().which()) {
@@ -445,6 +465,14 @@ impl<L, M, A> Server<L, M, A>
                                                self,
                                                client_id);
                             }
+                        }
+                        connection_preamble::id::Which::Portal(Ok(_)) => {
+                            scoped_debug!("received new connection from portal");
+
+                            // TODO implement auth
+
+                            self.connections[token].set_kind(ConnectionKind::Portal);
+                            let prev_token = self.portals_tokens.insert(token);
                         }
                         _ => {
                             return Err(Error::Raft(RaftError::UnknownConnectionType));

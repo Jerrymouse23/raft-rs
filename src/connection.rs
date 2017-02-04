@@ -30,6 +30,8 @@ pub enum ConnectionKind {
     Peer(ServerId),
     /// A client which is asking the Raft cluster to do things.
     Client(ClientId),
+    /// A portal which exposes REST
+    Portal,
     /// Something else.
     Unknown,
 }
@@ -246,6 +248,7 @@ impl fmt::Debug for Connection {
         match self.kind {
             ConnectionKind::Peer(id) => write!(fmt, "PeerConnection({})", id),
             ConnectionKind::Client(id) => write!(fmt, "ClientConnection({})", id),
+            ConnectionKind::Portal => write!(fmt, "PortalConnection"),
             ConnectionKind::Unknown => write!(fmt, "UnknownConnection({})", &self.addr),
         }
     }
