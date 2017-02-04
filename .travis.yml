@@ -6,7 +6,7 @@ language: rust
 
 # Test only on nightly for now.
 rust:
-  - nightly-2016-12-16
+  - nightly-2017-02-03
   - nightly
 matrix:
   allow_failures:
