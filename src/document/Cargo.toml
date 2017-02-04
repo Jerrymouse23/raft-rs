@@ -20,5 +20,5 @@ mio = "0.5"
 serde_derive="0.8"
 serde ="0.8"
 serde_json ="0.8"
-uuid = {version="*",features=["serde","v4"]}
+uuid = {version="0.3",features=["serde","v4"]}
 rustc-serialize = "*"
