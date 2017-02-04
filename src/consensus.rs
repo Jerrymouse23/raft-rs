@@ -129,7 +129,7 @@ pub struct Consensus<L, M> {
     /// The persistent log.
     pub log: L,
     /// The client state machine to which client commands are applied.
-    state_machine: M,
+    pub state_machine: M,
 
     /// Index of the latest entry known to be committed.
     commit_index: LogIndex,

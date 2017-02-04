@@ -11,6 +11,7 @@ use std::error::Error;
 
 use document::*;
 use handler::Handler;
+use doclog::DocLog;
 
 use std::thread::spawn;
 use std::collections::HashSet;
@@ -20,7 +21,7 @@ use raft::LogId;
 use raft::state::{LeaderState, CandidateState, FollowerState};
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, Mutex};
 
 use rustc_serialize::base64::{self, ToBase64, FromBase64, STANDARD};
 use serde_json::to_string as to_json;
@@ -41,10 +42,12 @@ pub fn init(binding_addr: SocketAddr,
             states: HashMap<LogId,
                             (Arc<RwLock<LeaderState>>,
                              Arc<RwLock<CandidateState>>,
-                             Arc<RwLock<FollowerState>>)>) {
+                             Arc<RwLock<FollowerState>>)>,
+            state_machines: HashMap<LogId, Arc<DocumentStateMachine>>) {
     let mut router = Router::new();
 
     let states = Arc::new(states);
+    let state_machines = Arc::new(state_machines);
     let context = Context { node_addr: node_addr };
 
     router.get("/document/:fileId",
@@ -59,11 +62,6 @@ pub fn init(binding_addr: SocketAddr,
     router.put("/document",
                move |request: &mut Request| http_put(request, &context),
                "put_document");
-
-    router.get("/document",
-               move |request: &mut Request| http_get_keys(request, &context),
-               "get_document_keys");
-
     router.post("/transaction/begin",
                 move |request: &mut Request| http_begin_transaction(request, &context),
                 "begin_transaction");
@@ -76,6 +74,15 @@ pub fn init(binding_addr: SocketAddr,
                 move |request: &mut Request| http_rollback_transaction(request, &context),
                 "rollback_transaction");
 
+    {
+        let state_machines = state_machines.clone();
+        router.get("/meta/log/:lid/documents",
+                   move |request: &mut Request| {
+                       http_get_documents(request, &context, state_machines.clone())
+                   },
+                   "get_document_keys");
+
+    }
     {
         let states = states.clone();
         router.get("/meta/logs",
@@ -104,6 +111,23 @@ pub fn init(binding_addr: SocketAddr,
                        http_meta_state_follower(request, &context, states.clone())
                    },
                    "meta_state_follower");
+    }
+
+    fn http_get_documents(req: &mut Request,
+                          context: &Context,
+                          state_machines: Arc<HashMap<LogId, Arc<DocumentStateMachine>>>)
+                          -> IronResult<Response> {
+        let raw_lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
+                               (status::BadRequest, "No lid found"));
+        let lid = itry!(LogId::from(raw_lid),
+                        (status::BadRequest, "LogId is invalid"));
+
+        let state_machine = iexpect!(state_machines.get(&lid),
+                                     (status::BadRequest, "No log found"));
+
+        let documents = state_machine.get_documents();
+
+        Ok(Response::with((status::Ok, format!("{:?}", documents))))
     }
 
     fn http_logs(req: &mut Request,
@@ -177,15 +201,7 @@ pub fn init(binding_addr: SocketAddr,
         Ok(Response::with((status::Ok, format!("{}", to_json(&*lock).unwrap()))))
     }
 
-    fn http_get_keys(req: &mut Request, context: &Context) -> IronResult<Response> {
-        let keys = read_dir("data1").unwrap();
-        let mut response = "".to_owned();
-        for key in keys {
-            response.push_str(key.unwrap().path().to_str().unwrap());
-            response.push_str(";");
-        }
-        Ok(Response::with((status::Ok, response)))
-    }
+
 
 
     spawn(move || {

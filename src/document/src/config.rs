@@ -5,6 +5,7 @@ use uuid::Uuid;
 use parser::Parser;
 use parser::toml::Parser as tParser;
 use toml::DecodeError;
+use raft::LogId;
 
 #[derive(Debug,Deserialize,Clone)]
 pub struct Config {
@@ -19,7 +20,6 @@ pub struct ServerConfig {
     pub node_address: String,
     pub community_string: String,
     pub binding_addr: String,
-    pub volume: String,
 }
 
 #[derive(Debug,Deserialize,Clone)]

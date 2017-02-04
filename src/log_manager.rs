@@ -10,7 +10,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use uuid::Uuid;
 
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, Mutex};
 
 use state::{LeaderState, CandidateState, FollowerState};
 
@@ -149,6 +149,16 @@ impl<L, M> LogManager<L, M>
             let follower_state = cons.follower_state.clone();
 
             result.insert(lid, (leader_state, candidate_state, follower_state));
+        }
+
+        result
+    }
+
+    pub fn get_state_machines(&self) -> HashMap<LogId, Arc<M>> {
+        let mut result = HashMap::new();
+
+        for (&lid, cons) in self.consensus.iter() {
+            result.insert(lid, Arc::new(cons.state_machine.clone()));
         }
 
         result

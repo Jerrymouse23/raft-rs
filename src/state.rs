@@ -20,7 +20,7 @@ pub enum ConsensusState {
 }
 
 /// The state associated with a Raft consensus module in the `Leader` state.
-#[derive(Clone, Debug,Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct LeaderState {
     next_index: HashMap<ServerId, LogIndex>,
     match_index: HashMap<ServerId, LogIndex>,

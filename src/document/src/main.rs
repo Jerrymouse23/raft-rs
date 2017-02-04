@@ -21,8 +21,6 @@ extern crate serde;
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
-
-
 extern crate uuid;
 extern crate toml;
 
@@ -247,13 +245,12 @@ fn server(args: &Args) {
         _ => panic!("The node_address must be IPv4"),
     };
 
-
     let mut logs: Vec<(LogId, DocLog, DocumentStateMachine)> = Vec::new();
 
     for l in config.logs.iter() {
         let logid = LogId::from(&l.lid).expect(&format!("The logid given was invalid {:?}", l.lid));
         let log = DocLog::new(&l.path, LogId::from(&l.lid).unwrap());
-        let mut state_machine = DocumentStateMachine::new(log.clone());
+        let mut state_machine = DocumentStateMachine::new(&l.path);
         logs.push((logid, log, state_machine));
         println!("Init {:?}", l.lid);
     }
@@ -282,8 +279,9 @@ fn server(args: &Args) {
 
     {
         let states = server.log_manager.get_states();
+        let state_machines = server.log_manager.get_state_machines();
 
-        init(config.get_binding_addr(), node_addr, states);
+        init(config.get_binding_addr(), node_addr, states, state_machines);
     }
 
     server.init(&mut event_loop);

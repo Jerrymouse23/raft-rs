@@ -22,7 +22,7 @@ pub use state_machine::null::NullStateMachine;
 ///
 /// Note that you are responsible for **not crashing** the state machine. Your production
 /// implementation should not use `.unwrap()`, `.expect()` or anything else that likes to `panic!()`
-pub trait StateMachine: Debug + Send + 'static {
+pub trait StateMachine: Debug + Send + Clone + 'static {
     /// Applies a command to the state machine.
     /// Returns an application-specific result value.
     fn apply(&mut self, command: &[u8]) -> Vec<u8>;

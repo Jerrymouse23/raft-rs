@@ -1,7 +1,7 @@
 use state_machine::StateMachine;
 
 /// A state machine with no states.
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct NullStateMachine;
 
 impl StateMachine for NullStateMachine {
