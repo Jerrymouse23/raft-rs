@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::Read;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, ToSocketAddrs};
 use uuid::Uuid;
 use parser::Parser;
 use parser::toml::Parser as tParser;
@@ -46,7 +46,14 @@ impl Config {
     }
 
     pub fn get_node_addr(&self) -> SocketAddr {
-        self.server.node_address.parse().expect("Node address is invalid")
+        // self.server
+        // .node_address
+        // .to_socket_addrs()
+        // .expect("Unable to resolve domain")
+        // .collect()[0]
+
+        let server: Vec<SocketAddr> = self.server.node_address.to_socket_addrs().unwrap().collect();
+        server[0]
     }
 
     pub fn get_binding_addr(&self) -> SocketAddr {
@@ -57,13 +64,16 @@ impl Config {
         self.peers.iter().map(|x| x.node_id).collect()
     }
 
-    pub fn get_nodes(&self) -> (Vec<u64>, Vec<String>) {
+    pub fn get_nodes(&self) -> (Vec<u64>, Vec<SocketAddr>) {
         let mut node_ids: Vec<u64> = Vec::new();
-        let mut node_addresses: Vec<String> = Vec::new();
+        let mut node_addresses: Vec<SocketAddr> = Vec::new();
 
         for peer in self.peers.clone().into_iter() {
             node_ids.push(peer.node_id);
-            node_addresses.push(peer.node_address);
+
+            let addr: Vec<SocketAddr> = peer.node_address.to_socket_addrs().unwrap().collect();
+
+            node_addresses.push(addr[0]);
         }
 
         (node_ids, node_addresses)
@@ -72,7 +82,12 @@ impl Config {
 
 impl PeerConfig {
     pub fn get_node_addr(&self) -> SocketAddr {
-        self.node_address.parse().expect("Node address of a peer is invalid")
+        let addr: Vec<SocketAddr> = self.node_address
+            .to_socket_addrs()
+            .unwrap()
+            .collect();
+
+        addr[0]
     }
 }
 

@@ -231,16 +231,16 @@ fn server(args: &Args) {
 
 
     let mut node_ids: Vec<u64> = Vec::new();
-    let mut node_addresses: Vec<String> = Vec::new();
+    let mut node_addresses: Vec<SocketAddr> = Vec::new();
 
     let (mut node_ids, mut node_addresses) = config.get_nodes();
 
     let peers = node_ids.iter()
         .zip(node_addresses.iter())
-        .map(|(&id, addr)| (ServerId::from(id), parse_addr(&addr)))
+        .map(|(&id, addr)| (ServerId::from(id), *addr))
         .collect::<HashMap<_, _>>();
 
-    let node_addr = match parse_addr(&node_addresses[0]) {
+    let node_addr = match node_addresses[0] {
         SocketAddr::V4(b) => b,
         _ => panic!("The node_address must be IPv4"),
     };
