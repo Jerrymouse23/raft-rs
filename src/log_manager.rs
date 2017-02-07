@@ -16,7 +16,6 @@ use state::{LeaderState, CandidateState, FollowerState};
 
 use capnp::message::{Reader, ReaderSegments};
 use messages_capnp::{client_request, message};
-
 pub struct LogManager<L, M>
     where L: Log,
           M: StateMachine
@@ -162,5 +161,11 @@ impl<L, M> LogManager<L, M>
         }
 
         result
+    }
+
+    pub fn add_peer(&mut self, peer_id: ServerId, peer_addr: SocketAddr) {
+        for (_, mut cons) in self.consensus.iter_mut() {
+            cons.add_peer(peer_id, peer_addr);
+        }
     }
 }

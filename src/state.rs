@@ -79,6 +79,13 @@ impl LeaderState {
         }
         self.proposals.clear();
     }
+
+    pub fn add_peer(&mut self, peer_id: ServerId) {
+        println!("Adding new peer {:?}", peer_id);
+
+        assert_eq!(self.next_index.insert(peer_id, LogIndex::from(0)), None);
+        assert_eq!(self.match_index.insert(peer_id, LogIndex::from(0)), None);
+    }
 }
 
 /// The state associated with a Raft consensus module in the `Candidate` state.
