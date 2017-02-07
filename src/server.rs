@@ -62,6 +62,8 @@ pub struct Server<L, M, A>
     /// Id of this server.
     id: ServerId,
 
+    addr: SocketAddr,
+
     // TODO implement getter for states
     /// Raft state machine consensus.
     pub log_manager: LogManager<L, M>,
@@ -100,7 +102,7 @@ impl<L, M, A> Server<L, M, A>
     /// *Gotcha:* `peers` must not contain the local `id`.
     pub fn new(id: ServerId,
                addr: SocketAddr,
-               peers: HashMap<ServerId, SocketAddr>,
+               peers: &HashMap<ServerId, SocketAddr>,
                community_string: String,
                auth: A,
                logs: Vec<(LogId, L, M)>)
@@ -117,6 +119,7 @@ impl<L, M, A> Server<L, M, A>
 
         let mut server = Server {
             id: id,
+            addr: addr,
             log_manager: log_manager,
             listener: listener,
             connections: Slab::new_starting_at(Token(1), 129),
@@ -129,19 +132,59 @@ impl<L, M, A> Server<L, M, A>
         };
 
         for (peer_id, peer_addr) in peers {
-            let token: Token = try!(server.connections
-                .insert(try!(Connection::peer(peer_id, peer_addr)))
-                .map_err(|_| Error::Raft(RaftError::ConnectionLimitReached)));
-            scoped_assert!(server.peer_tokens.insert(peer_id, token).is_none());
 
-            try!(server.connections[token].register(&mut event_loop, token));
-            server.send_message(&mut event_loop,
-                                token,
-                                messages::server_connection_preamble(id, &addr, &community_string));
-
+            server.add_peer_static(&mut event_loop, *peer_id, *peer_addr);
         }
 
         Ok((server, event_loop))
+    }
+
+    pub fn add_peer_static(&mut self,
+                           event_loop: &mut EventLoop<Server<L, M, A>>,
+                           peer_id: ServerId,
+                           peer_addr: SocketAddr)
+                           -> Result<()> {
+        let token: Token = try!(self.connections
+            .insert(try!(Connection::peer(peer_id, peer_addr)))
+            .map_err(|_| Error::Raft(RaftError::ConnectionLimitReached)));
+        scoped_assert!(self.peer_tokens.insert(peer_id, token).is_none());
+
+        try!(self.connections[token].register(event_loop, token));
+
+        let message = messages::server_connection_preamble(self.id,
+                                                           &self.addr,
+                                                           self.community_string.clone().as_str());
+
+        self.send_message(event_loop, token, message);
+
+        Ok(())
+    }
+
+    pub fn add_peer_dynamic(&mut self,
+                            event_loop: &mut EventLoop<Server<L, M, A>>,
+                            peer_id: ServerId,
+                            peer_addr: SocketAddr)
+                            -> Result<()> {
+        let token: Token = try!(self.connections
+            .insert(try!(Connection::peer(peer_id, peer_addr)))
+            .map_err(|_| Error::Raft(RaftError::ConnectionLimitReached)));
+        scoped_assert!(self.peer_tokens.insert(peer_id, token).is_none());
+
+        self.log_manager.add_peer(peer_id, peer_addr);
+
+        try!(self.connections[token].register(event_loop, token));
+
+        let message = messages::peering_request_connection_preamble(self.id, &self.addr);
+
+        self.send_message(event_loop, token, message);
+
+        let message = messages::server_connection_preamble(self.id,
+                                                           &self.addr,
+                                                           self.community_string.clone().as_str());
+
+        self.send_message(event_loop, token, message);
+
+        Ok(())
     }
 
     /// Runs a new Raft server in the current thread.
@@ -155,7 +198,7 @@ impl<L, M, A> Server<L, M, A>
     /// * `state_machine` - The client state machine to which client commands will be applied.
     pub fn run(id: ServerId,
                addr: SocketAddr,
-               peers: HashMap<ServerId, SocketAddr>,
+               peers: &HashMap<ServerId, SocketAddr>,
                community_string: String,
                auth: A,
                logs: Vec<(LogId, L, M)>)
@@ -366,6 +409,28 @@ impl<L, M, A> Server<L, M, A>
                 ConnectionKind::Unknown => {
                     let preamble = try!(message.get_root::<connection_preamble::Reader>());
                     match try!(preamble.get_id().which()) {
+                        connection_preamble::id::Which::PeeringRequest(peer) => {
+                            let peer = try!(peer);
+                            let peer_id = ServerId(peer.get_id());
+                            let peer_addr: SocketAddr = peer.get_addr().unwrap().parse().unwrap();
+
+                            scoped_debug!("peering request from {:?} ({})", peer_id, peer_addr);
+
+                            if !self.peer_tokens.contains_key(&peer_id) {
+                                self.add_peer_dynamic(event_loop, peer_id, peer_addr);
+                            } else {
+                                scoped_debug!("Peer has been already added");
+                                let message =
+                                    messages::server_connection_preamble(self.id,
+                                                                         &self.addr,
+                                                                         self.community_string
+                                                                             .clone()
+                                                                             .as_str());
+
+                                self.send_message(event_loop, token, message);
+
+                            }
+                        }
                         connection_preamble::id::Which::Server(peer) => {
                             let peer = try!(peer);
                             let peer_id = ServerId(peer.get_id());
@@ -674,7 +739,7 @@ mod tests {
         logs.push((*lid, MemLog::new(), NullStateMachine));
         Server::new(ServerId::from(0),
                     SocketAddr::from_str("127.0.0.1:0").unwrap(),
-                    peers,
+                    &peers,
                     "test".to_string(),
                     NullAuth,
                     logs)

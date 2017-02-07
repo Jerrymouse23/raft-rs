@@ -240,10 +240,10 @@ fn server(args: &Args) {
         .map(|(&id, addr)| (ServerId::from(id), *addr))
         .collect::<HashMap<_, _>>();
 
-    let node_addr = match node_addresses[0] {
-        SocketAddr::V4(b) => b,
-        _ => panic!("The node_address must be IPv4"),
-    };
+    // jlet node_addr = match node_addresses[0] {
+    // SocketAddr::V4(b) => b,
+    // _ => panic!("The node_address must be IPv4"),
+    // };
 
     let mut logs: Vec<(LogId, DocLog, DocumentStateMachine)> = Vec::new();
 
@@ -271,12 +271,22 @@ fn server(args: &Args) {
 
     let (mut server, mut event_loop) = Server::new(ServerId::from(config.server.node_id),
                                                    server_addr,
-                                                   peers,
+                                                   &peers,
                                                    config.server.community_string.to_string(),
                                                    NullAuth,
                                                    logs)
         .unwrap();
 
+    {
+        if peers.len() == 0 {
+            match config.get_dynamic_peering() {
+                Some(peering_partner) => {
+                    server.add_peer_dynamic(&mut event_loop, ServerId::from(1), peering_partner);
+                }
+                None => panic!("No peers or dynamic peering defined"),
+            }
+        }
+    }
     {
         let states = server.log_manager.get_states();
         let state_machines = server.log_manager.get_state_machines();

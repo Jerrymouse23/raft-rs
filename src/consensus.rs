@@ -391,6 +391,14 @@ impl<L, M> Consensus<L, M>
         }
     }
 
+    pub fn add_peer(&mut self, peer_id: ServerId, peer_addr: SocketAddr) {
+        assert_eq!(self.peers.insert(peer_id, peer_addr), None);
+
+        let mut lock = self.leader_state.write().unwrap();
+
+        lock.add_peer(peer_id);
+    }
+
     /// Notifies the consensus state machine that a new connection to the peer exists, and
     /// in-flight messages may have been lost.
     pub fn peer_connection_reset(&mut self,
@@ -398,7 +406,15 @@ impl<L, M> Consensus<L, M>
                                  addr: SocketAddr,
                                  actions: &mut Actions) {
         push_log_scope!("{:?}", self);
-        self.peers.insert(peer, addr).expect("new peer insertion not supported");
+
+        println!("Connection reset");
+
+        println!("What peer {:?}", peer);
+        println!("What peer address {:?}", addr);
+        println!("All keys {:?}", self.peers.keys());
+
+        self.peers.insert(peer, addr);
+
         match self.state {
             ConsensusState::Leader => {
                 // Send any outstanding entries to the peer, or an empty heartbeat if there are no

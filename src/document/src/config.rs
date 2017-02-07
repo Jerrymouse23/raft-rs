@@ -20,6 +20,7 @@ pub struct ServerConfig {
     pub node_address: String,
     pub community_string: String,
     pub binding_addr: String,
+    pub dynamic_peering: Option<String>,
 }
 
 #[derive(Debug,Deserialize,Clone)]
@@ -46,18 +47,23 @@ impl Config {
     }
 
     pub fn get_node_addr(&self) -> SocketAddr {
-        // self.server
-        // .node_address
-        // .to_socket_addrs()
-        // .expect("Unable to resolve domain")
-        // .collect()[0]
-
         let server: Vec<SocketAddr> = self.server.node_address.to_socket_addrs().unwrap().collect();
         server[0]
     }
 
     pub fn get_binding_addr(&self) -> SocketAddr {
         self.server.binding_addr.parse().expect("Binding address is invalid")
+    }
+
+    pub fn get_dynamic_peering(&self) -> Option<SocketAddr> {
+        match self.server.dynamic_peering {
+            Some(ref leader_str) => {
+                let server: Vec<SocketAddr> = leader_str.to_socket_addrs().unwrap().collect();
+
+                Some(server[0])
+            }
+            None => None,
+        }
     }
 
     pub fn get_peers_id(&self) -> Vec<u64> {
