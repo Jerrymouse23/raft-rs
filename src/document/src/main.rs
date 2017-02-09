@@ -12,6 +12,7 @@ extern crate env_logger;
 extern crate iron;
 extern crate router;
 extern crate params;
+extern crate bodyparser;
 
 extern crate docopt;
 extern crate bincode;

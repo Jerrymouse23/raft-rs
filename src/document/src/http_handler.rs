@@ -2,6 +2,8 @@ use iron::status;
 use router::Router;
 use iron::prelude::*;
 use params::{Params, Value};
+use bodyparser;
+
 use std::fs::read_dir;
 
 use uuid::Uuid;
@@ -24,6 +26,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Mutex};
 
 use rustc_serialize::base64::{self, ToBase64, FromBase64, STANDARD};
+use serde_json;
 use serde_json::to_string as to_json;
 
 #[derive(Deserialize,Serialize)]
@@ -241,20 +244,30 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     fn http_post(req: &mut Request, context: &Context) -> IronResult<Response> {
+        let payload = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+
+            let p = body.find("payload").unwrap();
+
+            let str_payload = match *p {
+                serde_json::Value::String(ref load) => load,
+                _ => panic!("Unexpected payload type"),
+            };
+
+            str_payload.from_base64().expect("Payload is not base64")
+        };
+
 
         let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
-        let ref payload = req.extensions.get::<Router>().unwrap().find("payload").unwrap();
 
         let username = "username";
         let password = "password";
-
-        let bytes = payload.from_base64().expect("Payload is not base64");
 
         let id = Uuid::new_v4();
 
         let document = Document {
             id: id,
-            payload: bytes,
+            payload: payload,
             version: 1,
         };
 
@@ -272,6 +285,7 @@ pub fn init(binding_addr: SocketAddr,
                                    "An error occured when posting new document")))
             }
         }
+
     }
 
     fn http_delete(req: &mut Request, context: &Context) -> IronResult<Response> {
