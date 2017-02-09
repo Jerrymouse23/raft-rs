@@ -50,27 +50,27 @@ pub fn init(binding_addr: SocketAddr,
     let state_machines = Arc::new(state_machines);
     let context = Context { node_addr: node_addr };
 
-    router.get("/document/:fileId",
+    router.get("/document/:lid/:fileId",
                move |request: &mut Request| http_get(request, &context),
                "get_document");
-    router.post("/document",
+    router.post("/document/:lid",
                 move |request: &mut Request| http_post(request, &context),
                 "post_document");
-    router.delete("/document/:fileId",
+    router.delete("/document/:lid/:fileId",
                   move |request: &mut Request| http_delete(request, &context),
                   "delete_document");
     router.put("/document",
                move |request: &mut Request| http_put(request, &context),
                "put_document");
-    router.post("/transaction/begin",
+    router.post("/transaction/begin/:lid",
                 move |request: &mut Request| http_begin_transaction(request, &context),
                 "begin_transaction");
 
-    router.post("/transaction/commit",
+    router.post("/transaction/commit/:lid",
                 move |request: &mut Request| http_commit_transaction(request, &context),
                 "commit_transaction");
 
-    router.post("/transaction/rollback",
+    router.post("/transaction/rollback/:lid",
                 move |request: &mut Request| http_rollback_transaction(request, &context),
                 "rollback_transaction");
 
@@ -218,7 +218,7 @@ pub fn init(binding_addr: SocketAddr,
             .unwrap()
             .find("fileId")
             .unwrap();
-        let ref lid = req.extensions.get::<Router>().unwrap().find("logid").unwrap();
+        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
 
         let username = "username";
         let password = "password";
@@ -242,7 +242,7 @@ pub fn init(binding_addr: SocketAddr,
 
     fn http_post(req: &mut Request, context: &Context) -> IronResult<Response> {
 
-        let ref lid = req.extensions.get::<Router>().unwrap().find("logid").unwrap();
+        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
         let ref payload = req.extensions.get::<Router>().unwrap().find("payload").unwrap();
 
         let username = "username";
@@ -281,7 +281,7 @@ pub fn init(binding_addr: SocketAddr,
             .find("fileId")
             .unwrap();
 
-        let ref lid = req.extensions.get::<Router>().unwrap().find("logid").unwrap();
+        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
 
         let username = "username";
         let password = "password";
@@ -306,7 +306,7 @@ pub fn init(binding_addr: SocketAddr,
 
     fn http_put(req: &mut Request, context: &Context) -> IronResult<Response> {
         let ref id = req.extensions.get::<Router>().unwrap().find("id").unwrap();
-        let ref lid = req.extensions.get::<Router>().unwrap().find("logid").unwrap();
+        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
         let ref payload = req.extensions.get::<Router>().unwrap().find("payload").unwrap();
 
         let username = "username";
@@ -334,7 +334,7 @@ pub fn init(binding_addr: SocketAddr,
     fn http_begin_transaction(req: &mut Request, context: &Context) -> IronResult<Response> {
         let username = "username";
         let password = "password";
-        let ref lid = req.extensions.get::<Router>().unwrap().find("logid").unwrap();
+        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
 
         match Handler::begin_transaction(&SocketAddr::V4(context.node_addr),
                                          &username,
@@ -349,7 +349,7 @@ pub fn init(binding_addr: SocketAddr,
     fn http_commit_transaction(req: &mut Request, context: &Context) -> IronResult<Response> {
         let username = "username";
         let password = "password";
-        let ref lid = req.extensions.get::<Router>().unwrap().find("logid").unwrap();
+        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
 
         match Handler::commit_transaction(&SocketAddr::V4(context.node_addr),
                                           &username,
@@ -363,7 +363,7 @@ pub fn init(binding_addr: SocketAddr,
     fn http_rollback_transaction(req: &mut Request, context: &Context) -> IronResult<Response> {
         let username = "username";
         let password = "password";
-        let ref lid = req.extensions.get::<Router>().unwrap().find("logid").unwrap();
+        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
 
         match Handler::rollback_transaction(&SocketAddr::V4(context.node_addr),
                                             &username,
