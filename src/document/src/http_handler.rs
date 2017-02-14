@@ -403,10 +403,21 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     fn http_put(req: &mut Request, context: &Context) -> IronResult<Response> {
+        let payload = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+
+            let p = body.find("payload").unwrap();
+
+            let str_payload = match *p {
+                serde_json::Value::String(ref load) => load,
+                _ => panic!("Unexpected payload type"),
+            };
+
+            str_payload.from_base64().expect("Payload is not base64")
+        };
+
         let ref id = req.extensions.get::<Router>().unwrap().find("id").unwrap();
         let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
-        let ref payload = req.extensions.get::<Router>().unwrap().find("payload").unwrap();
-
         let username = "username";
         let password = "password";
 
