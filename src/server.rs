@@ -30,8 +30,6 @@ use persistent_log::Log;
 use connection::{Connection, ConnectionKind};
 use std::io::Cursor;
 
-use uuid::Uuid;
-
 use auth::Auth;
 use log_manager::LogManager;
 
@@ -416,12 +414,12 @@ impl<L, M, A> Server<L, M, A>
                             let peer_id = ServerId(peer.get_id());
                             let peer_addr: SocketAddr = peer.get_addr().unwrap().parse().unwrap();
 
-                            scoped_debug!("Peering request from {:?} ({})", peer_id, peer_addr);
+                            scoped_debug!("peering request from {:?} ({})", peer_id, peer_addr);
 
                             if !self.peer_tokens.contains_key(&peer_id) {
                                 self.add_peer_dynamic(event_loop, peer_id, peer_addr);
                             } else {
-                                scoped_debug!("Peer has been already added - Reconnecting");
+                                scoped_debug!("Peer has been already added");
                                 let message =
                                     messages::server_connection_preamble(self.id,
                                                                          &self.addr,
@@ -429,32 +427,8 @@ impl<L, M, A> Server<L, M, A>
                                                                              .clone()
                                                                              .as_str());
 
-                                {
-                                    self.send_message(event_loop, token, message);
-                                }
+                                self.send_message(event_loop, token, message);
 
-                                let message = messages::peer_response(self.log_manager
-                                    .get_peers()
-                                    .as_slice());
-
-                                {
-                                    self.send_message(event_loop, token, message);
-                                }
-
-                            }
-                        }
-                        connection_preamble::id::Which::PeeringResponse(peer) => {
-                            scoped_debug!("Received a list with all peers");
-                            let peer = try!(peer);
-
-                            for entry in peer.get_peers()
-                                .expect("PeeringResponse: No peers")
-                                .iter() {
-                                let id = ServerId::from(entry.get_id());
-                                let addr: SocketAddr =
-                                    entry.get_addr().expect("No SocketAddr").parse().unwrap();
-
-                                self.add_peer_dynamic(event_loop, id, addr);
                             }
                         }
                         connection_preamble::id::Which::Server(peer) => {
