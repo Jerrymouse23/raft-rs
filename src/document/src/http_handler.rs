@@ -178,7 +178,7 @@ pub fn init(binding_addr: SocketAddr,
         let lid = itry!(LogId::from(raw_lid),
                         (status::BadRequest, "LogId is invalid"));
 
-        let lock = state.get(&lid).unwrap().0.read().unwrap();
+        let lock = state.get(&lid).unwrap().0.read().expect("Could not lock state");
 
         let ref lock = *lock;
 
@@ -195,9 +195,10 @@ pub fn init(binding_addr: SocketAddr,
                                                      Arc<RwLock<FollowerState>>)>>)
                                  -> IronResult<Response> {
 
-        let raw_lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
-        let lid = LogId::from(raw_lid).unwrap();
-        let lock = state.get(&lid).unwrap().1.read().unwrap();
+        let raw_lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
+                               (status::BadRequest, "Cannot find logid"));
+        let lid = itry!(LogId::from(raw_lid), (status::BadRequest, "Invalid logid"));
+        let lock = state.get(&lid).unwrap().1.read().expect("Could not lock state");
 
         Ok(Response::with((status::Ok, format!("{}", to_json(&*lock).unwrap()))))
     }
@@ -209,24 +210,17 @@ pub fn init(binding_addr: SocketAddr,
                                                     Arc<RwLock<CandidateState>>,
                                                     Arc<RwLock<FollowerState>>)>>)
                                 -> IronResult<Response> {
-
-        let raw_lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
-        let lid = LogId::from(raw_lid).unwrap();
-        let lock = state.get(&lid).unwrap().2.read().unwrap();
+        let raw_lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
+                               (status::BadRequest, "Cannot find logid"));
+        let lid = itry!(LogId::from(raw_lid), (status::BadRequest, "Invalid logid"));
+        let lock = state.get(&lid).unwrap().2.read().expect("Could not lock state");
 
         Ok(Response::with((status::Ok, format!("{}", to_json(&*lock).unwrap()))))
     }
 
-
-
-
     spawn(move || {
         Iron::new(router).http(binding_addr);
     });
-
-    fn test(req: &mut Request) -> IronResult<Response> {
-        Ok(Response::with((status::Ok, "I am runnnig :D")))
-    }
 
     fn http_get(req: &mut Request, context: &Context) -> IronResult<Response> {
         let ref fileId = req.extensions
@@ -234,7 +228,8 @@ pub fn init(binding_addr: SocketAddr,
             .unwrap()
             .find("fileId")
             .unwrap();
-        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
+        let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
+                               (status::BadRequest, "Cannot find logid"));
 
         let username = "username";
         let password = "password";
@@ -251,7 +246,7 @@ pub fn init(binding_addr: SocketAddr,
             payload: document.payload.as_slice().to_base64(STANDARD),
         };
 
-        let encoded = to_json(&http_doc).unwrap();
+        let encoded = itry!(to_json(&http_doc), "Cannot encode document to json");
 
         Ok(Response::with((status::Ok, encoded)))
     }
@@ -260,7 +255,8 @@ pub fn init(binding_addr: SocketAddr,
         let payload = {
             let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
 
-            let p = body.find("payload").unwrap();
+            let p = iexpect!(body.find("payload"),
+                             (status::BadRequest, "No payload was in the body defined"));
 
             let str_payload = match *p {
                 serde_json::Value::String(ref load) => load,
@@ -271,7 +267,7 @@ pub fn init(binding_addr: SocketAddr,
         };
 
 
-        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
+        let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"));
 
         let username = "username";
         let password = "password";
@@ -304,7 +300,7 @@ pub fn init(binding_addr: SocketAddr,
         let payload = {
             let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
 
-            let p = body.find("payload").unwrap();
+            let p = iexpect!(body.find("payload"));
 
             let str_payload = match *p {
                 serde_json::Value::String(ref load) => load,
@@ -315,10 +311,10 @@ pub fn init(binding_addr: SocketAddr,
         };
 
         let session: Uuid =
-            req.extensions.get::<Router>().unwrap().find("session").unwrap().parse().unwrap();
+            itry!(iexpect!(req.extensions.get::<Router>().unwrap().find("session")).parse());
 
 
-        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
+        let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"));
 
         let username = "username";
         let password = "password";
@@ -348,13 +344,12 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     fn http_delete(req: &mut Request, context: &Context) -> IronResult<Response> {
-        let ref fileId = req.extensions
+        let ref fileId = iexpect!(req.extensions
             .get::<Router>()
             .unwrap()
-            .find("fileId")
-            .unwrap();
+            .find("fileId"));
 
-        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
+        let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"));
 
         let username = "username";
         let password = "password";
@@ -378,16 +373,14 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     fn http_trans_delete(req: &mut Request, context: &Context) -> IronResult<Response> {
-        let ref fileId = req.extensions
+        let ref fileId = iexpect!(req.extensions
             .get::<Router>()
             .unwrap()
-            .find("fileId")
-            .unwrap();
+            .find("fileId"));
 
-        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
+        let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"));
         let session: Uuid =
-            req.extensions.get::<Router>().unwrap().find("session").unwrap().parse().unwrap();
-
+            itry!(iexpect!(req.extensions.get::<Router>().unwrap().find("session")).parse());
 
         let username = "username";
         let password = "password";
@@ -412,7 +405,7 @@ pub fn init(binding_addr: SocketAddr,
         let payload = {
             let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
 
-            let p = body.find("payload").unwrap();
+            let p = iexpect!(body.find("payload"));
 
             let str_payload = match *p {
                 serde_json::Value::String(ref load) => load,
@@ -422,12 +415,16 @@ pub fn init(binding_addr: SocketAddr,
             str_payload.from_base64().expect("Payload is not base64")
         };
 
-        let ref id = req.extensions.get::<Router>().unwrap().find("id").unwrap();
-        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
+        let ref id = iexpect!(req.extensions.get::<Router>().unwrap().find("id"),
+                              (status::BadRequest, "Cannot find id"));
+        let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
+                               (status::BadRequest, "Cannot find logid"));
+
         let username = "username";
         let password = "password";
 
-        let bytes = payload.from_base64().expect("Payload is not base64");
+        let bytes = itry!(payload.from_base64(),
+                          (status::BadRequest, "Payload is not base64"));
 
         let session = Uuid::new_v4();
 
@@ -452,32 +449,30 @@ pub fn init(binding_addr: SocketAddr,
         let payload = {
             let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
 
-            let p = body.find("payload").unwrap();
+            let p = iexpect!(body.find("payload"));
 
             let str_payload = match *p {
                 serde_json::Value::String(ref load) => load,
                 _ => panic!("Unexpected payload type"),
             };
 
-            str_payload.from_base64().expect("Payload is not base64")
+            itry!(str_payload.from_base64(),
+                  (status::BadRequest, "Payload is not base64"))
         };
 
-        let ref id = req.extensions.get::<Router>().unwrap().find("id").unwrap();
-        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
+        let ref id = iexpect!(req.extensions.get::<Router>().unwrap().find("id"));
+        let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"));
         let session: Uuid =
-            req.extensions.get::<Router>().unwrap().find("session").unwrap().parse().unwrap();
+            itry!(iexpect!(req.extensions.get::<Router>().unwrap().find("session")).parse());
 
         let username = "username";
         let password = "password";
-
-        let bytes = payload.from_base64().expect("Payload is not base64");
-
 
         let res = match Handler::put(&SocketAddr::V4(context.node_addr),
                                      &username,
                                      &password,
                                      &Uuid::parse_str(&id).unwrap(),
-                                     bytes,
+                                     payload,
                                      &session,
                                      &LogId::from(lid).unwrap()) {
             Ok(()) => Response::with((status::Ok, "Ok")),
@@ -493,7 +488,8 @@ pub fn init(binding_addr: SocketAddr,
     fn http_begin_transaction(req: &mut Request, context: &Context) -> IronResult<Response> {
         let username = "username";
         let password = "password";
-        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
+        let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
+                               (status::BadRequest, "Cannot find logid"));
 
         match Handler::begin_transaction(&SocketAddr::V4(context.node_addr),
                                          &username,
@@ -508,7 +504,8 @@ pub fn init(binding_addr: SocketAddr,
     fn http_commit_transaction(req: &mut Request, context: &Context) -> IronResult<Response> {
         let username = "username";
         let password = "password";
-        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
+        let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
+                               (status::BadRequest, "Cannot find blogid"));
 
         match Handler::commit_transaction(&SocketAddr::V4(context.node_addr),
                                           &username,
@@ -522,7 +519,8 @@ pub fn init(binding_addr: SocketAddr,
     fn http_rollback_transaction(req: &mut Request, context: &Context) -> IronResult<Response> {
         let username = "username";
         let password = "password";
-        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
+        let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
+                               (status::BadRequest, "Cannot find logid"));
 
         match Handler::rollback_transaction(&SocketAddr::V4(context.node_addr),
                                             &username,
