@@ -1,0 +1,17 @@
+version:'2'
+services:
+        node1:
+                build: .
+                volume: docker_build:./
+                links:
+                        - node1
+                environment:
+                        - RUST_LOG='raft=debug'
+        node2:
+                build: .
+                volume: docker_build:./
+                links:
+                        - node2
+                environment:
+                        RUST_LOG: 'raft=debug'
+
