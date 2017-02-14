@@ -59,6 +59,9 @@ pub fn init(binding_addr: SocketAddr,
     router.post("/document/:lid",
                 move |request: &mut Request| http_post(request, &context),
                 "post_document");
+    router.post("/document/:lid/transaction/:session",
+                move |request: &mut Request| http_trans_post(request, &context),
+                "post_document");
     router.delete("/document/:lid/:fileId",
                   move |request: &mut Request| http_delete(request, &context),
                   "delete_document");
@@ -285,8 +288,56 @@ pub fn init(binding_addr: SocketAddr,
                                    "An error occured when posting new document")))
             }
         }
+    }
+
+    fn http_trans_post(req: &mut Request, context: &Context) -> IronResult<Response> {
+        let payload = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+
+            let p = body.find("payload").unwrap();
+
+            let str_payload = match *p {
+                serde_json::Value::String(ref load) => load,
+                _ => panic!("Unexpected payload type"),
+            };
+
+            str_payload.from_base64().expect("Payload is not base64")
+        };
+
+        let session: Uuid =
+            req.extensions.get::<Router>().unwrap().find("session").unwrap().parse().unwrap();
+
+
+        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
+
+        let username = "username";
+        let password = "password";
+
+        let id = Uuid::new_v4();
+
+        let document = Document {
+            id: id,
+            payload: payload,
+            version: 1,
+        };
+
+
+        match Handler::post(&SocketAddr::V4(context.node_addr),
+                            &username,
+                            &password,
+                            document,
+                            &session,
+                            &LogId::from(lid).unwrap()) {
+            Ok(id) => Ok(Response::with((status::Ok, format!("{}", id)))),
+            Err(err) => {
+                Ok(Response::with((status::InternalServerError,
+                                   "An error occured when posting new document")))
+            }
+        }
 
     }
+
+
 
     fn http_delete(req: &mut Request, context: &Context) -> IronResult<Response> {
         let ref fileId = req.extensions
