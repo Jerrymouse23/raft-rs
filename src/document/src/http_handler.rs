@@ -423,12 +423,56 @@ pub fn init(binding_addr: SocketAddr,
 
         let bytes = payload.from_base64().expect("Payload is not base64");
 
+        let session = Uuid::new_v4();
+
         let res = match Handler::put(&SocketAddr::V4(context.node_addr),
                                      &username,
                                      &password,
                                      &Uuid::parse_str(&id).unwrap(),
                                      bytes,
-                                     &Uuid::new_v4(),
+                                     &session,
+                                     &LogId::from(lid).unwrap()) {
+            Ok(()) => Response::with((status::Ok, "Ok")),
+            Err(err) => {
+                Response::with((status::InternalServerError,
+                                "An error occured when updating document"))
+            }
+        };
+        Ok(res)
+
+    }
+
+    fn http_trans_put(req: &mut Request, context: &Context) -> IronResult<Response> {
+        let payload = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+
+            let p = body.find("payload").unwrap();
+
+            let str_payload = match *p {
+                serde_json::Value::String(ref load) => load,
+                _ => panic!("Unexpected payload type"),
+            };
+
+            str_payload.from_base64().expect("Payload is not base64")
+        };
+
+        let ref id = req.extensions.get::<Router>().unwrap().find("id").unwrap();
+        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
+        let session: Uuid =
+            req.extensions.get::<Router>().unwrap().find("session").unwrap().parse().unwrap();
+
+        let username = "username";
+        let password = "password";
+
+        let bytes = payload.from_base64().expect("Payload is not base64");
+
+
+        let res = match Handler::put(&SocketAddr::V4(context.node_addr),
+                                     &username,
+                                     &password,
+                                     &Uuid::parse_str(&id).unwrap(),
+                                     bytes,
+                                     &session,
                                      &LogId::from(lid).unwrap()) {
             Ok(()) => Response::with((status::Ok, "Ok")),
             Err(err) => {
