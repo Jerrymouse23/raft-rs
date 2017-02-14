@@ -21,6 +21,10 @@ struct ConnectionPreamble {
         # ClientResponse.
 
 	peeringRequest @2 :PeeringRequest;
+	# Indicates that a node wants to connect to the server. The recipient will 
+	# prepare the connection and then sends a ServerConnectionPreamble.
+
+	peeringResponse @3 :PeeringResponse;
     }
 }
 
@@ -45,6 +49,11 @@ struct PeeringRequest{
   addr @1 :Text;
 }
 
+struct PeerEntry{
+  id @0 :UInt64;
+  addr @1 :Text;
+}
+
 struct Entry {
     # A log entry.
 
@@ -56,7 +65,7 @@ struct Entry {
 }
 
 struct Message {
-    logId @9 :Data;
+    logId @7 :Data;
 
     union {
         appendEntriesRequest @0 :AppendEntriesRequest;
@@ -66,8 +75,7 @@ struct Message {
         transactionBegin @4 :TransactionBegin;
         transactionCommit @5 :TransactionCommit;
         transactionRollback @6 :TransactionRollback;
-	addPeerRequest @7 :AddPeerRequest;
-	addPeerResponse @8 :AddPeerResponse;
+#	addPeerResponse @8 :AddPeerResponse;
 #	removePeerRequest @9 :RemovePeerRequest;
 #	removePeerResponse @10 :RemovePeerResponse;
     }
@@ -166,19 +174,8 @@ struct RequestVoteResponse {
   }
 }
 
-struct AddPeerRequest{
-  nodeId @0 :UInt64;
-  nodeAddress @1 :Text;
-}
-
-struct AddPeerResponse{
-  nodeId @0 :UInt64;
-  # Information about which node has been added
-
-  union{
-	success @1 :Void;
-	failure @2 :Text;
-  }
+struct PeeringResponse{
+  peers @0 :List(PeerEntry); 
 }
 
 struct ClientRequest {

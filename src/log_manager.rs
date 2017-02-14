@@ -168,4 +168,15 @@ impl<L, M> LogManager<L, M>
             cons.add_peer(peer_id, peer_addr);
         }
     }
+
+    pub fn get_peers(&self) -> Vec<(&ServerId, &SocketAddr)> {
+        let mut result = Vec::new();
+        let cons = self.consensus.iter().next().unwrap().1;
+
+        for (id, addr) in cons.peers().iter() {
+            result.push((id, addr));
+        }
+
+        result
+    }
 }
