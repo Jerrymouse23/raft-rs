@@ -139,7 +139,11 @@ pub fn init(binding_addr: SocketAddr,
 
         let documents = state_machine.get_documents();
 
-        Ok(Response::with((status::Ok, format!("{}", documents))))
+        Ok(Response::with((status::Ok,
+                           format!("{:?}",
+                                   documents.iter()
+                                       .map(|d| d.simple().to_string())
+                                       .collect::<Vec<_>>()))))
     }
 
     fn http_logs(req: &mut Request,
