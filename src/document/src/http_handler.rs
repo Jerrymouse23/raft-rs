@@ -68,8 +68,10 @@ pub fn init(binding_addr: SocketAddr,
     router.delete("/document/:lid/:fileId/transaction/:session",
                   move |request: &mut Request| http_trans_delete(request, &context),
                   "delete_document");
-
-    router.put("/document",
+    router.put("/document/:lid",
+               move |request: &mut Request| http_put(request, &context),
+               "put_document");
+    router.put("/document/:lid/transaction/:session",
                move |request: &mut Request| http_put(request, &context),
                "put_document");
     router.post("/transaction/begin/:lid",
