@@ -61,19 +61,19 @@ pub fn init(binding_addr: SocketAddr,
                 "post_document");
     router.post("/document/:lid/transaction/:session",
                 move |request: &mut Request| http_trans_post(request, &context),
-                "post_document");
+                "post_trans_document");
     router.delete("/document/:lid/:fileId",
                   move |request: &mut Request| http_delete(request, &context),
                   "delete_document");
     router.delete("/document/:lid/:fileId/transaction/:session",
                   move |request: &mut Request| http_trans_delete(request, &context),
-                  "delete_document");
+                  "delete_trans_document");
     router.put("/document/:lid",
                move |request: &mut Request| http_put(request, &context),
                "put_document");
     router.put("/document/:lid/transaction/:session",
                move |request: &mut Request| http_put(request, &context),
-               "put_document");
+               "put_trans_document");
     router.post("/transaction/begin/:lid",
                 move |request: &mut Request| http_begin_transaction(request, &context),
                 "begin_transaction");
