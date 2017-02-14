@@ -6,12 +6,14 @@ use parser::Parser;
 use parser::toml::Parser as tParser;
 use toml::DecodeError;
 use raft::LogId;
+use raft::ServerId;
 
 #[derive(Debug,Deserialize,Clone)]
 pub struct Config {
     pub server: ServerConfig,
     pub peers: Vec<PeerConfig>,
     pub logs: Vec<LogConfig>,
+    pub dynamic_peer: Option<DynamicPeer>,
 }
 
 #[derive(Debug,Deserialize,Clone)]
@@ -20,7 +22,12 @@ pub struct ServerConfig {
     pub node_address: String,
     pub community_string: String,
     pub binding_addr: String,
-    pub dynamic_peering: Option<String>,
+}
+
+#[derive(Debug,Deserialize,Clone)]
+pub struct DynamicPeer {
+    pub node_id: u64,
+    pub node_address: String,
 }
 
 #[derive(Debug,Deserialize,Clone)]
@@ -55,12 +62,15 @@ impl Config {
         self.server.binding_addr.parse().expect("Binding address is invalid")
     }
 
-    pub fn get_dynamic_peering(&self) -> Option<SocketAddr> {
-        match self.server.dynamic_peering {
-            Some(ref leader_str) => {
-                let server: Vec<SocketAddr> = leader_str.to_socket_addrs().unwrap().collect();
+    pub fn get_dynamic_peering(&self) -> Option<(ServerId, SocketAddr)> {
+        match self.dynamic_peer {
+            Some(ref dpeer) => {
+                let id = dpeer.node_id;
+                let ref addr = dpeer.node_address;
 
-                Some(server[0])
+                let server: Vec<SocketAddr> = addr.to_socket_addrs().unwrap().collect();
+
+                Some((ServerId::from(id), server[0]))
             }
             None => None,
         }
