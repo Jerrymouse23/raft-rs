@@ -65,6 +65,10 @@ pub fn init(binding_addr: SocketAddr,
     router.delete("/document/:lid/:fileId",
                   move |request: &mut Request| http_delete(request, &context),
                   "delete_document");
+    router.delete("/document/:lid/:fileId/transaction/:session",
+                  move |request: &mut Request| http_trans_delete(request, &context),
+                  "delete_document");
+
     router.put("/document",
                move |request: &mut Request| http_put(request, &context),
                "put_document");
@@ -337,8 +341,6 @@ pub fn init(binding_addr: SocketAddr,
 
     }
 
-
-
     fn http_delete(req: &mut Request, context: &Context) -> IronResult<Response> {
         let ref fileId = req.extensions
             .get::<Router>()
@@ -352,6 +354,37 @@ pub fn init(binding_addr: SocketAddr,
         let password = "password";
 
         let session = Uuid::new_v4();
+
+        let res = match Handler::remove(&SocketAddr::V4(context.node_addr),
+                                        &username,
+                                        &password,
+                                        &Uuid::parse_str(*fileId).unwrap(),
+                                        &session,
+                                        &LogId::from(lid).unwrap()) {
+            Ok(()) => Response::with((status::Ok, "Ok")),
+            Err(err) => {
+                Response::with((status::InternalServerError,
+                                "An error occured when removing document"))
+            }
+        };
+
+        Ok(res)
+    }
+
+    fn http_trans_delete(req: &mut Request, context: &Context) -> IronResult<Response> {
+        let ref fileId = req.extensions
+            .get::<Router>()
+            .unwrap()
+            .find("fileId")
+            .unwrap();
+
+        let ref lid = req.extensions.get::<Router>().unwrap().find("lid").unwrap();
+        let session: Uuid =
+            req.extensions.get::<Router>().unwrap().find("session").unwrap().parse().unwrap();
+
+
+        let username = "username";
+        let password = "password";
 
         let res = match Handler::remove(&SocketAddr::V4(context.node_addr),
                                         &username,
