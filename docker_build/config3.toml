@@ -1,0 +1,14 @@
+[server]
+node_id = 3
+node_address= "leader:9002"
+community_string="test"
+binding_addr="0.0.0.0:3002"
+dynamic_peering = "leader:9000"
+
+[[logs]]
+path = "node2_0"
+lid = "3d30aa56-98b2-4891-aec5-847cee6e1703"
+
+[[logs]]
+path ="node2_1"
+lid ="2275a90d-5884-4498-9ba5-91122e2fe875"
