@@ -163,8 +163,16 @@ impl<L, M, A> Server<L, M, A>
     pub fn add_peer_dynamic(&mut self,
                             event_loop: &mut EventLoop<Server<L, M, A>>,
                             peer_id: ServerId,
-                            peer_addr: SocketAddr)
-                            -> Result<()> {
+                            peer_addr: SocketAddr) {
+        self.log_manager.add_peer(peer_id, peer_addr);
+        self.add_peer_static(event_loop, peer_id, peer_addr);
+    }
+
+    pub fn peering_request(&mut self,
+                           event_loop: &mut EventLoop<Server<L, M, A>>,
+                           peer_id: ServerId,
+                           peer_addr: SocketAddr)
+                           -> Result<()> {
         let token: Token = try!(self.connections
             .insert(try!(Connection::peer(peer_id, peer_addr)))
             .map_err(|_| Error::Raft(RaftError::ConnectionLimitReached)));
@@ -174,9 +182,9 @@ impl<L, M, A> Server<L, M, A>
 
         try!(self.connections[token].register(event_loop, token));
 
-        let message = messages::peering_request_connection_preamble(self.id, &self.addr);
+        // let message = messages::peering_request_connection_preamble(self.id, &self.addr);
 
-        self.send_message(event_loop, token, message);
+        // self.send_message(event_loop, token, message);
 
         let message = messages::server_connection_preamble(self.id,
                                                            &self.addr,
@@ -409,28 +417,6 @@ impl<L, M, A> Server<L, M, A>
                 ConnectionKind::Unknown => {
                     let preamble = try!(message.get_root::<connection_preamble::Reader>());
                     match try!(preamble.get_id().which()) {
-                        connection_preamble::id::Which::PeeringRequest(peer) => {
-                            let peer = try!(peer);
-                            let peer_id = ServerId(peer.get_id());
-                            let peer_addr: SocketAddr = peer.get_addr().unwrap().parse().unwrap();
-
-                            scoped_debug!("peering request from {:?} ({})", peer_id, peer_addr);
-
-                            if !self.peer_tokens.contains_key(&peer_id) {
-                                self.add_peer_dynamic(event_loop, peer_id, peer_addr);
-                            } else {
-                                scoped_debug!("Peer has been already added");
-                                let message =
-                                    messages::server_connection_preamble(self.id,
-                                                                         &self.addr,
-                                                                         self.community_string
-                                                                             .clone()
-                                                                             .as_str());
-
-                                self.send_message(event_loop, token, message);
-
-                            }
-                        }
                         connection_preamble::id::Which::Server(peer) => {
                             let peer = try!(peer);
                             let peer_id = ServerId(peer.get_id());
@@ -452,6 +438,17 @@ impl<L, M, A> Server<L, M, A>
                                 // Use the advertised address, not the remote's source
                                 // address, for future retries in this connection.
                                 self.connections[token].set_addr(peer_addr);
+
+                                println!("PeerId: {}", peer_id);
+                                println!("PeerToken: {:?}", token);
+
+                                println!("{:?}", self.peer_tokens);
+
+                                // Check if peer already exists and when not create
+
+                                if !self.log_manager.check_peer_exists(peer_id) {
+                                    self.add_peer_dynamic(event_loop, peer_id, peer_addr);
+                                }
 
                                 let prev_token = Some(self.peer_tokens
                                     .insert(peer_id, token)

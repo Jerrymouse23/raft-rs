@@ -19,8 +19,6 @@ struct ConnectionPreamble {
         # further messages sent by the client will be of type ClientRequest, and
         # all replys from the server to the client will be of type
         # ClientResponse.
-
-	peeringRequest @2 :PeeringRequest;
     }
 }
 
@@ -40,11 +38,6 @@ struct Client{
   data @1 :Data;
 }
 
-struct PeeringRequest{
-  id @0 :UInt64;
-  addr @1 :Text;
-}
-
 struct Entry {
     # A log entry.
 
@@ -56,7 +49,7 @@ struct Entry {
 }
 
 struct Message {
-    logId @9 :Data;
+    logId @7 :Data;
 
     union {
         appendEntriesRequest @0 :AppendEntriesRequest;
@@ -66,10 +59,6 @@ struct Message {
         transactionBegin @4 :TransactionBegin;
         transactionCommit @5 :TransactionCommit;
         transactionRollback @6 :TransactionRollback;
-	addPeerRequest @7 :AddPeerRequest;
-	addPeerResponse @8 :AddPeerResponse;
-#	removePeerRequest @9 :RemovePeerRequest;
-#	removePeerResponse @10 :RemovePeerResponse;
     }
 }
 

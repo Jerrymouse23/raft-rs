@@ -168,4 +168,10 @@ impl<L, M> LogManager<L, M>
             cons.add_peer(peer_id, peer_addr);
         }
     }
+
+    pub fn check_peer_exists(&self, peer_id: ServerId) -> bool {
+        let (_, cons) = self.consensus.iter().next().unwrap();
+
+        cons.peers().contains_key(&peer_id)
+    }
 }

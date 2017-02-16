@@ -43,21 +43,6 @@ pub fn client_connection_preamble(id: ClientId,
     Rc::new(message)
 }
 
-pub fn peering_request_connection_preamble(id: ServerId,
-                                           addr: &SocketAddr)
-                                           -> Rc<Builder<HeapAllocator>> {
-    let mut message = Builder::new_default();
-    {
-        let mut server = message.init_root::<connection_preamble::Builder>()
-            .init_id()
-            .init_peering_request();
-        server.set_addr(&format!("{}", addr));
-        server.set_id(id.as_u64());
-    }
-    Rc::new(message)
-
-}
-
 // AppendEntries
 
 pub fn append_entries_request(term: Term,
@@ -396,28 +381,6 @@ pub fn transaction_rollback(lid: &LogId) -> Rc<Builder<HeapAllocator>> {
         let mut request = message.init_root::<message::Builder>();
         request.set_log_id(&lid.as_bytes());
         request.init_transaction_rollback();
-    }
-    Rc::new(message)
-}
-
-pub fn add_peer_request(node_id: u64, node_address: &SocketAddr) -> Builder<HeapAllocator> {
-    let mut message = Builder::new_default();
-    {
-        let mut request = message.init_root::<message::Builder>();
-        let mut r = request.init_add_peer_request();
-        r.set_node_id(node_id);
-        r.set_node_address(&format!("{}", node_address));
-    }
-    message
-}
-
-pub fn add_peer_response_success(node_id: u64) -> Rc<Builder<HeapAllocator>> {
-    let mut message = Builder::new_default();
-    {
-        let mut response = message.init_root::<message::Builder>();
-        let mut response = response.init_add_peer_response();
-        response.set_node_id(node_id);
-        response.set_success(());
     }
     Rc::new(message)
 }
