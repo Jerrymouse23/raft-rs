@@ -13,7 +13,8 @@ use messages_capnp::{client_request, client_response, connection_preamble, messa
 
 pub fn server_connection_preamble(id: ServerId,
                                   addr: &SocketAddr,
-                                  community_string: &str)
+                                  community_string: &str,
+                                  peers: Vec<(ServerId,SocketAddr)>)
                                   -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
@@ -23,6 +24,13 @@ pub fn server_connection_preamble(id: ServerId,
         server.set_addr(&format!("{}", addr));
         server.set_id(id.as_u64());
         server.set_community(community_string);
+
+        let mut entry_list = server.init_peers(peers.len() as u32);
+        for (n,entry) in peers.iter().enumerate(){
+            let mut slot = entry_list.borrow().get(n as u32);
+            slot.set_id(entry.0.as_u64());
+            slot.set_addr(&format!("{}",entry.1));
+        }
     }
     Rc::new(message)
 }

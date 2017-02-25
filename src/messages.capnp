@@ -28,6 +28,14 @@ struct Peer {
    addr @1 :Text;
 
    community @2 :Text;
+
+
+   peers @3 :List(PeerEntry);
+}
+
+struct PeerEntry{
+   id @0 :UInt64;
+   addr @1 :Text;
 }
 
 struct Client{
