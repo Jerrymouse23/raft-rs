@@ -153,19 +153,12 @@ impl<L, M, A> Server<L, M, A>
 
         let message = messages::server_connection_preamble(self.id,
                                                            &self.addr,
-                                                           self.community_string.clone().as_str());
+                                                           self.community_string.clone().as_str(),
+                                                           self.log_manager.get_peers());
 
         self.send_message(event_loop, token, message);
 
         Ok(())
-    }
-
-    pub fn add_peer_dynamic(&mut self,
-                            event_loop: &mut EventLoop<Server<L, M, A>>,
-                            peer_id: ServerId,
-                            peer_addr: SocketAddr) {
-        self.log_manager.add_peer(peer_id, peer_addr);
-        self.add_peer_static(event_loop, peer_id, peer_addr);
     }
 
     pub fn peering_request(&mut self,
@@ -173,22 +166,20 @@ impl<L, M, A> Server<L, M, A>
                            peer_id: ServerId,
                            peer_addr: SocketAddr)
                            -> Result<()> {
+
+        scoped_debug!("Start peering with {:?}", peer_addr);
+
         let token: Token = try!(self.connections
             .insert(try!(Connection::peer(peer_id, peer_addr)))
             .map_err(|_| Error::Raft(RaftError::ConnectionLimitReached)));
+
         scoped_assert!(self.peer_tokens.insert(peer_id, token).is_none());
 
         self.log_manager.add_peer(peer_id, peer_addr);
 
         try!(self.connections[token].register(event_loop, token));
 
-        // let message = messages::peering_request_connection_preamble(self.id, &self.addr);
-
-        // self.send_message(event_loop, token, message);
-
-        let message = messages::server_connection_preamble(self.id,
-                                                           &self.addr,
-                                                           self.community_string.clone().as_str());
+        let message = messages::init_peer(self.id, &self.addr);
 
         self.send_message(event_loop, token, message);
 
@@ -399,7 +390,6 @@ impl<L, M, A> Server<L, M, A>
         self.log_manager.handle_queue(&mut actions);
         self.execute_actions(event_loop, actions);
 
-
         scoped_trace!("{:?}: readable event", self.connections[token]);
         // Read messages from the connection until there are no more.
         while let Some(message) = try!(self.connections[token].readable()) {
@@ -417,6 +407,26 @@ impl<L, M, A> Server<L, M, A>
                 ConnectionKind::Unknown => {
                     let preamble = try!(message.get_root::<connection_preamble::Reader>());
                     match try!(preamble.get_id().which()) {
+                        connection_preamble::id::Which::PeerInit(peer) => {
+                            let peer = try!(peer);
+                            let peer_id = ServerId(peer.get_id());
+
+                            // Not the source address of this connection, but the
+                            // address the peer tells us it's listening on.
+                            let peer_addr = SocketAddr::from_str(try!(peer.get_addr())).unwrap();
+                            scoped_debug!("received new connection from {:?} ({})",
+                                          peer_id,
+                                          peer_addr);
+
+                            if !self.log_manager.check_peer_exists(peer_id) {
+                                self.log_manager.add_peer(peer_id, peer_addr);
+                                self.add_peer_static(event_loop, peer_id, peer_addr);
+                            } else {
+                                // Was already connected
+                                scoped_debug!("Dynamic peer wants to reconnect {:?}", peer_addr);
+                            }
+
+                        }
                         connection_preamble::id::Which::Server(peer) => {
                             let peer = try!(peer);
                             let peer_id = ServerId(peer.get_id());
@@ -439,20 +449,40 @@ impl<L, M, A> Server<L, M, A>
                                 // address, for future retries in this connection.
                                 self.connections[token].set_addr(peer_addr);
 
-                                println!("PeerId: {}", peer_id);
-                                println!("PeerToken: {:?}", token);
+                                // Connect also to the other peers
 
-                                println!("{:?}", self.peer_tokens);
+                                if let Ok(peers) = peer.get_peers() {
+                                    let num_peers: u32 = peers.len();
 
-                                // Check if peer already exists and when not create
+                                    // Filter peers which are already connected to
+                                    let peers_vec: Vec<(ServerId, SocketAddr)> = peers.iter()
+                                        .map(|entry| {
+                                            (ServerId::from(entry.get_id()),
+                                             entry.get_addr()
+                                                 .unwrap()
+                                                 .parse()
+                                                 .expect("Received invalid peer addr"))
+                                        })
+                                        .filter(|&(id, _)| {
+                                            !self.peer_tokens.contains_key(&id) && id != self.id
+                                        })
+                                        .collect();
 
-                                if !self.log_manager.check_peer_exists(peer_id) {
-                                    self.add_peer_dynamic(event_loop, peer_id, peer_addr);
+                                    for &(id, addr) in peers_vec.iter() {
+                                        self.peering_request(event_loop, id, addr);
+                                    }
                                 }
 
-                                let prev_token = Some(self.peer_tokens
-                                    .insert(peer_id, token)
-                                    .expect("peer token not found"));
+                                let prev_token = Some(match self.peer_tokens
+                                    .insert(peer_id, token) {
+                                    Some(x) => x,
+                                    None => {
+                                        self.log_manager.add_peer(peer_id, peer_addr);
+                                        try!(self.connections[token].register(event_loop, token));
+
+                                        token
+                                    }
+                                });
 
                                 // Close the existing connection, if any.
                                 // Currently, prev_token is never `None`; see above.
@@ -669,7 +699,10 @@ impl<L, M, A> Handler for Server<L, M, A>
                 };
                 let addr = self.connections[token].addr().clone();
                 self.connections[token]
-                    .reconnect_peer(self.id, &local_addr.unwrap(), self.community_string.clone())
+                    .reconnect_peer(self.id,
+                                    &local_addr.unwrap(),
+                                    self.community_string.clone(),
+                                    self.log_manager.get_peers())
                     .and_then(|_| self.connections[token].register(event_loop, token))
                     .map(|_| {
                         let mut actions = Actions::new();

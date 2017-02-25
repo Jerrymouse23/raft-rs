@@ -121,7 +121,7 @@ pub struct Consensus<L, M> {
     /// The ID of this consensus instance.
     id: ServerId,
     /// The IDs of peers in the consensus group.
-    peers: HashMap<ServerId, SocketAddr>,
+    pub peers: HashMap<ServerId, SocketAddr>,
 
     /// The persistent log.
     pub log: L,
@@ -406,12 +406,6 @@ impl<L, M> Consensus<L, M>
                                  addr: SocketAddr,
                                  actions: &mut Actions) {
         push_log_scope!("{:?}", self);
-
-        println!("Connection reset");
-
-        println!("What peer {:?}", peer);
-        println!("What peer address {:?}", addr);
-        println!("All keys {:?}", self.peers.keys());
 
         self.peers.insert(peer, addr);
 

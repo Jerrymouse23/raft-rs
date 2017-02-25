@@ -3,6 +3,7 @@
 
 use std::net::SocketAddr;
 use std::rc::Rc;
+use std::collections::HashMap;
 
 use capnp::message::{Builder, HeapAllocator};
 
@@ -14,7 +15,7 @@ use messages_capnp::{client_request, client_response, connection_preamble, messa
 pub fn server_connection_preamble(id: ServerId,
                                   addr: &SocketAddr,
                                   community_string: &str,
-                                  peers: Vec<(ServerId,SocketAddr)>)
+                                  peers: &HashMap<ServerId, SocketAddr>)
                                   -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
@@ -26,10 +27,10 @@ pub fn server_connection_preamble(id: ServerId,
         server.set_community(community_string);
 
         let mut entry_list = server.init_peers(peers.len() as u32);
-        for (n,entry) in peers.iter().enumerate(){
+        for (n, entry) in peers.iter().enumerate() {
             let mut slot = entry_list.borrow().get(n as u32);
             slot.set_id(entry.0.as_u64());
-            slot.set_addr(&format!("{}",entry.1));
+            slot.set_addr(&format!("{}", entry.1));
         }
     }
     Rc::new(message)
@@ -47,6 +48,18 @@ pub fn client_connection_preamble(id: ClientId,
         client.set_username(username);
         client.set_password(password);
         client.set_id(id.as_bytes());
+    }
+    Rc::new(message)
+}
+
+pub fn init_peer(id: ServerId, addr: &SocketAddr) -> Rc<Builder<HeapAllocator>> {
+    let mut message = Builder::new_default();
+    {
+        let mut message = message.init_root::<connection_preamble::Builder>()
+            .init_id()
+            .init_peer_init();
+        message.set_id(id.as_u64());
+        message.set_addr(&format!("{}", addr));
     }
     Rc::new(message)
 }

@@ -19,7 +19,14 @@ struct ConnectionPreamble {
         # further messages sent by the client will be of type ClientRequest, and
         # all replys from the server to the client will be of type
         # ClientResponse.
+
+	peerInit @2 :PeerInit;
     }
+}
+
+struct PeerInit{
+   id @0 :UInt64;
+   addr @1 :Text;
 }
 
 struct Peer {
@@ -28,7 +35,6 @@ struct Peer {
    addr @1 :Text;
 
    community @2 :Text;
-
 
    peers @3 :List(PeerEntry);
 }

@@ -174,4 +174,8 @@ impl<L, M> LogManager<L, M>
 
         cons.peers().contains_key(&peer_id)
     }
+
+    pub fn get_peers(&self) -> &HashMap<ServerId, SocketAddr> {
+        &self.consensus.iter().next().unwrap().1.peers
+    }
 }

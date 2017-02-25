@@ -281,10 +281,8 @@ fn server(args: &Args) {
     {
         if peers.len() == 0 {
             match config.get_dynamic_peering() {
-                Some((_, peer_addr)) => {
-                    server.peering_request(&mut event_loop,
-                                           ServerId::from(config.server.node_id),
-                                           peer_addr);
+                Some((peer_id, peer_addr)) => {
+                    server.peering_request(&mut event_loop, ServerId::from(peer_id), peer_addr);
                 }
                 None => panic!("No peers or dynamic peering defined"),
             }

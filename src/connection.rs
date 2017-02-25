@@ -1,6 +1,7 @@
 use std::fmt;
 use std::net::SocketAddr;
 use std::rc::Rc;
+use std::collections::HashMap;
 
 use mio::tcp::TcpStream;
 use mio::Timeout as TimeoutHandle;
@@ -66,6 +67,16 @@ impl Connection {
             kind: ConnectionKind::Unknown,
             addr: addr,
             stream: Some(MessageStream::new(socket, ReaderOptions::new())),
+            backoff: Backoff::with_duration_range(50, 10000),
+        })
+    }
+
+    pub fn connect_unknown(addr: SocketAddr) -> Result<Connection> {
+        let stream = try!(TcpStream::connect(&addr));
+        Ok(Connection {
+            kind: ConnectionKind::Unknown,
+            addr: addr,
+            stream: Some(MessageStream::new(stream, ReaderOptions::new())),
             backoff: Backoff::with_duration_range(50, 10000),
         })
     }
@@ -203,13 +214,17 @@ impl Connection {
     pub fn reconnect_peer(&mut self,
                           id: ServerId,
                           local_addr: &SocketAddr,
-                          community_string: String)
+                          community_string: String,
+                          peers: &HashMap<ServerId, SocketAddr>)
                           -> Result<()> {
         scoped_assert!(self.kind.is_peer());
         scoped_trace!("{:?}: reconnect", self);
         self.stream = Some(MessageStream::new(try!(TcpStream::connect(&self.addr)),
                                               ReaderOptions::new()));
-        try!(self.send_message(messages::server_connection_preamble(id, local_addr,&community_string)));
+        try!(self.send_message(messages::server_connection_preamble(id,
+                                                                    local_addr,
+                                                                    &community_string,
+                                                                    peers)));
         Ok(())
     }
 
