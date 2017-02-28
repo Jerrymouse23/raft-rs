@@ -901,7 +901,8 @@ mod tests {
         serialize::write_message(&mut out_stream,
                                  &*messages::server_connection_preamble(peer_id,
                                                                         &fake_peer_addr,
-                                                                        "test"))
+                                                                        "test",
+                                                                        &HashMap::new()))
             .unwrap();
         out_stream.flush().unwrap();
         event_loop.run_once(&mut server, None).unwrap();
@@ -1079,7 +1080,11 @@ mod tests {
         // Send a test message (the type is not important).
         let mut actions = Actions::new();
         actions.peer_messages
-            .push((peer_id, messages::server_connection_preamble(peer_id, &peer_addr, "test")));
+            .push((peer_id,
+                   messages::server_connection_preamble(peer_id,
+                                                        &peer_addr,
+                                                        "test",
+                                                        &HashMap::new())));
         server.execute_actions(&mut event_loop, actions);
 
         assert_eq!(peer_id, read_server_preamble(&mut in_stream));
