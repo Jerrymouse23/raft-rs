@@ -20,11 +20,11 @@ struct ConnectionPreamble {
         # all replys from the server to the client will be of type
         # ClientResponse.
 
-	peerInit @2 :PeerInit;
+	serverAdd @2 :ServerAdd;
     }
 }
 
-struct PeerInit{
+struct ServerAdd{
    id @0 :UInt64;
    addr @1 :Text;
 }

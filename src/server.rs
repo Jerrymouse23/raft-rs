@@ -179,7 +179,7 @@ impl<L, M, A> Server<L, M, A>
 
         try!(self.connections[token].register(event_loop, token));
 
-        let message = messages::init_peer(self.id, &self.addr);
+        let message = messages::server_add(self.id, &self.addr);
 
         self.send_message(event_loop, token, message);
 
@@ -407,7 +407,7 @@ impl<L, M, A> Server<L, M, A>
                 ConnectionKind::Unknown => {
                     let preamble = try!(message.get_root::<connection_preamble::Reader>());
                     match try!(preamble.get_id().which()) {
-                        connection_preamble::id::Which::PeerInit(peer) => {
+                        connection_preamble::id::Which::ServerAdd(peer) => {
                             let peer = try!(peer);
                             let peer_id = ServerId(peer.get_id());
 
