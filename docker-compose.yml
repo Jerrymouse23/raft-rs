@@ -1,17 +1,31 @@
-version:'2'
+version: '3'
 services:
         node1:
                 build: .
-                volume: docker_build:./
-                links:
-                        - node1
-                environment:
-                        - RUST_LOG='raft=debug'
+                environment: 
+                        RUST_BACKTRACE: 1
+                        RUST_LOG: raft=debug
+                volumes: 
+                        - ./docker_build/config:/config
+                        - ./docker_build/data:/data
+                networks:
+                        - cluster 
+                ports:
+                        - "9000:9000"
+                        - "3000:3000"
         node2:
                 build: .
-                volume: docker_build:./
-                links:
-                        - node2
-                environment:
-                        RUST_LOG: 'raft=debug'
-
+                environment: 
+                        RUST_BACKTRACE: 1
+                        RUST_LOG: raft=debug
+                volumes: 
+                        - ./docker_build/config2:/config
+                        - ./docker_build/data2:/data
+                networks:
+                        - cluster 
+                ports:
+                        - "9001:9000"
+                        - "3001:3000"
+networks:
+        cluster: 
+                driver: bridge

@@ -1,17 +1,17 @@
 [server]
-node_id =2 
-node_address= "node2:9000"
+node_id = 1
+node_address= "node1:9000"
 community_string="test"
 binding_addr="0.0.0.0:3000"
 
 [[peers]]
-node_id = 1
-node_address = "node1:9000"
+node_id = 2
+node_address = "node2:9000"
 
 [[logs]]
-path = "node1_0"
+path = "/data/node1"
 lid = "3d30aa56-98b2-4891-aec5-847cee6e1703"
 
 [[logs]]
-path ="node1_1"
+path ="/data/node2"
 lid ="2275a90d-5884-4498-9ba5-91122e2fe875"
