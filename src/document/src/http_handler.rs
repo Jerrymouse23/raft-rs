@@ -13,6 +13,7 @@ use std::error::Error;
 
 use document::*;
 use handler::Handler;
+use statemachine::DocumentStateMachine;
 use doclog::DocLog;
 
 use std::thread::spawn;

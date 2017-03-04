@@ -34,6 +34,7 @@ pub mod http_handler;
 pub mod handler;
 pub mod config;
 pub mod doclog;
+mod statemachine;
 mod parser;
 
 use std::net::SocketAddr;
@@ -51,6 +52,7 @@ use raft::Server;
 use raft::LogId;
 use raft::state_machine::StateMachine;
 
+use statemachine::DocumentStateMachine;
 use document::*;
 use config::*;
 use handler::Handler;
