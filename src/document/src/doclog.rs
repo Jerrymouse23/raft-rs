@@ -4,6 +4,7 @@ use std::io::prelude::*;
 use bincode::SizeLimit;
 use bincode::serde::serialize as encode;
 use bincode::serde::deserialize_from as decode_from;
+use bincode::serde::serialize_into as encode_into;
 use std::fs::OpenOptions;
 
 use raft::persistent_log::Log;
@@ -49,6 +50,7 @@ impl DocLog {
         };
 
         d.set_current_term(Term::from(0)).unwrap();
+        d.restore_snapshot();
 
         d
     }
@@ -56,6 +58,35 @@ impl DocLog {
     pub fn get_volume(&self) -> String {
         format!("{}", self.prefix)
     }
+
+    //TODO implement Result
+    pub fn snapshot(&self){
+        let mut handler = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(format!("{}/{}_log",self.prefix,self.logid)).expect(&format!("Filehandler cannot open {}/{}_{}",
+                             self.prefix,
+                             self.logid,
+                             "log"));
+
+        encode_into(&mut handler,&self.entries.as_slice(),SizeLimit::Infinite).expect("Log serialize_into failed"); 
+    }
+
+    pub fn restore_snapshot(&mut self){
+         let mut handler = match OpenOptions::new()
+            .read(true)
+            .write(false)
+            .create(false)
+            .open(format!("{}/{}_log",self.prefix,self.logid)){
+                Ok(s) => s,
+                Err(_) => return
+            };
+            
+            
+        self.entries = decode_from(&mut handler,SizeLimit::Infinite).expect("Log serialize_into failed"); 
+    }
+
 }
 
 // TODO error handling for IO
@@ -155,6 +186,7 @@ impl Log for DocLog {
                       -> result::Result<(), Error> {
         assert!(self.latest_log_index().unwrap() + 1 >= from);
         self.entries.truncate((from - 1).as_u64() as usize);
+        self.snapshot();
         Ok(self.entries.extend(entries.iter().map(|&(term, command)| (term, command.to_vec()))))
     }
 
