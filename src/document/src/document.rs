@@ -8,7 +8,7 @@ use std::net::ToSocketAddrs;
 use std::collections::HashSet;
 
 use handler::Message;
-//use io_handler::Handler;
+// use io_handler::Handler;
 use doclog::DocLog;
 
 use std::net::SocketAddr;
@@ -47,7 +47,7 @@ pub enum ActionType {
     Remove,
 }
 
-//TODO make method private
+// TODO make method private
 #[derive(Debug,Clone,Deserialize,Serialize)]
 pub struct DocumentRecord {
     id: DocumentId,

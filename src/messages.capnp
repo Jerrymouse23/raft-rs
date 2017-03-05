@@ -47,7 +47,7 @@ struct PeerEntry{
 struct Client{
   id @3 :Data;
   username @2 :Text;
-  password @0 :Data;
+  password @0 :Text;
 
   data @1 :Data;
 }

@@ -516,14 +516,7 @@ impl<L, M, A> Server<L, M, A>
                             let client_username = client.get_username().unwrap();
                             let client_password = client.get_password().unwrap();
 
-                            // let hashed = FileAuth::find(client_username);
-                            let hashed = A::find(client_username);
-
-                            let isAuth = A::compare(&String::from_utf8(client_password.to_vec())
-                                                        .unwrap(),
-                                                    &hashed);
-
-                            if isAuth == false {
+                            if !self.auth.find(client_username, client_password) {
                                 scoped_debug!("Wrong username or password");
                             } else {
 

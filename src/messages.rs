@@ -38,7 +38,7 @@ pub fn server_connection_preamble(id: ServerId,
 
 pub fn client_connection_preamble(id: ClientId,
                                   username: &str,
-                                  password: &[u8])
+                                  password: &str)
                                   -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {

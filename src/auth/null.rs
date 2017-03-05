@@ -1,19 +1,30 @@
 #[allow(dead_code)]
 use auth::Auth;
+use auth::credentials::Credentials;
 
 #[derive(Debug,Clone)]
-pub struct NullAuth;
+pub struct NullAuth<C> where C: Credentials{
+    credentials:C
+}
 
-impl Auth for NullAuth {
+impl<C> NullAuth<C> where C:Credentials{
+    pub fn new(credentials: C)-> Self{
+        NullAuth{
+            credentials: credentials
+        }
+    }
+}
+
+impl<C> Auth for NullAuth<C> where C: Credentials{
     fn generate(plain: &str) -> String {
         format!("hashed_{}", plain)
     }
 
-    fn compare(hash1: &str, hash2: &str) -> bool {
+    fn compare(&self,hash1: &str, hash2: &str) -> bool {
         true
     }
 
-    fn find(user: &str) -> String {
-        "".to_string()
+    fn find(&self,user: &str,hash: &str) -> bool {
+        true
     }
 }

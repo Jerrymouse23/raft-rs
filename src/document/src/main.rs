@@ -56,7 +56,8 @@ use config::*;
 use handler::Handler;
 use doclog::DocLog;
 
-use raft::auth::null::NullAuth;
+use raft::auth::simple::SimpleAuth;
+use raft::auth::credentials::SingleCredentials;
 
 use http_handler::*;
 
@@ -246,17 +247,20 @@ fn server(args: &Args) {
             let snap_map = state_machine.get_snapshot_map().unwrap_or(Vec::new());
             let snap_log = state_machine.get_snapshot_log().unwrap_or(Vec::new());
 
-            state_machine.restore_snapshot(snap_map,snap_log);
+            state_machine.restore_snapshot(snap_map, snap_log);
         }
         logs.push((logid, log, state_machine));
         println!("Init {:?}", l.lid);
     }
 
+    let credentials = SingleCredentials::new(config.security.username.clone(), config.security.password.clone());
+    let auth = SimpleAuth::new(credentials);
+
     let (mut server, mut event_loop) = Server::new(ServerId::from(config.server.node_id),
                                                    server_addr,
                                                    &peers,
                                                    config.server.community_string.to_string(),
-                                                   NullAuth,
+                                                   auth,
                                                    logs)
         .unwrap();
 

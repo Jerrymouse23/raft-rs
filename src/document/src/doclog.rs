@@ -59,34 +59,36 @@ impl DocLog {
         format!("{}", self.prefix)
     }
 
-    //TODO implement Result
-    pub fn snapshot(&self){
+    // TODO implement Result
+    pub fn snapshot(&self) {
         let mut handler = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .open(format!("{}/{}_log",self.prefix,self.logid)).expect(&format!("Filehandler cannot open {}/{}_{}",
+            .open(format!("{}/{}_log", self.prefix, self.logid))
+            .expect(&format!("Filehandler cannot open {}/{}_{}",
                              self.prefix,
                              self.logid,
                              "log"));
 
-        encode_into(&mut handler,&self.entries.as_slice(),SizeLimit::Infinite).expect("Log serialize_into failed"); 
+        encode_into(&mut handler, &self.entries.as_slice(), SizeLimit::Infinite)
+            .expect("Log serialize_into failed");
     }
 
-    pub fn restore_snapshot(&mut self){
-         let mut handler = match OpenOptions::new()
+    pub fn restore_snapshot(&mut self) {
+        let mut handler = match OpenOptions::new()
             .read(true)
             .write(false)
             .create(false)
-            .open(format!("{}/{}_log",self.prefix,self.logid)){
-                Ok(s) => s,
-                Err(_) => return
-            };
-            
-            
-        self.entries = decode_from(&mut handler,SizeLimit::Infinite).expect("Log serialize_into failed"); 
-    }
+            .open(format!("{}/{}_log", self.prefix, self.logid)) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
 
+
+        self.entries = decode_from(&mut handler, SizeLimit::Infinite)
+            .expect("Log serialize_into failed");
+    }
 }
 
 // TODO error handling for IO

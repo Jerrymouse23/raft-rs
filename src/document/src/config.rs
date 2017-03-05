@@ -14,6 +14,7 @@ pub struct Config {
     pub peers: Vec<PeerConfig>,
     pub logs: Vec<LogConfig>,
     pub dynamic_peer: Option<DynamicPeer>,
+    pub security: SecurityConfig,
 }
 
 #[derive(Debug,Deserialize,Clone)]
@@ -40,6 +41,12 @@ pub struct PeerConfig {
 pub struct LogConfig {
     pub path: String,
     pub lid: String,
+}
+
+#[derive(Debug,Deserialize,Clone)]
+pub struct SecurityConfig {
+    pub username: String,
+    pub password: String,
 }
 
 impl Config {

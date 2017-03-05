@@ -1,6 +1,8 @@
 use std::fmt::Debug;
 
 pub mod null;
+pub mod credentials;
+pub mod simple;
 
 /// A trait to do authentification
 pub trait Auth: Clone + Debug + Send + 'static {
@@ -8,8 +10,7 @@ pub trait Auth: Clone + Debug + Send + 'static {
     fn generate(plain: &str) -> String;
 
     /// Checks hash and returns whether it was successful or not
-    fn compare(plain: &str, hash: &str) -> bool;
+    fn compare(&self,plain: &str, hash: &str) -> bool;
 
-    /// Returns hash of given user
-    fn find(user: &str) -> String;
+    fn find(&self,user: &str,hash:&str) -> bool;
 }

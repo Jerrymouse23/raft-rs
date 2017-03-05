@@ -47,13 +47,13 @@ impl Client {
                         -> Client {
 
         // let hashed_password = Auth::generate(&password);
-        let hashed_password = A::generate(&password);
+        //let hashed_password = A::generate(&password);
 
         Client {
             id: ClientId::new(),
             leader_connection: None,
             cluster: cluster,
-            password: hashed_password,
+            password: password,
             username: username,
             lid: lid,
         }
@@ -111,7 +111,7 @@ impl Client {
                     // Send the preamble.
                     let preamble = messages::client_connection_preamble(self.id,
                                                                         self.username.as_str(),
-                                                                        self.password.as_bytes());
+                                                                        self.password.as_str());
                     let mut stream = match TcpStream::connect(leader) {
                         Ok(stream) => BufStream::new(stream),
                         Err(_) => continue,
@@ -164,7 +164,7 @@ impl Client {
                                                                                 self.username
                                                                                     .as_str(),
                                                                                 self.password
-                                                                                    .as_bytes());
+                                                                                    .as_str());
                             if let Err(_) = serialize::write_message(&mut connection, &*preamble) {
                                 continue;
                             };
@@ -209,7 +209,7 @@ impl Client {
                                                                                 self.username
                                                                                     .as_str(),
                                                                                 self.password
-                                                                                    .as_bytes());
+                                                                                    .as_str());
                             if let Err(_) = serialize::write_message(&mut connection, &*preamble) {
                                 continue;
                             };

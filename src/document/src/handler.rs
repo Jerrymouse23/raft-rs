@@ -13,7 +13,8 @@ use bincode::SizeLimit;
 use std::collections::HashSet;
 use std::str::from_utf8;
 
-use raft::auth::null::NullAuth;
+use raft::auth::credentials::SingleCredentials;
+use raft::auth::simple::SimpleAuth;
 
 #[derive(Debug,Serialize,Deserialize)]
 pub enum Message {
@@ -33,7 +34,7 @@ impl Handler {
     }
 
     fn new_client(addr: &SocketAddr, username: &str, password: &str, lid: &LogId) -> Client {
-        Client::new::<NullAuth>(Self::to_hashset(*addr),
+        Client::new::<SimpleAuth<SingleCredentials>>(Self::to_hashset(*addr),
                                 username.to_string(),
                                 password.to_string(),
                                 *lid)
