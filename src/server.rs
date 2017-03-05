@@ -151,10 +151,11 @@ impl<L, M, A> Server<L, M, A>
 
         try!(self.connections[token].register(event_loop, token));
 
+        let peers = self.log_manager.get_peers();
         let message = messages::server_connection_preamble(self.id,
                                                            &self.addr,
                                                            self.community_string.clone().as_str(),
-                                                           self.log_manager.get_peers());
+                                                           &peers.read().unwrap());
 
         self.send_message(event_loop, token, message);
 
@@ -691,11 +692,12 @@ impl<L, M, A> Handler for Server<L, M, A>
                     _ => unreachable!(),
                 };
                 let addr = self.connections[token].addr().clone();
+                let peers = self.log_manager.get_peers();
                 self.connections[token]
                     .reconnect_peer(self.id,
                                     &local_addr.unwrap(),
                                     self.community_string.clone(),
-                                    self.log_manager.get_peers())
+                                    &peers.read().unwrap())
                     .and_then(|_| self.connections[token].register(event_loop, token))
                     .map(|_| {
                         let mut actions = Actions::new();

@@ -277,8 +277,9 @@ fn server(args: &Args) {
     {
         let states = server.log_manager.get_states();
         let state_machines = server.log_manager.get_state_machines();
+        let peers = server.log_manager.get_peers();
 
-        init(config.get_binding_addr(), node_addr, states, state_machines);
+        init(config.get_binding_addr(), node_addr, states, state_machines,peers);
     }
 
     server.init(&mut event_loop);

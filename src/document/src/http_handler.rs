@@ -21,6 +21,7 @@ use std::collections::HashSet;
 use std::boxed::Box;
 
 use raft::LogId;
+use raft::ServerId;
 use raft::state::{LeaderState, CandidateState, FollowerState};
 
 use std::collections::HashMap;
@@ -47,7 +48,8 @@ pub fn init(binding_addr: SocketAddr,
                             (Arc<RwLock<LeaderState>>,
                              Arc<RwLock<CandidateState>>,
                              Arc<RwLock<FollowerState>>)>,
-            state_machines: HashMap<LogId, Arc<DocumentStateMachine>>) {
+            state_machines: HashMap<LogId, Arc<DocumentStateMachine>>,
+            peers: Arc<RwLock<HashMap<ServerId, SocketAddr>>>) {
     let mut router = Router::new();
 
     let states = Arc::new(states);
@@ -124,6 +126,13 @@ pub fn init(binding_addr: SocketAddr,
                        http_meta_state_follower(request, &context, states.clone())
                    },
                    "meta_state_follower");
+    }
+    {
+        router.get("/meta/peers",
+                   move |request: &mut Request| {
+                       http_meta_peers(request, &context, peers.clone())
+                   },
+                   "meta_peers");
     }
 
     fn http_get_documents(req: &mut Request,
@@ -215,6 +224,15 @@ pub fn init(binding_addr: SocketAddr,
                                (status::BadRequest, "Cannot find logid"));
         let lid = itry!(LogId::from(raw_lid), (status::BadRequest, "Invalid logid"));
         let lock = state.get(&lid).unwrap().2.read().expect("Could not lock state");
+
+        Ok(Response::with((status::Ok, format!("{}", to_json(&*lock).unwrap()))))
+    }
+
+    fn http_meta_peers(req: &mut Request,
+                       context: &Context,
+                       peers: Arc<RwLock<HashMap<ServerId, SocketAddr>>>)
+                       -> IronResult<Response> {
+        let lock = peers.read().unwrap();
 
         Ok(Response::with((status::Ok, format!("{}", to_json(&*lock).unwrap()))))
     }

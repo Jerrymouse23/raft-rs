@@ -20,6 +20,7 @@ pub struct LogManager<L, M>
     where L: Log,
           M: StateMachine
 {
+    peers: Arc<RwLock<HashMap<ServerId,SocketAddr>>>,
     pub consensus: HashMap<LogId, Consensus<L, M>>,
 }
 
@@ -39,7 +40,7 @@ impl<L, M> LogManager<L, M>
             logs.insert(lid, consensus);
         }
 
-        LogManager { consensus: logs }
+        LogManager { consensus: logs, peers: Arc::new(RwLock::new(peers))}
     }
 
     pub fn get(&self, index: LogId) -> Option<&Consensus<L, M>> {
@@ -164,6 +165,8 @@ impl<L, M> LogManager<L, M>
     }
 
     pub fn add_peer(&mut self, peer_id: ServerId, peer_addr: SocketAddr) {
+        let mut lock = self.peers.write().unwrap();
+        assert!(lock.insert(peer_id,peer_addr).is_none());
         for (_, mut cons) in self.consensus.iter_mut() {
             cons.add_peer(peer_id, peer_addr);
         }
@@ -175,7 +178,7 @@ impl<L, M> LogManager<L, M>
         cons.peers().contains_key(&peer_id)
     }
 
-    pub fn get_peers(&self) -> &HashMap<ServerId, SocketAddr> {
-        &self.consensus.iter().next().unwrap().1.peers
+    pub fn get_peers(&self) -> Arc<RwLock<HashMap<ServerId, SocketAddr>>> {
+        self.peers.clone()
     }
 }
