@@ -33,10 +33,10 @@ pub trait StateMachine: Debug + Send + Clone + 'static {
     fn query(&self, query: &[u8]) -> Vec<u8>;
 
     /// Take a snapshot of the state machine.
-    fn snapshot(&self) -> Vec<u8>;
+    fn snapshot(&self) -> (Vec<u8>,Vec<u8>);
 
     /// Restore a snapshot of the state machine.
-    fn restore_snapshot(&mut self, snapshot: Vec<u8>) -> ();
+    fn restore_snapshot(&mut self, map: Vec<u8>,log: Vec<u8>) -> ();
 
     fn revert(&mut self, command: &[u8]) -> ();
 

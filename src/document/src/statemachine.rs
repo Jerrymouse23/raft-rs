@@ -12,7 +12,9 @@ use std::error::Error;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::fs::read_dir;
+use std::io::Read;
 use std::io::Write;
+use std::io::Error as IoError;
 
 use doclog::DocLog;
 use handler::Message;
@@ -27,7 +29,7 @@ pub struct DocumentStateMachine {
     log: Vec<DocumentRecord>,
     map: HashMap<DocumentId, Document>,
     volume: String,
-    transaction_offset: usize
+    transaction_offset: usize,
 }
 
 impl DocumentStateMachine {
@@ -38,7 +40,7 @@ impl DocumentStateMachine {
             volume: volume.to_string(),
             map: HashMap::new(),
             log: Vec::new(),
-            transaction_offset: 0
+            transaction_offset: 0,
         }
     }
 
@@ -98,13 +100,31 @@ impl DocumentStateMachine {
 
 
     fn findById(&self, id: DocumentId) -> DocumentRecord {
-        for s in self.log.iter().rev().skip(self.transaction_offset){
-            if s.get_id() == id{
-                return s.clone()
+        for s in self.log.iter().rev().skip(self.transaction_offset) {
+            if s.get_id() == id {
+                return s.clone();
             }
         }
 
         panic!("Reverting failed")
+    }
+
+    pub fn get_snapshot_map(&self) -> Result<Vec<u8>, IoError> {
+        let mut fs = try!(File::open(&format!("./{}/snapshot_map", self.volume)));
+        let mut buffer = Vec::new();
+
+        try!(fs.read_to_end(&mut buffer));
+
+        Ok(buffer)
+    }
+
+    pub fn get_snapshot_log(&self) -> Result<Vec<u8>, IoError> {
+        let mut fs = try!(File::open(&format!("./{}/snapshot_log", self.volume)));
+        let mut buffer = Vec::new();
+
+        try!(fs.read_to_end(&mut buffer));
+
+        Ok(buffer)
     }
 }
 
@@ -141,51 +161,48 @@ impl state_machine::StateMachine for DocumentStateMachine {
         response
     }
 
-    //FIXME not correct implemented
-    fn snapshot(&self) -> Vec<u8> {
+    fn snapshot(&self) -> (Vec<u8>, Vec<u8>) {
 
         let mut file = OpenOptions::new()
             .read(false)
             .write(true)
             .create(true)
-            .open("./snapshot_map")
+            .open(&format!("./{}/snapshot_map", self.volume))
             .expect("Unable to create snapshot file");
 
-        file.write_all(&encode(&self.map, SizeLimit::Infinite).unwrap())
+        let map = encode(&self.map, SizeLimit::Infinite).unwrap();
+        file.write_all(&map)
             .expect("Unable to write to the snapshot file");
 
         let mut file = OpenOptions::new()
             .read(false)
             .write(true)
             .create(true)
-            .open("./snapshot_log")
+            .open(&format!("./{}/snapshot_log", self.volume))
             .expect("Unable to create snapshot file");
 
-        file.write_all(&encode(&self.log, SizeLimit::Infinite).unwrap())
+        let log = encode(&self.log, SizeLimit::Infinite).unwrap();
+
+        file.write_all(&log)
             .expect("Unable to write to the snapshot file");
 
-        Vec::new()
+        (map, log)
     }
 
-    fn restore_snapshot(&mut self, snapshot_value: Vec<u8>) {
-        unimplemented!();
-
-        let snapshot_value2: Vec<u8> = Vec::new();
-
-
-        let map: HashMap<DocumentId, Document> = match decode(&snapshot_value) {
+    fn restore_snapshot(&mut self, snap_map: Vec<u8>, snap_log: Vec<u8>) {
+        let map: HashMap<DocumentId, Document> = match decode(&snap_map) {
             Ok(m) => m,
             Err(_) => HashMap::new(),
         };
 
         self.map = map;
 
-        let log: Vec<DocumentRecord> = match decode(&snapshot_value2) {
+        let log: Vec<DocumentRecord> = match decode(&snap_log) {
             Ok(m) => m,
             Err(_) => Vec::new(),
         };
-        self.log = log;
 
+        self.log = log;
     }
 
     fn revert(&mut self, command: &[u8]) {

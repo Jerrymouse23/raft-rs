@@ -240,8 +240,6 @@ impl<L, M> Consensus<L, M>
                 {
                     let entries_failed = self.log.rollback(commit_index).unwrap();
 
-                    println!("Entries failed {:?}",entries_failed.len());
-
                     for &(_, ref command) in entries_failed.iter().rev() {
                         self.state_machine.revert(command.as_slice());
                     }

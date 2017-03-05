@@ -218,18 +218,13 @@ fn main() {
 
 fn server(args: &Args) {
     let arg_config_path = args.clone().arg_config_path.unwrap();
-
     let config_path = arg_config_path.as_str();
-
     let config = Config::init(&config_path).expect("Config is invalid");
-
     let server_addr = config.get_node_addr();
-
     let node_addr = match server_addr {
         SocketAddr::V4(v) => v,
         _ => panic!("The node address given must be IPv4"),
     };
-
 
     let mut node_ids: Vec<u64> = Vec::new();
     let mut node_addresses: Vec<SocketAddr> = Vec::new();
@@ -241,34 +236,21 @@ fn server(args: &Args) {
         .map(|(&id, addr)| (ServerId::from(id), *addr))
         .collect::<HashMap<_, _>>();
 
-    // jlet node_addr = match node_addresses[0] {
-    // SocketAddr::V4(b) => b,
-    // _ => panic!("The node_address must be IPv4"),
-    // };
-
     let mut logs: Vec<(LogId, DocLog, DocumentStateMachine)> = Vec::new();
 
     for l in config.logs.iter() {
         let logid = LogId::from(&l.lid).expect(&format!("The logid given was invalid {:?}", l.lid));
         let log = DocLog::new(&l.path, LogId::from(&l.lid).unwrap());
         let mut state_machine = DocumentStateMachine::new(&l.path);
+        {
+            let snap_map = state_machine.get_snapshot_map().unwrap_or(Vec::new());
+            let snap_log = state_machine.get_snapshot_log().unwrap_or(Vec::new());
+
+            state_machine.restore_snapshot(snap_map,snap_log);
+        }
         logs.push((logid, log, state_machine));
         println!("Init {:?}", l.lid);
     }
-
-    // TODO implement snapshot
-    // match File::open("./snapshot") {
-    // Ok(mut handler) => {
-    // let mut buffer: Vec<u8> = Vec::new();
-    // handler.read_to_end(&mut buffer).expect("Unable to read the snapshot file to end");
-    //
-    // state_machine.restore_snapshot(buffer);
-    // }
-    // Err(_) => {
-    // println!("No snapshot found! Start from the beginning");
-    // }
-    // }
-    //
 
     let (mut server, mut event_loop) = Server::new(ServerId::from(config.server.node_id),
                                                    server_addr,
