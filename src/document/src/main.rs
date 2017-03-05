@@ -18,7 +18,6 @@ extern crate docopt;
 extern crate bincode;
 extern crate rustc_serialize;
 extern crate serde;
-#[macro_use]
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
@@ -29,7 +28,6 @@ extern crate toml;
 extern crate lazy_static;
 
 pub mod document;
-pub mod io_handler;
 pub mod http_handler;
 pub mod handler;
 pub mod config;

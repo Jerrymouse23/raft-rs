@@ -14,16 +14,20 @@ use std::fs::OpenOptions;
 use std::fs::read_dir;
 use std::io::Write;
 
-use io_handler::Handler;
 use doclog::DocLog;
 use handler::Message;
+use document::DocumentId;
+use std::collections::HashMap;
 
-//TODO implement transaction_offset reset when peer panics
+use serde_json::to_string;
+
+// TODO implement transaction_offset reset when peer panics
 #[derive(Debug,Clone)]
 pub struct DocumentStateMachine {
-    map: Vec<DocumentRecord>,
-    transaction_offset: usize, //savepoint
+    log: Vec<DocumentRecord>,
+    map: HashMap<DocumentId, Document>,
     volume: String,
+    transaction_offset: usize
 }
 
 impl DocumentStateMachine {
@@ -32,31 +36,75 @@ impl DocumentStateMachine {
     pub fn new(volume: &str) -> Self {
         DocumentStateMachine {
             volume: volume.to_string(),
-            map: Vec::new(),
-            transaction_offset: 0,
+            map: HashMap::new(),
+            log: Vec::new(),
+            transaction_offset: 0
         }
     }
 
-    // TODO implement it without IO
-    // TODO remove expect
     pub fn get_documents(&self) -> Vec<DocumentId> {
-        let mut result = Vec::new();
+        self.map.keys().into_iter().map(|id| *id).collect()
+    }
 
-        let files = read_dir(&self.volume).unwrap();
+    fn post(&mut self, document: Document) -> Vec<u8> {
+        let record = DocumentRecord::new(document.id,
+                                         format!("{}/{}", &self.volume, &document.id.to_string()),
+                                         ActionType::Post);
 
-        for f in files {
-            let f = f.unwrap();
-            let filename = f.file_name();
+        self.log.push(record);
+        self.map.insert(document.id, document.clone());
 
-            let id = match Uuid::parse_str(&filename.to_str().unwrap().trim()) {
-                Ok(id) => id,
-                Err(_) => continue,
-            };
+        encode(&document, SizeLimit::Infinite).unwrap()
+    }
 
-            result.push(id);
+    fn remove(&mut self, id: DocumentId) -> Vec<u8> {
+        let mut record =
+            DocumentRecord::new(id, format!("{}/{}", &self.volume, &id), ActionType::Remove);
+
+        {
+            let old_document = self.map.get(&id).unwrap();
+
+            record.set_old_payload(old_document.payload.clone());
+            self.log.push(record);
+        }
+        self.map.remove(&id);
+
+        Vec::new()
+    }
+
+    fn put(&mut self, id: DocumentId, new_payload: Vec<u8>) -> Vec<u8> {
+        let mut record =
+            DocumentRecord::new(id, format!("{}/{}", &self.volume, &id), ActionType::Put);
+
+        {
+            let old_document = self.map.get(&id).unwrap();
+
+            record.set_old_payload(old_document.payload.clone());
+
+            assert!(record.get_old_payload().is_some());
+
+            self.log.push(record);
         }
 
-        result
+        let mut document = self.map.get_mut(&id).unwrap().clone();
+        document.payload = new_payload;
+
+
+        self.map.remove(&id);
+        self.map.insert(id, document.clone());
+
+        encode(&document, SizeLimit::Infinite).unwrap()
+    }
+
+
+    fn findById(&self, id: DocumentId) -> DocumentRecord {
+        for s in self.log.iter().rev().skip(self.transaction_offset){
+            if s.get_id() == id{
+                return s.clone()
+            }
+        }
+
+        panic!("Reverting failed")
     }
 }
 
@@ -66,68 +114,12 @@ impl state_machine::StateMachine for DocumentStateMachine {
 
         let response = match message {
             Message::Get(_) => self.query(new_value),
-            Message::Post(document) => {
-                match Handler::post(document, &self.volume) {
-                    Ok(id) => {
-
-                        self.map.push(DocumentRecord::new(id.clone(),
-                                                          format!("{}/{}",
-                                                                  &self.volume,
-                                                                  &id.to_string()),
-                                                          ActionType::Post));
-                        self.snapshot();
-
-                        encode(&id, SizeLimit::Infinite).unwrap()
-                    }
-                    Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
-                }
-            }
-            Message::Remove(id) => {
-                let mut document = File::open(format!("{}/{}", &self.volume, &id))
-                    .expect(&format!("{}/{}", &self.volume, &id));
-
-                let old_payload = decode_from(&mut document, SizeLimit::Infinite).unwrap();
-
-                match Handler::remove(id, &self.volume) {
-                    Ok(_) => {
-
-                        let mut record = DocumentRecord::new(id,
-                                                             format!("{}/{}", &self.volume, &id),
-                                                             ActionType::Remove);
-
-                        record.set_old_payload(old_payload);
-
-                        self.map.push(record);
-
-                        self.snapshot();
-
-                        encode(&id, SizeLimit::Infinite).unwrap()
-                    }
-
-                    Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
-                }
-            }
-            Message::Put(id, new_payload) => {
-                match Handler::put(id, new_payload.as_slice(), &self.volume) {
-                    Ok(_) => {
-                        let mut record = DocumentRecord::new(id,
-                                                             format!("{}/{}", &self.volume, &id),
-                                                             ActionType::Remove);
-
-                        let mut document = File::open(format!("{}/{}", &self.volume, &id)).unwrap();
-
-                        record.set_old_payload(decode_from(&mut document, SizeLimit::Infinite)
-                            .unwrap());
-
-                        self.map.push(record);
-                        self.snapshot();
-
-                        encode(&id, SizeLimit::Infinite).unwrap()
-                    }
-                    Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
-                }
-            }
+            Message::Post(document) => self.post(document),
+            Message::Remove(id) => self.remove(id),
+            Message::Put(id, new_payload) => self.put(id, new_payload),
         };
+
+        self.snapshot();
 
         println!("{:?}", self.get_documents());
 
@@ -138,12 +130,7 @@ impl state_machine::StateMachine for DocumentStateMachine {
         let message = decode(&query).unwrap();
 
         let response = match message {
-            Message::Get(id) => {
-                match Handler::get(id, &self.volume) {
-                    Ok(document) => encode(&document, SizeLimit::Infinite).unwrap(),
-                    Err(err) => encode(&err.description(), SizeLimit::Infinite).unwrap(),
-                }
-            }
+            Message::Get(id) => self.map.get(&id).unwrap().clone().payload,
             _ => {
                 let response = encode(&"Wrong usage of .query()", SizeLimit::Infinite);
 
@@ -154,121 +141,85 @@ impl state_machine::StateMachine for DocumentStateMachine {
         response
     }
 
+    //FIXME not correct implemented
     fn snapshot(&self) -> Vec<u8> {
-        let encoded = encode(&self.map, SizeLimit::Infinite).unwrap();
 
         let mut file = OpenOptions::new()
             .read(false)
             .write(true)
             .create(true)
-            .open("./snapshot")
+            .open("./snapshot_map")
             .expect("Unable to create snapshot file");
 
-        file.write_all(&encoded).expect("Unable to write to the snapshot file");
+        file.write_all(&encode(&self.map, SizeLimit::Infinite).unwrap())
+            .expect("Unable to write to the snapshot file");
 
-        let v: Vec<u8> = Vec::new();
+        let mut file = OpenOptions::new()
+            .read(false)
+            .write(true)
+            .create(true)
+            .open("./snapshot_log")
+            .expect("Unable to create snapshot file");
 
-        v
+        file.write_all(&encode(&self.log, SizeLimit::Infinite).unwrap())
+            .expect("Unable to write to the snapshot file");
+
+        Vec::new()
     }
 
     fn restore_snapshot(&mut self, snapshot_value: Vec<u8>) {
-        let map: Vec<DocumentRecord> = match decode(&snapshot_value) {
+        unimplemented!();
+
+        let snapshot_value2: Vec<u8> = Vec::new();
+
+
+        let map: HashMap<DocumentId, Document> = match decode(&snapshot_value) {
             Ok(m) => m,
-            Err(_) => Vec::new(),
+            Err(_) => HashMap::new(),
         };
 
         self.map = map;
+
+        let log: Vec<DocumentRecord> = match decode(&snapshot_value2) {
+            Ok(m) => m,
+            Err(_) => Vec::new(),
+        };
+        self.log = log;
+
     }
 
     fn revert(&mut self, command: &[u8]) {
         let message = decode(&command).unwrap();
 
         match message {
-            Message::Get(_) => return, //cannot revert
+            Message::Get(_) => return,
             Message::Post(document) => {
-                match Handler::remove(document.id, &self.volume) {
-                    Ok(_) => {
-                        let mut record =
-                            DocumentRecord::new(document.id,
-                                                format!("{}/{}", &self.volume, &document.id),
-                                                ActionType::Remove);
-
-                        record.set_old_payload(encode(&document, SizeLimit::Infinite).unwrap());
-
-                        self.snapshot();
-                    }
-                    Err(_) => panic!(),
-                }
+                self.remove(document.id);
             }
             Message::Remove(id) => {
-                for record in self.map.clone()[0..(self.map.clone().len() -
-                                                   self.transaction_offset)]
-                    .iter()
-                    .rev() {
-                    if record.get_id() == id {
+                let record = self.findById(id);
+                let document = Document {
+                    id: record.get_id(),
+                    payload: record.get_old_payload().unwrap(),
+                    version: 0,
+                };
 
-                        let document = Document {
-                            id: record.get_id(),
-                            payload: record.get_old_payload().unwrap(),
-                            version: 0,
-                        };
-
-                        match Handler::post(document, &self.volume) {
-                            Ok(_) => {
-
-                                let mut new_record =
-                                    DocumentRecord::new(record.get_id().clone(),
-                                                        format!("{}/{}", &self.volume, &record.get_id()),
-                                                        ActionType::Post);
-
-                                new_record.set_old_payload(record.get_old_payload().unwrap());
-
-                                self.map.push(new_record);
-
-                                self.snapshot();
-
-                                self.transaction_offset += 1;
-                                break;
-                            }
-                            Err(err) => panic!(err),
-                        }
-                    }
-                }
+                self.post(document);
             }
             Message::Put(id, new_payload) => {
-                for record in self.map.clone()[0..(self.map.clone().len() -
-                                                   self.transaction_offset)]
-                    .iter()
-                    .rev() {
+                let record = self.findById(id);
 
-                    if record.get_id() == id {
-
-                        match Handler::put(id,
-                                           record.get_old_payload().unwrap().as_slice(),
-                                           &self.volume) {
-                            Ok(_) => {
-                                let mut new_record =
-                                    DocumentRecord::new(record.get_id().clone(),
-                                                        format!("{}/{}", &self.volume, &record.get_id()),
-                                                        ActionType::Put);
-
-                                new_record.set_old_payload(new_payload.clone());
-
-                                self.map.push(new_record);
-
-                                self.snapshot();
-                                self.transaction_offset += 1;
-                                break;
-                            } 
-                            Err(err) => panic!(err),
-                        }
-                    }
-                }
+                let new_payload = record.get_old_payload().unwrap();
+                self.put(id, new_payload);
             }
         }
+
+        self.transaction_offset += 1;
+
+        self.snapshot();
     }
 
-    fn rollback(&mut self) {
+    fn rollback(&mut self, counter: usize) {
         self.transaction_offset = 0;
     }
 }

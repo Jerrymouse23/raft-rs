@@ -8,7 +8,7 @@ use std::net::ToSocketAddrs;
 use std::collections::HashSet;
 
 use handler::Message;
-use io_handler::Handler;
+//use io_handler::Handler;
 use doclog::DocLog;
 
 use std::net::SocketAddr;
@@ -39,7 +39,7 @@ pub fn parse_addr(addr: &str) -> SocketAddr {
         .unwrap()
 }
 
-#[derive(Debug,Clone,Serialize,Deserialize)]
+#[derive(Debug,Clone,Serialize,Deserialize,PartialEq)]
 pub enum ActionType {
     Get,
     Put,
@@ -47,11 +47,12 @@ pub enum ActionType {
     Remove,
 }
 
+//TODO make method private
 #[derive(Debug,Clone,Deserialize,Serialize)]
 pub struct DocumentRecord {
     id: DocumentId,
     path: String,
-    method: ActionType,
+    pub method: ActionType,
     old: Option<Vec<u8>>,
 }
 

@@ -240,13 +240,15 @@ impl<L, M> Consensus<L, M>
                 {
                     let entries_failed = self.log.rollback(commit_index).unwrap();
 
+                    println!("Entries failed {:?}",entries_failed.len());
+
                     for &(_, ref command) in entries_failed.iter().rev() {
                         self.state_machine.revert(command.as_slice());
                     }
                 }
 
                 self.log.truncate(commit_index).unwrap();
-                self.state_machine.rollback();
+                self.state_machine.rollback(0 as usize);
             }
             _ => panic!("cannot handle message"),
         };
@@ -364,7 +366,7 @@ impl<L, M> Consensus<L, M>
                     }
 
                     self.log.truncate(commit_index).unwrap();
-                    self.state_machine.rollback();
+                    self.state_machine.rollback(0 as usize);
 
                     actions.client_messages.push((from, message));
                 } else {
