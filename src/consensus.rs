@@ -248,7 +248,7 @@ impl<L, M> Consensus<L, M>
                 }
 
                 self.log.truncate(commit_index).unwrap();
-                self.state_machine.rollback(0 as usize);
+                self.state_machine.rollback();
             }
             _ => panic!("cannot handle message"),
         };
@@ -366,7 +366,7 @@ impl<L, M> Consensus<L, M>
                     }
 
                     self.log.truncate(commit_index).unwrap();
-                    self.state_machine.rollback(0 as usize);
+                    self.state_machine.rollback();
 
                     actions.client_messages.push((from, message));
                 } else {

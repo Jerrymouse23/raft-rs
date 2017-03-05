@@ -219,7 +219,7 @@ impl state_machine::StateMachine for DocumentStateMachine {
         self.snapshot();
     }
 
-    fn rollback(&mut self, counter: usize) {
+    fn rollback(&mut self) {
         self.transaction_offset = 0;
     }
 }

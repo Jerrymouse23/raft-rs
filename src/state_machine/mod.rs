@@ -40,5 +40,5 @@ pub trait StateMachine: Debug + Send + Clone + 'static {
 
     fn revert(&mut self, command: &[u8]) -> ();
 
-    fn rollback(&mut self, counter: usize);
+    fn rollback(&mut self);
 }

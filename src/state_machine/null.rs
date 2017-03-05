@@ -25,5 +25,5 @@ impl StateMachine for NullStateMachine {
         unimplemented!()
     }
 
-    fn rollback(&mut self,_counter:usize) {}
+    fn rollback(&mut self) {}
 }
