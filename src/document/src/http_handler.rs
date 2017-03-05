@@ -231,9 +231,10 @@ pub fn init(binding_addr: SocketAddr,
             .unwrap();
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
                                (status::BadRequest, "Cannot find logid"));
-
-        let username = "username";
-        let password = "password";
+        let ref username = iexpect!(req.extensions.get::<Router>().unwrap().find("username"),
+                               (status::BadRequest, "Cannot find username"));
+        let ref password = iexpect!(req.extensions.get::<Router>().unwrap().find("password"),
+                               (status::BadRequest, "Cannot find password"));
 
         let document = Handler::get(&SocketAddr::V4(context.node_addr),
                                     &username,

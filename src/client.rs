@@ -247,6 +247,7 @@ mod tests {
 
     use auth::Auth;
     use auth::null::NullAuth;
+    use auth::credentials::SingleCredentials;
 
     use {Client, messages, Result, LogId};
     use messages_capnp::{connection_preamble, client_request};
@@ -291,7 +292,7 @@ mod tests {
         let test_addr = test_server.local_addr().unwrap();
         cluster.insert(test_addr);
 
-        let mut client = Client::new::<NullAuth>(cluster,
+        let mut client = Client::new::<NullAuth<SingleCredentials>>(cluster,
                                                  "username".to_string(),
                                                  "password".to_string(),
                                                  *lid);
@@ -331,7 +332,7 @@ mod tests {
         let test_addr = test_server.local_addr().unwrap();
         cluster.insert(test_addr);
 
-        let mut client = Client::new::<NullAuth>(cluster,
+        let mut client = Client::new::<NullAuth<SingleCredentials>>(cluster,
                                                  "username".to_string(),
                                                  "password".to_string(),
                                                  *lid);
@@ -369,7 +370,7 @@ mod tests {
         let second_addr = second_server.local_addr().unwrap();
         cluster.insert(second_addr);
 
-        let mut client = Client::new::<NullAuth>(cluster,
+        let mut client = Client::new::<NullAuth<SingleCredentials>>(cluster,
                                                  "username".to_string(),
                                                  "password".to_string(),
                                                  *lid);
@@ -404,7 +405,7 @@ mod tests {
         // Workaround to set up rigged selection of servers.
         client.leader_connection = {
             let preamble =
-                messages::client_connection_preamble(client.id, "username", "password".as_bytes());
+                messages::client_connection_preamble(client.id, "username", "password");
             let mut stream = BufStream::new(TcpStream::connect(test_addr).unwrap());
             serialize::write_message(&mut stream, &*preamble).unwrap();
             Some(stream)
@@ -432,7 +433,7 @@ mod tests {
         let second_addr = second_server.local_addr().unwrap();
         // cluster.insert(second_addr); <--- NOT in cluster.
 
-        let mut client = Client::new::<NullAuth>(cluster,
+        let mut client = Client::new::<NullAuth<SingleCredentials>>(cluster,
                                                  "username".to_string(),
                                                  "password".to_string(),
                                                  *lid);
@@ -459,7 +460,7 @@ mod tests {
         // Workaround to set up rigged selection of servers.
         client.leader_connection = {
             let preamble =
-                messages::client_connection_preamble(client.id, "username", "password".as_bytes());
+                messages::client_connection_preamble(client.id, "username", "password");
             let mut stream = BufStream::new(TcpStream::connect(test_addr).unwrap());
             serialize::write_message(&mut stream, &*preamble).unwrap();
             Some(stream)

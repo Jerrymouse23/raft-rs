@@ -749,9 +749,10 @@ mod tests {
     use super::*;
     use auth::Auth;
     use auth::null::NullAuth;
+    use auth::credentials::SingleCredentials;
     use uuid::Uuid;
 
-    type TestServer = Server<MemLog, NullStateMachine, NullAuth>;
+    type TestServer = Server<MemLog, NullStateMachine, NullAuth<SingleCredentials>>;
     lazy_static!{
         static ref lid: LogId = LogId(Uuid::new_v4());
     }
@@ -764,7 +765,7 @@ mod tests {
                     SocketAddr::from_str("127.0.0.1:0").unwrap(),
                     &peers,
                     "test".to_string(),
-                    NullAuth,
+                    NullAuth::new(SingleCredentials::new("test".to_string(),"test".to_string())),
                     logs)
     }
 
@@ -930,7 +931,7 @@ mod tests {
         serialize::write_message(&mut stream,
                                  &*messages::client_connection_preamble(client_id,
                                                                         "username",
-                                                                        "password".as_bytes()))
+                                                                        "password"))
             .unwrap();
         stream.flush().unwrap();
         event_loop.run_once(&mut server, None).unwrap();
@@ -1019,7 +1020,7 @@ mod tests {
         serialize::write_message(&mut stream,
                                  &*messages::client_connection_preamble(client_id,
                                                                         "username",
-                                                                        "password".as_bytes()))
+                                                                        "password"))
             .unwrap();
         stream.flush().unwrap();
         event_loop.run_once(&mut server, None).unwrap();
