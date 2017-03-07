@@ -35,8 +35,6 @@ impl<C> Auth for SimpleAuth<C>
     fn find(&self, user: &str, hash: &str) -> bool {
         let real_user_password = self.credentials.get_password(user);
 
-        assert_eq!(hash, real_user_password);
-
         self.compare(hash, real_user_password)
     }
 }
