@@ -45,6 +45,8 @@ or use the bash:
 ```
 You can copy the config from `docker_build/config/config.toml`
 
+You can find the test scripts in `docker_build/test`. 
+
 ## Documentation ##
 
 * [Raft Crate Documentation](https://hoverbear.github.io/raft-rs/raft/)
