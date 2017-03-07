@@ -4,6 +4,10 @@ node_address= "node1:9000"
 community_string="test"
 binding_addr="0.0.0.0:3000"
 
+[security]
+username="test"
+password="123"
+
 [[peers]]
 node_id = 2
 node_address = "node2:9000"
