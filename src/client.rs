@@ -250,7 +250,7 @@ mod tests {
     use auth::null::NullAuth;
     use auth::credentials::SingleCredentials;
 
-    use {Client, messages, Result, LogId};
+    use {Client, messages, Result, LogId, TransactionId};
     use messages_capnp::{connection_preamble, client_request};
 
     lazy_static!{
@@ -317,7 +317,7 @@ mod tests {
 
         // Propose. It's a marriage made in heaven! :)
         // Should be ok
-        assert_eq!(client.propose(Uuid::new_v4().as_bytes(), to_propose).unwrap(),
+        assert_eq!(client.propose(&TransactionId::new(), to_propose).unwrap(),
                    b"Foxes");
         assert!(client.leader_connection.is_some());
 
@@ -354,7 +354,7 @@ mod tests {
         });
 
         // Propose. It's a marriage made in heaven! :)
-        assert!(client.propose(Uuid::new_v4().as_bytes(), to_propose).is_err());
+        assert!(client.propose(&TransactionId::new(), to_propose).is_err());
 
         child.join().unwrap();
     }
@@ -412,7 +412,7 @@ mod tests {
         };
 
         // Should be ok, change leader connection.
-        assert_eq!(client.propose(Uuid::new_v4().as_bytes(), to_propose).unwrap(),
+        assert_eq!(client.propose(&TransactionId::new(), to_propose).unwrap(),
                    b"Foxes");
         assert!(client.leader_connection.is_some());
 
@@ -466,7 +466,7 @@ mod tests {
         };
 
         // Should be err, change leader connection but to wrong ip..
-        assert!(client.propose(Uuid::new_v4().as_bytes(), to_propose).is_err());
+        assert!(client.propose(&TransactionId::new(), to_propose).is_err());
         assert!(client.leader_connection.is_none());
 
         child.join().unwrap();
