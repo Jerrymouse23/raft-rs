@@ -29,7 +29,7 @@ Finally, clone the repository and build it:
 
 ```bash
 git clone -b dev https://github.com/paenko/paenkodb && \
-cd raft-rs/src/document && \
+cd paenkodb/src/document && \
 cargo build && ../../
 ```
 
