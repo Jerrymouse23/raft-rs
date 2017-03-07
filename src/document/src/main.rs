@@ -80,8 +80,8 @@ Usage:
     document remove <doc-id> <lid> <node-address> <username> <password>
     document server  <config-path>
     document begintrans <lid> <node-address> <username> <password>
-    document endtrans <lid> <node-address> <username> <password>
-    document rollback <lid> <node-address> <username> <password>
+    document commit <lid> <node-address> <username> <password> <transid>
+    document rollback <lid> <node-address> <username> <password> <transid>
     document transpost <lid> <node-address> <filepath> <username> <password> <transid>
     document transremove <lid> <node-address> <doc-id> <username> <password> <transid>
     document transput <lid> <node-address> <doc-id> <filepath> <username> <password> <transid>
@@ -95,7 +95,7 @@ struct Args {
     cmd_remove: bool,
     cmd_put: bool,
     cmd_begintrans: bool,
-    cmd_endtrans: bool,
+    cmd_commit: bool,
     cmd_rollback: bool,
     cmd_transpost: bool,
     cmd_transremove: bool,
@@ -181,7 +181,7 @@ fn main() {
                 Handler::begin_transaction(&node_addr, &username, &password, &TransactionId::new(), &lid);
 
             println!("{}", res.unwrap());
-        } else if args.cmd_endtrans {
+        } else if args.cmd_commit{
             let tid = args.get_trans_id();
             let res = Handler::commit_transaction(&node_addr, &username, &password, &lid, &tid);
             println!("{}", res.unwrap());

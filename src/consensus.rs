@@ -144,7 +144,6 @@ pub struct Consensus<L, M> {
     pub transaction: Transaction,
     /// The ID of this consensus instance for the log_manager
     lid: LogId,
-    pub requests_in_queue: Vec<(ClientId, Builder<HeapAllocator>)>,
     /// Currently registered consensus timeouts.
     pub consensus_timeouts: HashMap<ConsensusTimeout, TimeoutHandle>,
 }
@@ -175,7 +174,6 @@ impl<L, M> Consensus<L, M>
             follower_state: Arc::new(RwLock::new(FollowerState::new())),
             transaction: Transaction::new(),
             lid: lid,
-            requests_in_queue: Vec::new(),
             consensus_timeouts: HashMap::new(),
         }
     }
@@ -185,15 +183,20 @@ impl<L, M> Consensus<L, M>
         &self.peers
     }
 
-    pub fn handle_queue(&mut self, actions: &mut Actions) {
+    pub fn handle_queue(&mut self, requests_in_queue: &mut Vec<(ClientId,Builder<HeapAllocator>)>, actions: &mut Actions) -> Result<(),()>{
         if !self.transaction.is_active {
-            for (client, builder) in self.requests_in_queue.pop() {
+            for (client, builder) in requests_in_queue.pop() {
                 self.apply_client_message(client,
                                           &Self::into_reader(&builder)
                                               .get_root::<client_request::Reader>()
                                               .unwrap(),
                                           actions);
             }
+
+            Ok(())
+        }
+        else{
+            Err(())
         }
     }
 
@@ -222,7 +225,7 @@ impl<L, M> Consensus<L, M>
                 let session = TransactionId::from_bytes(response.get_session().unwrap())
                     .expect("Invalid TransactionId");
 
-                if self.transaction.is_active {
+                if !self.transaction.is_active {
                     self.transaction.begin(session,
                                            self.commit_index,
                                            self.last_applied,
@@ -348,8 +351,8 @@ impl<L, M> Consensus<L, M>
             }
             client_request::Which::TransactionCommit(Ok(_)) => {
                 if self.is_leader() {
-                    self.transaction.end();
                     self.transaction.broadcast_end(&self.lid, actions);
+                    self.transaction.end();
 
                     let message = messages::command_transaction_success("Transaction has been \
                                                                          stopped"

@@ -79,7 +79,7 @@ impl Transaction {
         scoped_debug!("BROADCAST TRANSACTION ENDS");
         let message = messages::transaction_commit(lid,
                                                    &self.session
-                                                       .expect("Cannot start transaction when \
+                                                       .expect("Cannot end transaction when \
                                                                 no TransactionId has been set"));
         actions.peer_messages_broadcast.push(message);
     }
@@ -88,7 +88,7 @@ impl Transaction {
         scoped_debug!("BROADCAST TRANSACTION ROLLBACK");
         let message = messages::transaction_rollback(lid,
                                                      &self.session
-                                                         .expect("Cannot start transaction when \
+                                                         .expect("Cannot rollback transaction when \
                                                                   no TransactionId has been set"));
         actions.peer_messages_broadcast.push(message);
     }

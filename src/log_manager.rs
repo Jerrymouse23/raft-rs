@@ -14,7 +14,7 @@ use std::sync::{Arc, RwLock, Mutex};
 
 use state::{LeaderState, CandidateState, FollowerState};
 
-use capnp::message::{Reader, ReaderSegments};
+use capnp::message::{Reader, ReaderSegments, Builder, HeapAllocator};
 use messages_capnp::{client_request, message};
 pub struct LogManager<L, M>
     where L: Log,
@@ -131,9 +131,17 @@ impl<L, M> LogManager<L, M>
         self.consensus.get_mut(lid).unwrap().apply_timeout(consensus, actions);
     }
 
-    pub fn handle_queue(&mut self, actions: &mut Actions) {
-        for (_, mut con) in self.consensus.iter_mut() {
-            con.handle_queue(actions);
+    pub fn handle_queue(&mut self,
+                        requests_in_queue: &mut HashMap<LogId,
+                                                        Vec<(ClientId, Builder<HeapAllocator>)>>,
+                        actions: &mut Actions) {
+
+        for (&lid, ref mut messages) in requests_in_queue.iter_mut() {
+            //TODO implement deref
+            self.consensus
+                .get_mut(&LogId::from(&format!("{}", lid)).unwrap())
+                .unwrap()
+                .handle_queue(messages, actions);
         }
     }
 

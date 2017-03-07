@@ -89,7 +89,7 @@ pub struct Server<L, M, A>
     /// Instance of the authentification module
     auth: A,
 
-    requests_in_queue: Vec<(LogId, ClientId, Builder<HeapAllocator>)>,
+    requests_in_queue: HashMap<LogId, Vec<(ClientId, Builder<HeapAllocator>)>>,
 }
 
 /// The implementation of the Server.
@@ -111,6 +111,12 @@ impl<L, M, A> Server<L, M, A>
             return Err(Error::Raft(RaftError::InvalidPeerSet));
         }
 
+        let mut requests_in_queue = HashMap::new();
+
+        for &(lid, _, _) in logs.iter() {
+            requests_in_queue.insert(lid, Vec::new());
+        }
+
         let log_manager = LogManager::new(id, logs, peers.clone());
 
         let mut event_loop = try!(EventLoop::<Server<L, M, A>>::new());
@@ -128,11 +134,10 @@ impl<L, M, A> Server<L, M, A>
             reconnection_timeouts: HashMap::new(),
             community_string: community_string.clone(),
             auth: auth,
-            requests_in_queue: Vec::new(),
+            requests_in_queue: requests_in_queue,
         };
 
         for (peer_id, peer_addr) in peers {
-
             server.add_peer_static(&mut event_loop, *peer_id, *peer_addr);
         }
 
@@ -275,6 +280,9 @@ impl<L, M, A> Server<L, M, A>
                       peer_messages_broadcast,
                       transaction_queue } = actions;
 
+        println!("Transaction queue {:?}", transaction_queue.len());
+        println!("Requests queue {:?}", self.requests_in_queue.len());
+
         if clear_peer_messages {
             for &token in self.peer_tokens.values() {
                 self.connections[token].clear_messages();
@@ -292,8 +300,9 @@ impl<L, M, A> Server<L, M, A>
 
         if transaction_queue.len() > 0 {
             scoped_debug!("Messages appended to queue {}", transaction_queue.len());
-            for i in transaction_queue {
-                self.requests_in_queue.push(i);
+            for (lid, cid, message) in transaction_queue {
+                let mut messages = self.requests_in_queue.get_mut(&lid).unwrap();
+                messages.push((cid,message));
             }
         }
 
@@ -378,6 +387,10 @@ impl<L, M, A> Server<L, M, A>
         }
     }
 
+    fn handle_queue(&mut self,actions: &mut Actions) {
+        self.log_manager.handle_queue(&mut self.requests_in_queue,actions);
+    }
+
     /// Reads messages from the connection until no more are available.
     ///
     /// If the connection returns an error on any operation, or any message fails to be
@@ -388,7 +401,7 @@ impl<L, M, A> Server<L, M, A>
                 -> Result<()> {
 
         let mut actions = Actions::new();
-        self.log_manager.handle_queue(&mut actions);
+        self.handle_queue(&mut actions);
         self.execute_actions(event_loop, actions);
 
         scoped_trace!("{:?}: readable event", self.connections[token]);
