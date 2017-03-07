@@ -767,7 +767,7 @@ mod tests {
                     SocketAddr::from_str("127.0.0.1:0").unwrap(),
                     &peers,
                     "test".to_string(),
-                    NullAuth::new(SingleCredentials::new("test".to_string(),"test".to_string())),
+                    NullAuth::new(SingleCredentials::new("test".to_string(), "test".to_string())),
                     logs)
     }
 

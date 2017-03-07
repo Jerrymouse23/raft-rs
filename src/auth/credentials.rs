@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-pub trait Credentials: Debug + Clone + Send + 'static{
+pub trait Credentials: Debug + Clone + Send + 'static {
     fn get_password(&self, username: &str) -> &str;
 }
 
@@ -10,17 +10,17 @@ pub struct SingleCredentials {
     password: String,
 }
 
-impl SingleCredentials{
-    pub fn new(username: String,password: String) -> Self{
-       SingleCredentials{
+impl SingleCredentials {
+    pub fn new(username: String, password: String) -> Self {
+        SingleCredentials {
             username: username,
-            password: password
-       }
+            password: password,
+        }
     }
 }
 
 impl Credentials for SingleCredentials {
-    fn get_password(&self,username: &str) -> &str {
+    fn get_password(&self, username: &str) -> &str {
         &self.password
     }
 }

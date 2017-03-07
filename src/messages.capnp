@@ -81,11 +81,11 @@ struct TransactionBegin{
 }
 
 struct TransactionCommit{
-
+  session @0 :Data;
 }
 
 struct TransactionRollback{
-
+  session @0 :Data;
 }
 
 struct AppendEntriesRequest {
@@ -204,11 +204,11 @@ struct CliTransactionBegin{
 }
 
 struct CliTransactionCommit{
-
+  session @0 :Data;
 }
 
 struct CliTransactionRollback{
-
+  session @0 :Data;
 }
 
 struct ClientResponse {

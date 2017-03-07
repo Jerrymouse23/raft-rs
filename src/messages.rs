@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use capnp::message::{Builder, HeapAllocator};
 
-use {ClientId, Term, LogIndex, ServerId, LogId};
+use {ClientId, Term, LogIndex, ServerId, LogId, TransactionId};
 use messages_capnp::{client_request, client_response, connection_preamble, message};
 
 // ConnectionPreamble
@@ -244,13 +244,13 @@ pub fn request_vote_response_internal_error(term: Term,
 
 // Ping
 
-pub fn ping_request(session: &[u8], lid: &LogId) -> Builder<HeapAllocator> {
+pub fn ping_request(session: TransactionId, lid: &LogId) -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
         let mut request = message.init_root::<client_request::Builder>();
         request.set_log_id(&lid.as_bytes());
         let mut request = request.init_ping();
-        request.set_session(session);
+        request.set_session(&session.as_bytes());
     }
     message
 }
@@ -271,14 +271,17 @@ pub fn query_request(entry: &[u8], lid: &LogId) -> Builder<HeapAllocator> {
 
 // Proposal
 
-pub fn proposal_request(session: &[u8], entry: &[u8], lid: &LogId) -> Builder<HeapAllocator> {
+pub fn proposal_request(session: &TransactionId,
+                        entry: &[u8],
+                        lid: &LogId)
+                        -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
         let mut request = message.init_root::<client_request::Builder>();
         request.set_log_id(&lid.as_bytes());
         let mut request = request.init_proposal();
         request.set_entry(entry);
-        request.set_session(session);
+        request.set_session(&session.as_bytes());
     }
     message
 }
@@ -322,54 +325,53 @@ pub fn command_response_not_leader(leader_hint: &SocketAddr,
 
 // Transaction
 
-pub fn transaction_begin(session: &[u8], lid: &LogId) -> Rc<Builder<HeapAllocator>> {
+pub fn transaction_begin(lid: &LogId, session: &TransactionId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
         let mut request = message.init_root::<message::Builder>();
         request.set_log_id(&lid.as_bytes());
-        let mut request = request.init_transaction_begin();
-
-        request.set_session(session);
+        let mut request = request.init_transaction_begin().set_session(&session.as_bytes());
     }
     Rc::new(message)
 }
 
-pub fn transaction_commit(lid: &LogId) -> Rc<Builder<HeapAllocator>> {
+pub fn transaction_commit(lid: &LogId, session: &TransactionId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
         let mut request = message.init_root::<message::Builder>();
         request.set_log_id(&lid.as_bytes());
-        request.init_transaction_commit();
+        request.init_transaction_commit().set_session(&session.as_bytes());
     }
     Rc::new(message)
 }
 
-pub fn client_transaction_begin(session: &[u8], lid: &LogId) -> Builder<HeapAllocator> {
+pub fn client_transaction_begin(lid: &LogId, session: &TransactionId) -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
         let mut request = message.init_root::<client_request::Builder>();
         request.set_log_id(&lid.as_bytes());
-        let mut request = request.init_transaction_begin();
-        request.set_session(session);
+        let mut request = request.init_transaction_begin()
+            .set_session(&session.as_bytes());
     }
     message
 }
-pub fn client_transaction_commit(lid: &LogId) -> Builder<HeapAllocator> {
+pub fn client_transaction_commit(lid: &LogId, session: &TransactionId) -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
         let mut request = message.init_root::<client_request::Builder>();
         request.set_log_id(&lid.as_bytes());
-        request.init_transaction_commit();
+        request.init_transaction_commit()
+            .set_session(&session.as_bytes());
     }
     message
 }
 
-pub fn client_transaction_rollback(lid: &LogId) -> Builder<HeapAllocator> {
+pub fn client_transaction_rollback(lid: &LogId, session: &TransactionId) -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
         let mut request = message.init_root::<client_request::Builder>();
         request.set_log_id(&lid.as_bytes());
-        request.init_transaction_rollback();
+        request.init_transaction_rollback().set_session(&session.as_bytes());
     }
     message
 }
@@ -396,12 +398,12 @@ pub fn command_transaction_failure(data: &[u8], lid: &LogId) -> Rc<Builder<HeapA
     Rc::new(message)
 }
 
-pub fn transaction_rollback(lid: &LogId) -> Rc<Builder<HeapAllocator>> {
+pub fn transaction_rollback(lid: &LogId, session: &TransactionId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
         let mut request = message.init_root::<message::Builder>();
         request.set_log_id(&lid.as_bytes());
-        request.init_transaction_rollback();
+        request.init_transaction_rollback().set_session(&session.as_bytes());
     }
     Rc::new(message)
 }

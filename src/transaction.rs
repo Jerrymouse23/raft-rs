@@ -6,11 +6,12 @@ use std::rc::Rc;
 use LogIndex;
 use LogId;
 use ClientId;
+use TransactionId;
 
 #[derive(Clone)]
 pub struct Transaction {
     pub is_active: bool,
-    pub session: Option<Uuid>,
+    pub session: Option<TransactionId>,
     pub queue: Vec<(ClientId, Rc<Builder<HeapAllocator>>)>,
     counter: usize,
     commit_index: LogIndex,
@@ -32,7 +33,7 @@ impl Transaction {
     }
 
     pub fn begin(&mut self,
-                 session: Uuid,
+                 session: TransactionId,
                  commit_index: LogIndex,
                  last_applied: LogIndex,
                  follower_state_min: Option<LogIndex>) {
@@ -67,28 +68,35 @@ impl Transaction {
 
     pub fn broadcast_begin(&mut self, lid: &LogId, actions: &mut Actions) {
         scoped_debug!("BROADCAST TRANSACTION BEGINS");
-        let message = messages::transaction_begin(self.session.unwrap().as_bytes(), lid);
+        let message = messages::transaction_begin(lid,
+                                                  &self.session
+                                                      .expect("Cannot start transaction when no \
+                                                               TransactionId has been set"));
         actions.peer_messages_broadcast.push(message);
     }
 
     pub fn broadcast_end(&self, lid: &LogId, actions: &mut Actions) {
         scoped_debug!("BROADCAST TRANSACTION ENDS");
-        let message = messages::transaction_commit(lid);
+        let message = messages::transaction_commit(lid,
+                                                   &self.session
+                                                       .expect("Cannot start transaction when \
+                                                                no TransactionId has been set"));
         actions.peer_messages_broadcast.push(message);
     }
 
     pub fn broadcast_rollback(&self, lid: &LogId, actions: &mut Actions) {
         scoped_debug!("BROADCAST TRANSACTION ROLLBACK");
-        let message = messages::transaction_rollback(lid);
+        let message = messages::transaction_rollback(lid,
+                                                     &self.session
+                                                         .expect("Cannot start transaction when \
+                                                                  no TransactionId has been set"));
         actions.peer_messages_broadcast.push(message);
     }
 
-    pub fn compare(&self, session: Uuid) -> bool {
-        match self.session {
-            Some(s) => if s == session { true } else { false },
-            None => true,
-        }
+    pub fn compare(&self, session: TransactionId) -> bool {
+        self.session.expect("No TransactionId has been set") == session
     }
+
 
     pub fn get(&self) -> bool {
         self.is_active

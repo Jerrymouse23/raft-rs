@@ -10,7 +10,7 @@ pub trait Auth: Clone + Debug + Send + 'static {
     fn generate(plain: &str) -> String;
 
     /// Checks hash and returns whether it was successful or not
-    fn compare(&self,plain: &str, hash: &str) -> bool;
+    fn compare(&self, plain: &str, hash: &str) -> bool;
 
-    fn find(&self,user: &str,hash:&str) -> bool;
+    fn find(&self, user: &str, hash: &str) -> bool;
 }

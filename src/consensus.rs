@@ -22,7 +22,7 @@ use rand::{self, Rng};
 use capnp::serialize::{self, OwnedSegments};
 use std::io::Cursor;
 
-use {LogId, LogIndex, Term, ServerId, ClientId, messages};
+use {LogId, LogIndex, Term, ServerId, ClientId, messages, TransactionId};
 use messages_capnp::{append_entries_request, append_entries_response, client_request,
                      proposal_request, query_request, message, request_vote_request,
                      request_vote_response};
@@ -218,35 +218,61 @@ impl<L, M> Consensus<L, M>
                 self.request_vote_response(from, response, actions)
             }
             message::Which::TransactionBegin(Ok(response)) => {
-                let session = Uuid::from_bytes(response.get_session().unwrap()).unwrap();
-                self.transaction.begin(session,
-                                       self.commit_index,
-                                       self.last_applied,
-                                       Some(self.follower_state.read().unwrap().min_index));
-            }
-            message::Which::TransactionCommit(Ok(_)) => {
-                // TODO check for session
-                self.transaction.end();
-            }
-            message::Which::TransactionRollback(Ok(_)) => {
-                // TODO refactor to seperate method
-                // TODO check for session
-                scoped_debug!("Rollback");
-                let (commit_index, last_applied, follower_state_min) = self.transaction.rollback();
-                self.follower_state.write().unwrap().min_index = follower_state_min.unwrap();
-                self.commit_index = commit_index;
-                self.last_applied = last_applied;
+                // TODO do not panic if invalid
+                let session = TransactionId::from_bytes(response.get_session().unwrap())
+                    .expect("Invalid TransactionId");
 
-                {
-                    let entries_failed = self.log.rollback(commit_index).unwrap();
-
-                    for &(_, ref command) in entries_failed.iter().rev() {
-                        self.state_machine.revert(command.as_slice());
-                    }
+                if self.transaction.is_active {
+                    self.transaction.begin(session,
+                                           self.commit_index,
+                                           self.last_applied,
+                                           Some(self.follower_state.read().unwrap().min_index));
+                } else {
+                    scoped_warn!("A transaction is already running");
                 }
+            }
+            message::Which::TransactionCommit(Ok(message)) => {
+                // TODO do not panic if invalid
+                let session = TransactionId::from_bytes(message.get_session().unwrap())
+                    .expect("Invalid TransactionId");
 
-                self.log.truncate(commit_index).unwrap();
-                self.state_machine.rollback();
+                if self.transaction.is_active {
+                    assert_eq!(self.transaction.session.expect("No TransactionSession defined"),
+                               session);
+                    self.transaction.end();
+                } else {
+                    scoped_warn!("Received TransactionCommit but no transaction is currently \
+                                  running");
+                }
+            }
+            message::Which::TransactionRollback(Ok(message)) => {
+                // TODO refactor to seperate method
+                scoped_debug!("Rollback");
+
+                let session = TransactionId::from_bytes(message.get_session().unwrap())
+                    .expect("Invalid TransactionId");
+
+                if self.transaction.is_active {
+                    let (commit_index, last_applied, follower_state_min) = self.transaction
+                        .rollback();
+                    self.follower_state.write().unwrap().min_index = follower_state_min.unwrap();
+                    self.commit_index = commit_index;
+                    self.last_applied = last_applied;
+
+                    {
+                        let entries_failed = self.log.rollback(commit_index).unwrap();
+
+                        for &(_, ref command) in entries_failed.iter().rev() {
+                            self.state_machine.revert(command.as_slice());
+                        }
+                    }
+
+                    self.log.truncate(commit_index).unwrap();
+                    self.state_machine.rollback();
+                }
+                else{
+                    scoped_warn!("Cannot rollback; no transaction running");
+                }
             }
             _ => panic!("cannot handle message"),
         };
@@ -264,14 +290,16 @@ impl<L, M> Consensus<L, M>
         match reader {
             client_request::Which::Proposal(Ok(request)) => {
                 if self.is_leader() {
+                    let session = TransactionId::from_bytes(request.get_session().unwrap())
+                        .expect("Invalid TransactionId");
+
                     if self.transaction.is_active &&
                        !self.transaction
-                        .compare(Uuid::from_bytes(request.get_session().unwrap()).unwrap()) {
+                        .compare(session) {
 
-                        let session = request.get_session().unwrap();
                         let entry = request.get_entry().unwrap();
 
-                        let message = messages::proposal_request(session, entry, &self.lid);
+                        let message = messages::proposal_request(&session, entry, &self.lid);
 
                         actions.transaction_queue.push((self.lid, from, message));
 
@@ -296,7 +324,8 @@ impl<L, M> Consensus<L, M>
             }
             client_request::Which::TransactionBegin(Ok(request)) => {
                 if self.is_leader() {
-                    let session = Uuid::from_bytes(request.get_session().unwrap()).unwrap();
+                    let session = TransactionId::from_bytes(request.get_session().unwrap())
+                        .expect("Invalid TransactionId");
                     self.transaction
                         .begin(session, self.commit_index, self.last_applied, None);
                     self.transaction.broadcast_begin(&self.lid, actions);

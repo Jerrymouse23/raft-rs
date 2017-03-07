@@ -48,6 +48,7 @@ use uuid::Uuid;
 
 use raft::Server;
 use raft::LogId;
+use raft::TransactionId;
 use raft::state_machine::StateMachine;
 
 use statemachine::DocumentStateMachine;
@@ -126,9 +127,9 @@ impl Args {
         LogId::from(&self.arg_lid.clone().unwrap()).expect("Given LogId is not valid")
     }
 
-    pub fn get_trans_id(&self) -> Uuid {
+    pub fn get_trans_id(&self) -> TransactionId{
         let tid = self.arg_transid.clone().unwrap();
-        Uuid::parse_str(&tid).expect(&format!("{} is not a valid transaction id", tid))
+        TransactionId::from(&tid).expect(&format!("{} is not a valid transaction id", tid))
     }
 }
 
@@ -159,12 +160,12 @@ fn main() {
                  &args.arg_filepath,
                  &username,
                  &password,
-                 &Uuid::new_v4(),
+                 &TransactionId::new(),
                  &lid);
         } else if args.cmd_remove {
             let id = args.get_doc_id();
 
-            remove(&node_addr, &id, &username, &password, &Uuid::new_v4(), &lid);
+            remove(&node_addr, &id, &username, &password, &TransactionId::new(), &lid);
         } else if args.cmd_put {
             let id = args.get_doc_id();
 
@@ -173,18 +174,20 @@ fn main() {
                 &args.arg_filepath,
                 &username,
                 &password,
-                &Uuid::new_v4(),
+                &TransactionId::new(),
                 &lid);
         } else if args.cmd_begintrans {
             let res =
-                Handler::begin_transaction(&node_addr, &username, &password, &Uuid::new_v4(), &lid);
+                Handler::begin_transaction(&node_addr, &username, &password, &TransactionId::new(), &lid);
 
             println!("{}", res.unwrap());
         } else if args.cmd_endtrans {
-            let res = Handler::commit_transaction(&node_addr, &username, &password, &lid);
+            let tid = args.get_trans_id();
+            let res = Handler::commit_transaction(&node_addr, &username, &password, &lid, &tid);
             println!("{}", res.unwrap());
         } else if args.cmd_rollback {
-            let res = Handler::rollback_transaction(&node_addr, &username, &password, &lid);
+            let tid = args.get_trans_id();
+            let res = Handler::rollback_transaction(&node_addr, &username, &password, &lid,&tid);
 
             println!("{}", res.unwrap());
         } else if args.cmd_transpost {
@@ -296,7 +299,7 @@ fn post(addr: &SocketAddr,
         filepath: &str,
         username: &str,
         password: &str,
-        session: &Uuid,
+        session: &TransactionId,
         lid: &LogId) {
 
     let mut handler = File::open(&filepath).expect(&format!("Unable to open the file{}", filepath));
@@ -323,7 +326,7 @@ fn put(addr: &SocketAddr,
        filepath: &str,
        username: &str,
        password: &str,
-       session: &Uuid,
+       session: &TransactionId,
        lid: &LogId) {
 
     let mut handler = File::open(filepath).expect(&format!("Unable to open the file{}", filepath));
@@ -343,7 +346,7 @@ fn remove(addr: &SocketAddr,
           doc_id: &Uuid,
           username: &str,
           password: &str,
-          session: &Uuid,
+          session: &TransactionId,
           lid: &LogId) {
     match Handler::remove(addr, &username, &password, doc_id, session, lid) {
         Ok(()) => println!("Ok"),

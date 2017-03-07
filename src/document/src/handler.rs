@@ -4,6 +4,7 @@ use uuid::Uuid;
 use raft::Result;
 use raft::Client;
 use raft::LogId;
+use raft::TransactionId;
 use raft::Error as RError;
 use raft::RaftError;
 
@@ -72,7 +73,7 @@ impl Handler {
                 username: &str,
                 plain_password: &str,
                 document: Document,
-                session: &Uuid,
+                session: &TransactionId,
                 lid: &LogId)
                 -> Result<Uuid> {
 
@@ -80,7 +81,7 @@ impl Handler {
 
         let payload = encode(&Message::Post(document.clone()), SizeLimit::Infinite).unwrap();
 
-        let response = match client.propose(session.as_bytes(), payload.as_slice()) {
+        let response = match client.propose(session, payload.as_slice()) {
             Ok(res) => res,
             Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
                 return Handler::post(&parse_addr(&leader_str),
@@ -102,14 +103,14 @@ impl Handler {
                   username: &str,
                   plain_password: &str,
                   id: &Uuid,
-                  session: &Uuid,
+                  session: &TransactionId,
                   lid: &LogId)
                   -> Result<()> {
         let mut client = Self::new_client(addr, username, plain_password, lid);
 
         let payload = encode(&Message::Remove(*id), SizeLimit::Infinite).unwrap();
 
-        match client.propose(session.as_bytes(), payload.as_slice()) {
+        match client.propose(session, payload.as_slice()) {
             Ok(res) => res,
             Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
                 return Handler::remove(&parse_addr(&leader_str),
@@ -130,7 +131,7 @@ impl Handler {
                plain_password: &str,
                id: &Uuid,
                new_payload: Vec<u8>,
-               session: &Uuid,
+               session: &TransactionId,
                lid: &LogId)
                -> Result<()> {
 
@@ -138,7 +139,7 @@ impl Handler {
 
         let payload = encode(&Message::Put(*id, new_payload.clone()), SizeLimit::Infinite).unwrap();
 
-        match client.propose(session.as_bytes(), payload.as_slice()) {
+        match client.propose(session, payload.as_slice()) {
             Ok(res) => res,
             Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
                 return Handler::put(&parse_addr(&leader_str),
@@ -158,12 +159,12 @@ impl Handler {
     pub fn begin_transaction(addr: &SocketAddr,
                              username: &str,
                              password: &str,
-                             session: &Uuid,
+                             session: &TransactionId,
                              lid: &LogId)
                              -> Result<String> {
         let mut client = Self::new_client(addr, username, password, lid);
 
-        let res = client.begin_transaction(session.as_bytes());
+        let res = client.begin_transaction(session);
 
         Ok(Uuid::from_bytes(res.unwrap().as_slice()).unwrap().hyphenated().to_string())
     }
@@ -171,11 +172,12 @@ impl Handler {
     pub fn commit_transaction(addr: &SocketAddr,
                               username: &str,
                               password: &str,
-                              lid: &LogId)
+                              lid: &LogId,
+                              session: &TransactionId)
                               -> Result<String> {
         let mut client = Self::new_client(addr, username, password, lid);
 
-        let res = client.end_transaction();
+        let res = client.end_transaction(session);
 
         Ok(from_utf8(res.unwrap().as_slice()).unwrap().to_string())
     }
@@ -183,11 +185,12 @@ impl Handler {
     pub fn rollback_transaction(addr: &SocketAddr,
                                 username: &str,
                                 password: &str,
-                                lid: &LogId)
+                                lid: &LogId,
+                                session: &TransactionId)
                                 -> Result<String> {
         let mut client = Self::new_client(addr, username, password, lid);
 
-        let res = client.rollback_transaction();
+        let res = client.rollback_transaction(session);
 
         Ok(from_utf8(res.unwrap().as_slice()).unwrap().to_string())
     }

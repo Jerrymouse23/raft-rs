@@ -16,6 +16,7 @@ use messages_capnp::{client_response, command_response};
 use messages;
 use ClientId;
 use LogId;
+use TransactionId;
 use Result;
 use RaftError;
 use auth::Auth;
@@ -47,7 +48,7 @@ impl Client {
                         -> Client {
 
         // let hashed_password = Auth::generate(&password);
-        //let hashed_password = A::generate(&password);
+        // let hashed_password = A::generate(&password);
 
         Client {
             id: ClientId::new(),
@@ -62,7 +63,7 @@ impl Client {
     /// Proposes an entry to be appended to the replicated log. This will only
     /// return once the entry has been durably committed.
     /// Returns `Error` when the entire cluster has an unknown leader. Try proposing again later.
-    pub fn propose(&mut self, session: &[u8], entry: &[u8]) -> Result<Vec<u8>> {
+    pub fn propose(&mut self, session: &TransactionId, entry: &[u8]) -> Result<Vec<u8>> {
         scoped_trace!("{:?}: propose", self);
         let mut message = messages::proposal_request(session, entry, &self.lid);
         self.send_message(&mut message)
@@ -76,18 +77,18 @@ impl Client {
         self.send_message(&mut message)
     }
 
-    pub fn begin_transaction(&mut self, session: &[u8]) -> Result<Vec<u8>> {
-        let mut message = messages::client_transaction_begin(session, &self.lid);
+    pub fn begin_transaction(&mut self, session: &TransactionId) -> Result<Vec<u8>> {
+        let mut message = messages::client_transaction_begin(&self.lid, session);
         self.send_message(&mut message)
     }
 
-    pub fn end_transaction(&mut self) -> Result<Vec<u8>> {
-        let mut message = messages::client_transaction_commit(&self.lid);
+    pub fn end_transaction(&mut self, session: &TransactionId) -> Result<Vec<u8>> {
+        let mut message = messages::client_transaction_commit(&self.lid, session);
         self.send_message(&mut message)
     }
 
-    pub fn rollback_transaction(&mut self) -> Result<Vec<u8>> {
-        let mut message = messages::client_transaction_rollback(&self.lid);
+    pub fn rollback_transaction(&mut self, session: &TransactionId) -> Result<Vec<u8>> {
+        let mut message = messages::client_transaction_rollback(&self.lid, session);
         self.send_message(&mut message)
     }
 
@@ -293,9 +294,9 @@ mod tests {
         cluster.insert(test_addr);
 
         let mut client = Client::new::<NullAuth<SingleCredentials>>(cluster,
-                                                 "username".to_string(),
-                                                 "password".to_string(),
-                                                 *lid);
+                                                                    "username".to_string(),
+                                                                    "password".to_string(),
+                                                                    *lid);
         let client_id = client.id.0.clone();
         let to_propose = b"Bears";
 
@@ -333,9 +334,9 @@ mod tests {
         cluster.insert(test_addr);
 
         let mut client = Client::new::<NullAuth<SingleCredentials>>(cluster,
-                                                 "username".to_string(),
-                                                 "password".to_string(),
-                                                 *lid);
+                                                                    "username".to_string(),
+                                                                    "password".to_string(),
+                                                                    *lid);
         let to_propose = b"Bears";
 
         // The client connects on the proposal.
@@ -371,9 +372,9 @@ mod tests {
         cluster.insert(second_addr);
 
         let mut client = Client::new::<NullAuth<SingleCredentials>>(cluster,
-                                                 "username".to_string(),
-                                                 "password".to_string(),
-                                                 *lid);
+                                                                    "username".to_string(),
+                                                                    "password".to_string(),
+                                                                    *lid);
         let client_id = client.id.0.clone();
         let to_propose = b"Bears";
 
@@ -404,8 +405,7 @@ mod tests {
 
         // Workaround to set up rigged selection of servers.
         client.leader_connection = {
-            let preamble =
-                messages::client_connection_preamble(client.id, "username", "password");
+            let preamble = messages::client_connection_preamble(client.id, "username", "password");
             let mut stream = BufStream::new(TcpStream::connect(test_addr).unwrap());
             serialize::write_message(&mut stream, &*preamble).unwrap();
             Some(stream)
@@ -434,9 +434,9 @@ mod tests {
         // cluster.insert(second_addr); <--- NOT in cluster.
 
         let mut client = Client::new::<NullAuth<SingleCredentials>>(cluster,
-                                                 "username".to_string(),
-                                                 "password".to_string(),
-                                                 *lid);
+                                                                    "username".to_string(),
+                                                                    "password".to_string(),
+                                                                    *lid);
         let client_id = client.id.0.clone();
         let to_propose = b"Bears";
 
@@ -459,8 +459,7 @@ mod tests {
 
         // Workaround to set up rigged selection of servers.
         client.leader_connection = {
-            let preamble =
-                messages::client_connection_preamble(client.id, "username", "password");
+            let preamble = messages::client_connection_preamble(client.id, "username", "password");
             let mut stream = BufStream::new(TcpStream::connect(test_addr).unwrap());
             serialize::write_message(&mut stream, &*preamble).unwrap();
             Some(stream)

@@ -367,3 +367,54 @@ impl PartialEq for LogId {
         if self.0 == other.0 { true } else { false }
     }
 }
+
+/// The ID of a Raft transaction.
+#[derive(Copy, Clone, Hash, Eq,PartialOrd,Ord,Serialize,Deserialize)]
+pub struct TransactionId(Uuid);
+impl TransactionId {
+    pub fn new() -> TransactionId {
+        TransactionId(Uuid::new_v4())
+    }
+
+    pub fn as_bytes(self) -> [u8; 16] {
+        *self.0.as_bytes()
+    }
+
+    pub fn from(i: &str) -> std::result::Result<Self, uuid::ParseError> {
+        let id = try!(Uuid::parse_str(&i));
+        Ok(TransactionId(id))
+    }
+
+    pub fn TransactionId(&self) -> TransactionId {
+        *self
+    }
+
+    pub fn from_bytes(i: &[u8]) -> std::result::Result<Self, uuid::ParseError> {
+        let id = try!(Uuid::from_bytes(i));
+        Ok(TransactionId(id))
+    }
+}
+
+impl std::str::FromStr for TransactionId {
+    type Err = uuid::ParseError;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        TransactionId::from(s)
+    }
+}
+
+impl fmt::Debug for TransactionId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "TransactionId({})", self.0)
+    }
+}
+impl fmt::Display for TransactionId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl PartialEq for TransactionId {
+    fn eq(&self, other: &TransactionId) -> bool {
+        if self.0 == other.0 { true } else { false }
+    }
+}

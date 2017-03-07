@@ -22,6 +22,7 @@ use std::boxed::Box;
 
 use raft::LogId;
 use raft::ServerId;
+use raft::TransactionId;
 use raft::state::{LeaderState, CandidateState, FollowerState};
 
 use std::collections::HashMap;
@@ -302,7 +303,7 @@ pub fn init(binding_addr: SocketAddr,
             version: 1,
         };
 
-        let session = Uuid::new_v4();
+        let session = TransactionId::new();
 
         match Handler::post(&SocketAddr::V4(context.node_addr),
                             &username,
@@ -332,7 +333,7 @@ pub fn init(binding_addr: SocketAddr,
             str_payload.from_base64().expect("Payload is not base64")
         };
 
-        let session: Uuid =
+        let session: TransactionId=
             itry!(iexpect!(req.extensions.get::<Router>().unwrap().find("session")).parse());
 
 
@@ -342,7 +343,6 @@ pub fn init(binding_addr: SocketAddr,
         let ref password = iexpect!(req.extensions.get::<Router>().unwrap().find("password"),
                                     (status::BadRequest, "Cannot find password"));
 
-
         let id = Uuid::new_v4();
 
         let document = Document {
@@ -350,7 +350,6 @@ pub fn init(binding_addr: SocketAddr,
             payload: payload,
             version: 1,
         };
-
 
         match Handler::post(&SocketAddr::V4(context.node_addr),
                             &username,
@@ -379,7 +378,7 @@ pub fn init(binding_addr: SocketAddr,
         let ref password = iexpect!(req.extensions.get::<Router>().unwrap().find("password"),
                                     (status::BadRequest, "Cannot find password"));
 
-        let session = Uuid::new_v4();
+        let session = TransactionId::new();
 
         let res = match Handler::remove(&SocketAddr::V4(context.node_addr),
                                         &username,
@@ -404,7 +403,7 @@ pub fn init(binding_addr: SocketAddr,
             .find("fileId"));
 
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"));
-        let session: Uuid =
+        let session: TransactionId =
             itry!(iexpect!(req.extensions.get::<Router>().unwrap().find("session")).parse());
         let ref username = iexpect!(req.extensions.get::<Router>().unwrap().find("username"),
                                     (status::BadRequest, "Cannot find username"));
@@ -450,10 +449,11 @@ pub fn init(binding_addr: SocketAddr,
         let ref password = iexpect!(req.extensions.get::<Router>().unwrap().find("password"),
                                     (status::BadRequest, "Cannot find password"));
 
+        let session = TransactionId::new();
+
         let bytes = itry!(payload.from_base64(),
                           (status::BadRequest, "Payload is not base64"));
 
-        let session = Uuid::new_v4();
 
         let res = match Handler::put(&SocketAddr::V4(context.node_addr),
                                      &username,
@@ -489,7 +489,7 @@ pub fn init(binding_addr: SocketAddr,
 
         let ref id = iexpect!(req.extensions.get::<Router>().unwrap().find("id"));
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"));
-        let session: Uuid =
+        let session: TransactionId =
             itry!(iexpect!(req.extensions.get::<Router>().unwrap().find("session")).parse());
         let ref username = iexpect!(req.extensions.get::<Router>().unwrap().find("username"),
                                     (status::BadRequest, "Cannot find username"));
@@ -524,7 +524,7 @@ pub fn init(binding_addr: SocketAddr,
         match Handler::begin_transaction(&SocketAddr::V4(context.node_addr),
                                          &username,
                                          &password,
-                                         &Uuid::new_v4(),
+                                         &TransactionId::new(),
                                          &LogId::from(lid).unwrap()) {
             Ok(session) => Ok(Response::with((status::Ok, session))),
             Err(_) => Ok(Response::with((status::InternalServerError, "Something went wrong :("))),
@@ -538,11 +538,15 @@ pub fn init(binding_addr: SocketAddr,
                                     (status::BadRequest, "Cannot find password"));
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
                                (status::BadRequest, "Cannot find logid"));
+        let ref session: TransactionId =
+            itry!(iexpect!(req.extensions.get::<Router>().unwrap().find("session")).parse());
+
 
         match Handler::commit_transaction(&SocketAddr::V4(context.node_addr),
                                           &username,
                                           &password,
-                                          &LogId::from(lid).unwrap()) {
+                                          &LogId::from(lid).unwrap(),
+                                          &session) {
             Ok(res) => Ok(Response::with((status::Ok, res))),
             Err(_) => Ok(Response::with((status::InternalServerError, "Something went wrong :("))),
         }
@@ -555,11 +559,15 @@ pub fn init(binding_addr: SocketAddr,
                                     (status::BadRequest, "Cannot find password"));
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
                                (status::BadRequest, "Cannot find logid"));
+        let ref session: TransactionId =
+            itry!(iexpect!(req.extensions.get::<Router>().unwrap().find("session")).parse());
+
 
         match Handler::rollback_transaction(&SocketAddr::V4(context.node_addr),
                                             &username,
                                             &password,
-                                            &LogId::from(lid).unwrap()) {
+                                            &LogId::from(lid).unwrap(),
+                                            &session) {
             Ok(res) => Ok(Response::with((status::Ok, res))),
             Err(_) => Ok(Response::with((status::InternalServerError, "Something went wrong :("))),
         }
