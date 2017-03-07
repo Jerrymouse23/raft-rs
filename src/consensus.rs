@@ -183,7 +183,10 @@ impl<L, M> Consensus<L, M>
         &self.peers
     }
 
-    pub fn handle_queue(&mut self, requests_in_queue: &mut Vec<(ClientId,Builder<HeapAllocator>)>, actions: &mut Actions) -> Result<(),()>{
+    pub fn handle_queue(&mut self,
+                        requests_in_queue: &mut Vec<(ClientId, Builder<HeapAllocator>)>,
+                        actions: &mut Actions)
+                        -> Result<(), ()> {
         if !self.transaction.is_active {
             for (client, builder) in requests_in_queue.pop() {
                 self.apply_client_message(client,
@@ -194,8 +197,7 @@ impl<L, M> Consensus<L, M>
             }
 
             Ok(())
-        }
-        else{
+        } else {
             Err(())
         }
     }
@@ -272,8 +274,7 @@ impl<L, M> Consensus<L, M>
 
                     self.log.truncate(commit_index).unwrap();
                     self.state_machine.rollback();
-                }
-                else{
+                } else {
                     scoped_warn!("Cannot rollback; no transaction running");
                 }
             }
@@ -963,6 +964,25 @@ impl<L, M> Consensus<L, M>
             actions.peer_messages.push((peer, message.clone()));
         }
 
+        // reset transaction
+
+        if self.transaction.is_active {
+            self.transaction.broadcast_rollback(&self.lid, actions);
+
+            let (commit_index, last_applied, follower_state_min) = self.transaction
+                .rollback();
+            self.commit_index = commit_index;
+            self.last_applied = last_applied;
+
+            {
+                let entries_failed = self.log.rollback(commit_index).unwrap();
+
+                for &(_, ref command) in entries_failed.iter().rev() {
+                    self.state_machine.revert(command.as_slice());
+                }
+            }
+        }
+
         actions.clear_timeouts.push(self.lid);
         actions.clear_peer_messages = true;
     }
@@ -1461,8 +1481,7 @@ mod tests {
         elect_leader(leader, &mut peers);
 
         let value: &[u8] = b"foo";
-        let reader =
-            into_reader(&messages::proposal_request(&TransactionId::new(), value, &*lid));
+        let reader = into_reader(&messages::proposal_request(&TransactionId::new(), value, &*lid));
         let message_reader = reader.get_root::<client_request::Reader>()
             .unwrap();
         let client = ClientId::new();

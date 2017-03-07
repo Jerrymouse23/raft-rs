@@ -24,6 +24,7 @@ use std::collections::HashMap;
 use serde_json::to_string;
 
 // TODO implement transaction_offset reset when peer panics
+// TODO REMOVE volume
 #[derive(Debug,Clone)]
 pub struct DocumentStateMachine {
     log: Vec<DocumentRecord>,
