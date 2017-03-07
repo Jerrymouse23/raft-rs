@@ -30,7 +30,7 @@ Finally, clone the repository and build it:
 ```bash
 git clone -b dev https://github.com/paenko/paenkodb && \
 cd paenkodb/src/document && \
-cargo build && ../../
+cargo build && cd ../../
 ```
 
 Now, you can start a database cluster with docker:
