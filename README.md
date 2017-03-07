@@ -7,7 +7,7 @@ dev: [![Build Status](https://travis-ci.org/paenko/PaenkoDb.svg?branch=dev)](htt
 
 First, you need the `nigthly` rust compiler. 
 
-``bash
+```bash
 curl -L https://static.rust-lang.org/rustup.sh > rustup
 chmod +x rustup
 ./rustup --channel=nightly
