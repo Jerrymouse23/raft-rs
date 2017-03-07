@@ -28,7 +28,7 @@ sudo make install
 Finally, clone the repository and build it:
 
 ```bash
-git clone -b dev git@github.com:Hoverbear/raft-rs.git && \
+git clone -b dev https://github.com/paenko/paenkodb && \
 cd raft-rs/src/document && \
 cargo build && ../../
 ```
