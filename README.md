@@ -28,9 +28,9 @@ sudo make install
 Finally, clone the repository and build it:
 
 ```bash
-git clone -b dev git@github.com:Hoverbear/raft-rs.git && \
-cd raft-rs/src/document && \
-cargo build && ../../
+git clone -b dev https://github.com/paenko/paenkodb && \
+cd paenkodb/src/document && \
+cargo build && cd ../../
 ```
 
 Now, you can start a database cluster with docker:
