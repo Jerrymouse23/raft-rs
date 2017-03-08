@@ -136,6 +136,7 @@ pub fn init(binding_addr: SocketAddr,
                    "meta_peers");
     }
 
+    // TODO implement user & password
     fn http_get_documents(req: &mut Request,
                           context: &Context,
                           state_machines: Arc<HashMap<LogId, Arc<DocumentStateMachine>>>)
@@ -157,6 +158,7 @@ pub fn init(binding_addr: SocketAddr,
                                        .collect::<Vec<_>>()))))
     }
 
+    // TODO implement user & password
     fn http_logs(req: &mut Request,
                  context: &Context,
                  state: Arc<HashMap<LogId,
@@ -242,6 +244,7 @@ pub fn init(binding_addr: SocketAddr,
         Iron::new(router).http(binding_addr);
     });
 
+    // TODO implement user & password
     fn http_get(req: &mut Request, context: &Context) -> IronResult<Response> {
         let ref fileId = req.extensions
             .get::<Router>()
@@ -250,10 +253,16 @@ pub fn init(binding_addr: SocketAddr,
             .unwrap();
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
                                (status::BadRequest, "Cannot find logid"));
-        let ref username = iexpect!(req.extensions.get::<Router>().unwrap().find("username"),
-                                    (status::BadRequest, "Cannot find username"));
-        let ref password = iexpect!(req.extensions.get::<Router>().unwrap().find("password"),
-                                    (status::BadRequest, "Cannot find password"));
+        //  let ref username =
+        // iexpect!(req.extensions.get::<bodyparser::Json>().unwrap().find("username"),
+        // (status::BadRequest, "Cannot find username"));
+        // let ref password =
+        // iexpect!(req.extensions.get::<bodyparser::Json>().unwrap().find("password"),
+        // (status::BadRequest, "Cannot find password"));
+        //
+
+        let ref username = "123";
+        let ref password = "123";
 
         let document = Handler::get(&SocketAddr::V4(context.node_addr),
                                     &username,
@@ -287,15 +296,23 @@ pub fn init(binding_addr: SocketAddr,
             str_payload.from_base64().expect("Payload is not base64")
         };
 
+        let username = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("username"));
+
+            p.as_str().unwrap().to_string()
+        };
+
+        let password = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("password"));
+
+            p.as_str().unwrap().to_string()
+        };
 
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"));
-        let ref username = iexpect!(req.extensions.get::<Router>().unwrap().find("username"),
-                                    (status::BadRequest, "Cannot find username"));
-        let ref password = iexpect!(req.extensions.get::<Router>().unwrap().find("password"),
-                                    (status::BadRequest, "Cannot find password"));
 
-
-        let id = Uuid::new_v4();
+                let id = Uuid::new_v4();
 
         let document = Document {
             id: id,
@@ -333,15 +350,28 @@ pub fn init(binding_addr: SocketAddr,
             str_payload.from_base64().expect("Payload is not base64")
         };
 
-        let session: TransactionId=
-            itry!(iexpect!(req.extensions.get::<Router>().unwrap().find("session")).parse());
+        let username = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("username"));
 
+            p.as_str().unwrap().to_string()
+        };
+
+        let password = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("password"));
+
+            p.as_str().unwrap().to_string()
+        };
+
+        let session: TransactionId = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("session"));
+
+            p.as_str().unwrap().parse().unwrap()
+        };
 
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"));
-        let ref username = iexpect!(req.extensions.get::<Router>().unwrap().find("username"),
-                                    (status::BadRequest, "Cannot find username"));
-        let ref password = iexpect!(req.extensions.get::<Router>().unwrap().find("password"),
-                                    (status::BadRequest, "Cannot find password"));
 
         let id = Uuid::new_v4();
 
@@ -367,18 +397,29 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     fn http_delete(req: &mut Request, context: &Context) -> IronResult<Response> {
+        let username = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("username"));
+
+            p.as_str().unwrap().to_string()
+        };
+
+        let password = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("password"));
+
+            p.as_str().unwrap().to_string()
+        };
+
+        let session = TransactionId::new();
+
         let ref fileId = iexpect!(req.extensions
             .get::<Router>()
             .unwrap()
             .find("fileId"));
 
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"));
-        let ref username = iexpect!(req.extensions.get::<Router>().unwrap().find("username"),
-                                    (status::BadRequest, "Cannot find username"));
-        let ref password = iexpect!(req.extensions.get::<Router>().unwrap().find("password"),
-                                    (status::BadRequest, "Cannot find password"));
 
-        let session = TransactionId::new();
 
         let res = match Handler::remove(&SocketAddr::V4(context.node_addr),
                                         &username,
@@ -397,18 +438,32 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     fn http_trans_delete(req: &mut Request, context: &Context) -> IronResult<Response> {
+        let username = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("username"));
+
+            p.as_str().unwrap().to_string()
+        };
+
+        let password = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("password"));
+
+            p.as_str().unwrap().to_string()
+        };
+        let session: TransactionId = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("session"));
+
+            p.as_str().unwrap().parse().unwrap()
+        };
+
         let ref fileId = iexpect!(req.extensions
             .get::<Router>()
             .unwrap()
             .find("fileId"));
 
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"));
-        let session: TransactionId =
-            itry!(iexpect!(req.extensions.get::<Router>().unwrap().find("session")).parse());
-        let ref username = iexpect!(req.extensions.get::<Router>().unwrap().find("username"),
-                                    (status::BadRequest, "Cannot find username"));
-        let ref password = iexpect!(req.extensions.get::<Router>().unwrap().find("password"),
-                                    (status::BadRequest, "Cannot find password"));
 
         let res = match Handler::remove(&SocketAddr::V4(context.node_addr),
                                         &username,
@@ -440,14 +495,28 @@ pub fn init(binding_addr: SocketAddr,
             str_payload.from_base64().expect("Payload is not base64")
         };
 
+        let username = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("username"));
+
+            p.as_str().unwrap().to_string()
+        };
+
+        let password = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("password"));
+
+            p.as_str().unwrap().to_string()
+        };
+
+        let session = TransactionId::new();
+
+
         let ref id = iexpect!(req.extensions.get::<Router>().unwrap().find("id"),
                               (status::BadRequest, "Cannot find id"));
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
                                (status::BadRequest, "Cannot find logid"));
-        let ref username = iexpect!(req.extensions.get::<Router>().unwrap().find("username"),
-                                    (status::BadRequest, "Cannot find username"));
-        let ref password = iexpect!(req.extensions.get::<Router>().unwrap().find("password"),
-                                    (status::BadRequest, "Cannot find password"));
+
 
         let session = TransactionId::new();
 
@@ -487,14 +556,29 @@ pub fn init(binding_addr: SocketAddr,
                   (status::BadRequest, "Payload is not base64"))
         };
 
+        let username = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("username"));
+
+            p.as_str().unwrap().to_string()
+        };
+
+        let password = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("password"));
+
+            p.as_str().unwrap().to_string()
+        };
+
+        let session: TransactionId = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("session"));
+
+            p.as_str().unwrap().parse().unwrap()
+        };
+
         let ref id = iexpect!(req.extensions.get::<Router>().unwrap().find("id"));
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"));
-        let session: TransactionId =
-            itry!(iexpect!(req.extensions.get::<Router>().unwrap().find("session")).parse());
-        let ref username = iexpect!(req.extensions.get::<Router>().unwrap().find("username"),
-                                    (status::BadRequest, "Cannot find username"));
-        let ref password = iexpect!(req.extensions.get::<Router>().unwrap().find("password"),
-                                    (status::BadRequest, "Cannot find password"));
 
         let res = match Handler::put(&SocketAddr::V4(context.node_addr),
                                      &username,
@@ -514,10 +598,20 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     fn http_begin_transaction(req: &mut Request, context: &Context) -> IronResult<Response> {
-        let ref username = iexpect!(req.extensions.get::<Router>().unwrap().find("username"),
-                                    (status::BadRequest, "Cannot find username"));
-        let ref password = iexpect!(req.extensions.get::<Router>().unwrap().find("password"),
-                                    (status::BadRequest, "Cannot find password"));
+        let username = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("username"));
+
+            p.as_str().unwrap().to_string()
+        };
+
+        let password = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("password"));
+
+            p.as_str().unwrap().to_string()
+        };
+
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
                                (status::BadRequest, "Cannot find logid"));
 
@@ -532,15 +626,29 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     fn http_commit_transaction(req: &mut Request, context: &Context) -> IronResult<Response> {
-        let ref username = iexpect!(req.extensions.get::<Router>().unwrap().find("username"),
-                                    (status::BadRequest, "Cannot find username"));
-        let ref password = iexpect!(req.extensions.get::<Router>().unwrap().find("password"),
-                                    (status::BadRequest, "Cannot find password"));
+        let username = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("username"));
+
+            p.as_str().unwrap().to_string()
+        };
+
+        let password = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("password"));
+
+            p.as_str().unwrap().to_string()
+        };
+
+        let session: TransactionId = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("session"));
+
+            p.as_str().unwrap().parse().unwrap()
+        };
+
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
                                (status::BadRequest, "Cannot find logid"));
-        let ref session: TransactionId =
-            itry!(iexpect!(req.extensions.get::<Router>().unwrap().find("session")).parse());
-
 
         match Handler::commit_transaction(&SocketAddr::V4(context.node_addr),
                                           &username,
@@ -553,15 +661,30 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     fn http_rollback_transaction(req: &mut Request, context: &Context) -> IronResult<Response> {
-        let ref username = iexpect!(req.extensions.get::<Router>().unwrap().find("username"),
-                                    (status::BadRequest, "Cannot find username"));
-        let ref password = iexpect!(req.extensions.get::<Router>().unwrap().find("password"),
-                                    (status::BadRequest, "Cannot find password"));
+        let username = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("username"));
+
+            p.as_str().unwrap().to_string()
+        };
+
+        let password = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("password"));
+
+            p.as_str().unwrap().to_string()
+        };
+
+        let session: TransactionId = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("session"));
+
+            p.as_str().unwrap().parse().unwrap()
+        };
+
+
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
                                (status::BadRequest, "Cannot find logid"));
-        let ref session: TransactionId =
-            itry!(iexpect!(req.extensions.get::<Router>().unwrap().find("session")).parse());
-
 
         match Handler::rollback_transaction(&SocketAddr::V4(context.node_addr),
                                             &username,
