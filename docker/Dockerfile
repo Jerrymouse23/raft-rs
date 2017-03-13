@@ -8,8 +8,9 @@ RUN mkdir /code
 VOLUME /config
 VOLUME /data
 
+#TODO Change path to github archive
 WORKDIR /code
-COPY src/document/target/debug/document .
+COPY ../src/document/target/debug/document .
 
 EXPOSE 9000
 EXPOSE 3000

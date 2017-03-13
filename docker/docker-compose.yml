@@ -6,8 +6,8 @@ services:
                         RUST_BACKTRACE: 1
                         RUST_LOG: raft=debug
                 volumes: 
-                        - ./docker_build/config:/config
-                        - ./docker_build/data:/data
+                        - ./config:/config
+                        - ./data:/data
                 networks:
                         - cluster 
                 ports:
@@ -19,8 +19,8 @@ services:
                         RUST_BACKTRACE: 1
                         RUST_LOG: raft=debug
                 volumes: 
-                        - ./docker_build/config2:/config
-                        - ./docker_build/data2:/data
+                        - ./config2:/config
+                        - ./data2:/data
                 networks:
                         - cluster 
                 ports:
