@@ -338,13 +338,11 @@ pub fn init(binding_addr: SocketAddr,
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
                                (status::BadRequest, "Cannot find logid"));
 
-
-        let document = Handler::get(&SocketAddr::V4(context.node_addr),
+        let document = itry!(Handler::get(&SocketAddr::V4(context.node_addr),
                                     &username,
                                     &password,
                                     &Uuid::parse_str(*fileId).unwrap(),
-                                    &LogId::from(lid).unwrap())
-            .unwrap();
+                                    &LogId::from(lid).unwrap()));
 
         let http_doc = http_Response {
             version: document.version,
