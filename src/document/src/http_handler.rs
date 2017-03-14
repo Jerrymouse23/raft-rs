@@ -55,14 +55,14 @@ struct Context {
 }
 
 pub fn init(binding_addr: SocketAddr,
-                     node_addr: SocketAddrV4,
-                     states: HashMap<LogId,
-                                     (Arc<RwLock<LeaderState>>,
-                                      Arc<RwLock<CandidateState>>,
-                                      Arc<RwLock<FollowerState>>)>,
-                     state_machines: HashMap<LogId, Arc<RwLock<DocumentStateMachine>>>,
-                     peers: Arc<RwLock<HashMap<ServerId, SocketAddr>>>,
-                     auth: Sha256Auth<SingleCredentials>) {
+            node_addr: SocketAddrV4,
+            states: HashMap<LogId,
+                            (Arc<RwLock<LeaderState>>,
+                             Arc<RwLock<CandidateState>>,
+                             Arc<RwLock<FollowerState>>)>,
+            state_machines: HashMap<LogId, Arc<RwLock<DocumentStateMachine>>>,
+            peers: Arc<RwLock<HashMap<ServerId, SocketAddr>>>,
+            auth: Sha256Auth<SingleCredentials>) {
     let mut router = Router::new();
 
     let states = Arc::new(states);
@@ -75,9 +75,9 @@ pub fn init(binding_addr: SocketAddr,
                "get_login");
 
     {
-    router.post("/auth/login",
-                move |request: &mut Request| http_login(request, auth.clone()),
-                "login");
+        router.post("/auth/login",
+                    move |request: &mut Request| http_login(request, auth.clone()),
+                    "login");
     }
 
     router.get("/document/:lid/:fileId",
@@ -271,9 +271,10 @@ pub fn init(binding_addr: SocketAddr,
         Iron::new(ch).http(binding_addr);
     });
 
-    //TODO change to generic
-    fn http_login(req: &mut Request, auth: Arc<Sha256Auth<SingleCredentials>>) -> IronResult<Response>
-    {
+    // TODO change to generic
+    fn http_login(req: &mut Request,
+                  auth: Arc<Sha256Auth<SingleCredentials>>)
+                  -> IronResult<Response> {
         let username = {
             let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
             let ref p = iexpect!(body.find("username"));
@@ -292,14 +293,12 @@ pub fn init(binding_addr: SocketAddr,
 
         match auth.find(&username, &hash_password) { 
             true => {
-                let login = Login::new(username,hash_password); 
+                let login = Login::new(username, hash_password);
                 try!(req.session().set(login));
 
                 Ok(Response::with(status::Ok))
             }
-            false => {
-                Ok(Response::with((status::Unauthorized))) 
-            }
+            false => Ok(Response::with((status::Unauthorized))),
         }
     }
 
@@ -310,32 +309,27 @@ pub fn init(binding_addr: SocketAddr,
             Some(account) => {
                 Ok(Response::with((status::Ok, format!("Logged as {}", account.username))))
             }
-            None => {
-                Ok(Response::with((status::Unauthorized, "Not logged")))
-            }
+            None => Ok(Response::with((status::Unauthorized, "Not logged"))),
         }
 
     }
 
     // TODO implement user & password
     fn http_get(req: &mut Request, context: &Context) -> IronResult<Response> {
+        let ref session = iexpect!(try!(req.session().get::<Login>()));
+
+        let ref username = session.username;
+        let ref password = session.hashed_password;
+
         let ref fileId = req.extensions
             .get::<Router>()
             .unwrap()
             .find("fileId")
             .unwrap();
+
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
                                (status::BadRequest, "Cannot find logid"));
-        //  let ref username =
-        // iexpect!(req.extensions.get::<bodyparser::Json>().unwrap().find("username"),
-        // (status::BadRequest, "Cannot find username"));
-        // let ref password =
-        // iexpect!(req.extensions.get::<bodyparser::Json>().unwrap().find("password"),
-        // (status::BadRequest, "Cannot find password"));
-        //
 
-        let ref username = "123";
-        let ref password = "123";
 
         let document = Handler::get(&SocketAddr::V4(context.node_addr),
                                     &username,
@@ -369,19 +363,10 @@ pub fn init(binding_addr: SocketAddr,
             str_payload.from_base64().expect("Payload is not base64")
         };
 
-        let username = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("username"));
+        let ref session = iexpect!(try!(req.session().get::<Login>()));
 
-            p.as_str().unwrap().to_string()
-        };
-
-        let password = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("password"));
-
-            p.as_str().unwrap().to_string()
-        };
+        let ref username = session.username;
+        let ref password = session.hashed_password;
 
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"));
 
@@ -423,19 +408,10 @@ pub fn init(binding_addr: SocketAddr,
             str_payload.from_base64().expect("Payload is not base64")
         };
 
-        let username = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("username"));
+        let ref session = iexpect!(try!(req.session().get::<Login>()));
 
-            p.as_str().unwrap().to_string()
-        };
-
-        let password = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("password"));
-
-            p.as_str().unwrap().to_string()
-        };
+        let ref username = session.username;
+        let ref password = session.hashed_password;
 
         let session: TransactionId = {
             let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
@@ -470,19 +446,10 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     fn http_delete(req: &mut Request, context: &Context) -> IronResult<Response> {
-        let username = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("username"));
+        let ref session = iexpect!(try!(req.session().get::<Login>()));
 
-            p.as_str().unwrap().to_string()
-        };
-
-        let password = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("password"));
-
-            p.as_str().unwrap().to_string()
-        };
+        let ref username = session.username;
+        let ref password = session.hashed_password;
 
         let session = TransactionId::new();
 
@@ -511,19 +478,11 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     fn http_trans_delete(req: &mut Request, context: &Context) -> IronResult<Response> {
-        let username = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("username"));
+        let ref session = iexpect!(try!(req.session().get::<Login>()));
 
-            p.as_str().unwrap().to_string()
-        };
+        let ref username = session.username;
+        let ref password = session.hashed_password;
 
-        let password = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("password"));
-
-            p.as_str().unwrap().to_string()
-        };
         let session: TransactionId = {
             let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
             let ref p = iexpect!(body.find("session"));
@@ -555,7 +514,12 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     fn http_put(req: &mut Request, context: &Context) -> IronResult<Response> {
-        let payload = {
+        let ref session = iexpect!(try!(req.session().get::<Login>()));
+
+        let ref username = session.username;
+        let ref password = session.hashed_password;
+
+         let payload = {
             let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
 
             let p = iexpect!(body.find("payload"));
@@ -565,34 +529,19 @@ pub fn init(binding_addr: SocketAddr,
                 _ => panic!("Unexpected payload type"),
             };
 
-            str_payload.from_base64().expect("Payload is not base64")
-        };
-
-        let username = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("username"));
-
-            p.as_str().unwrap().to_string()
-        };
-
-        let password = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("password"));
-
-            p.as_str().unwrap().to_string()
+            itry!(str_payload.from_base64(),
+                  (status::BadRequest, "Payload is not base64"))
         };
 
         let session = TransactionId::new();
-
 
         let ref id = iexpect!(req.extensions.get::<Router>().unwrap().find("id"),
                               (status::BadRequest, "Cannot find id"));
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
                                (status::BadRequest, "Cannot find logid"));
 
-
         let session = TransactionId::new();
-
+       
         let bytes = itry!(payload.from_base64(),
                           (status::BadRequest, "Payload is not base64"));
 
@@ -615,6 +564,11 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     fn http_trans_put(req: &mut Request, context: &Context) -> IronResult<Response> {
+        let ref session = iexpect!(try!(req.session().get::<Login>()));
+
+        let ref username = session.username;
+        let ref password = session.hashed_password;
+
         let payload = {
             let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
 
@@ -627,20 +581,6 @@ pub fn init(binding_addr: SocketAddr,
 
             itry!(str_payload.from_base64(),
                   (status::BadRequest, "Payload is not base64"))
-        };
-
-        let username = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("username"));
-
-            p.as_str().unwrap().to_string()
-        };
-
-        let password = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("password"));
-
-            p.as_str().unwrap().to_string()
         };
 
         let session: TransactionId = {
@@ -671,19 +611,10 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     fn http_begin_transaction(req: &mut Request, context: &Context) -> IronResult<Response> {
-        let username = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("username"));
+        let ref session = iexpect!(try!(req.session().get::<Login>()));
 
-            p.as_str().unwrap().to_string()
-        };
-
-        let password = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("password"));
-
-            p.as_str().unwrap().to_string()
-        };
+        let ref username = session.username;
+        let ref password = session.hashed_password;
 
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
                                (status::BadRequest, "Cannot find logid"));
@@ -699,19 +630,10 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     fn http_commit_transaction(req: &mut Request, context: &Context) -> IronResult<Response> {
-        let username = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("username"));
+        let ref session = iexpect!(try!(req.session().get::<Login>()));
 
-            p.as_str().unwrap().to_string()
-        };
-
-        let password = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("password"));
-
-            p.as_str().unwrap().to_string()
-        };
+        let ref username = session.username;
+        let ref password = session.hashed_password;
 
         let session: TransactionId = {
             let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
@@ -734,19 +656,10 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     fn http_rollback_transaction(req: &mut Request, context: &Context) -> IronResult<Response> {
-        let username = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("username"));
+        let ref session = iexpect!(try!(req.session().get::<Login>()));
 
-            p.as_str().unwrap().to_string()
-        };
-
-        let password = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("password"));
-
-            p.as_str().unwrap().to_string()
-        };
+        let ref username = session.username;
+        let ref password = session.hashed_password;
 
         let session: TransactionId = {
             let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
