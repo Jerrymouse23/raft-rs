@@ -79,6 +79,9 @@ pub fn init(binding_addr: SocketAddr,
                     move |request: &mut Request| http_login(request, auth.clone()),
                     "login");
     }
+    router.post("/auth/logout",
+                move |request: &mut Request| http_logout(request),
+                "logout");
 
     router.get("/document/:lid/:fileId",
                move |request: &mut Request| http_get(request, &context),
@@ -302,6 +305,11 @@ pub fn init(binding_addr: SocketAddr,
         }
     }
 
+    fn http_logout(req: &mut Request) -> IronResult<Response> {
+        try!(req.session().clear());
+        Ok(Response::with(status::Ok))
+    }
+
     fn http_display_login(req: &mut Request) -> IronResult<Response> {
         let session = try!(req.session().get::<Login>());
 
@@ -519,7 +527,7 @@ pub fn init(binding_addr: SocketAddr,
         let ref username = session.username;
         let ref password = session.hashed_password;
 
-         let payload = {
+        let payload = {
             let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
 
             let p = iexpect!(body.find("payload"));
@@ -541,7 +549,7 @@ pub fn init(binding_addr: SocketAddr,
                                (status::BadRequest, "Cannot find logid"));
 
         let session = TransactionId::new();
-       
+
         let bytes = itry!(payload.from_base64(),
                           (status::BadRequest, "Payload is not base64"));
 
