@@ -61,7 +61,7 @@ impl Handler {
                                     &id,
                                     &lid);
             } 
-            Err(err) => panic!("{}", err),
+            Err(err) => return Err(err),
         };
 
         let document: Document = decode(response.as_slice()).unwrap();
@@ -91,7 +91,7 @@ impl Handler {
                                      &session,
                                      &lid);
             } 
-            Err(err) => panic!("{}", err),
+            Err(err) => return Err(err),
         };
 
         let uid: Uuid = decode(response.as_slice()).unwrap();
@@ -120,7 +120,7 @@ impl Handler {
                                        &session,
                                        &lid);
             } 
-            Err(err) => panic!("{}", err),
+            Err(err) => return Err(err),
         };
 
         Ok(())
@@ -150,7 +150,7 @@ impl Handler {
                                     &session,
                                     &lid);
             } 
-            Err(err) => panic!("{}", err),
+            Err(err) => return Err(err),
         };
 
         Ok(())
