@@ -193,6 +193,66 @@ impl fmt::Display for Error {
     }
 }
 
+impl fmt::Display for RaftError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            RaftError::ConnectionLimitReached => {
+                fmt::Display::fmt("The connection has been reached",f)
+            }
+            RaftError::InvalidClientId => {
+                fmt::Display::fmt("A client reported an invalid client id",f)
+            }
+            RaftError::ClusterViolation(ref error) => fmt::Display::fmt(error,f),
+            RaftError::UnknownConnectionType => {
+                fmt::Display::fmt("A remote connection attempted to use an unknown conection type \
+                                   in the connection preamble",f)
+                                  
+            }
+            RaftError::InvalidPeerSet => fmt::Display::fmt("An invalid peer in the peer set",f),
+            RaftError::ConnectionRegisterFailed => {
+                fmt::Display::fmt("Registering a connection failed",f)
+            }
+            RaftError::LeaderSearchExhausted => {
+                fmt::Display::fmt("Cannot find leader in the cluster",f)
+            }
+            RaftError::TransactionError(ref error) => fmt::Display::fmt(error,f), 
+            RaftError::Other(ref error) => fmt::Display::fmt(error,f),
+        }
+    }
+}
+
+impl ::std::error::Error for RaftError {
+    fn description(&self) -> &str {
+        match *self {
+            RaftError::ConnectionLimitReached => {
+                "The connection has been reached"
+            }
+            RaftError::InvalidClientId => {
+                "A client reported an invalid client id"
+            }
+            RaftError::ClusterViolation(ref error) => error, 
+            RaftError::UnknownConnectionType => {
+                "A remote connection attempted to use an unknown conection type \
+                                   in the connection preamble"
+                                  
+            }
+            RaftError::InvalidPeerSet => "An invalid peer in the peer set",
+            RaftError::ConnectionRegisterFailed => {
+                "Registering a connection failed"
+            }
+            RaftError::LeaderSearchExhausted => {
+                "Cannot find leader in the cluster"
+            }
+            RaftError::TransactionError(ref error) => error,
+            RaftError::Other(ref error) => error,
+        }
+    }
+
+    fn cause(&self) -> Option<&std::error::Error> {
+        None
+    }
+}
+
 /// The term of a log entry.
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord,Serialize, Deserialize)]
 pub struct Term(u64);
