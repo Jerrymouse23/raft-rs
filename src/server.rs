@@ -280,9 +280,6 @@ impl<L, M, A> Server<L, M, A>
                       peer_messages_broadcast,
                       transaction_queue } = actions;
 
-        println!("Transaction queue {:?}", transaction_queue.len());
-        println!("Requests queue {:?}", self.requests_in_queue.len());
-
         if clear_peer_messages {
             for &token in self.peer_tokens.values() {
                 self.connections[token].clear_messages();

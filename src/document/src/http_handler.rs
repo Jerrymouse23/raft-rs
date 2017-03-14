@@ -49,7 +49,7 @@ pub fn init(binding_addr: SocketAddr,
                             (Arc<RwLock<LeaderState>>,
                              Arc<RwLock<CandidateState>>,
                              Arc<RwLock<FollowerState>>)>,
-            state_machines: HashMap<LogId, Arc<DocumentStateMachine>>,
+            state_machines: HashMap<LogId, Arc<RwLock<DocumentStateMachine>>>,
             peers: Arc<RwLock<HashMap<ServerId, SocketAddr>>>) {
     let mut router = Router::new();
 
@@ -91,7 +91,6 @@ pub fn init(binding_addr: SocketAddr,
                 "rollback_transaction");
 
     {
-        let state_machines = state_machines.clone();
         router.get("/meta/log/:lid/documents",
                    move |request: &mut Request| {
                        http_get_documents(request, &context, state_machines.clone())
@@ -139,7 +138,7 @@ pub fn init(binding_addr: SocketAddr,
     // TODO implement user & password
     fn http_get_documents(req: &mut Request,
                           context: &Context,
-                          state_machines: Arc<HashMap<LogId, Arc<DocumentStateMachine>>>)
+                          state_machines: Arc<HashMap<LogId, Arc<RwLock<DocumentStateMachine>>>>)
                           -> IronResult<Response> {
         let raw_lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
                                (status::BadRequest, "No lid found"));
@@ -147,7 +146,7 @@ pub fn init(binding_addr: SocketAddr,
                         (status::BadRequest, "LogId is invalid"));
 
         let state_machine = iexpect!(state_machines.get(&lid),
-                                     (status::BadRequest, "No log found"));
+                                     (status::BadRequest, "No log found")).read().unwrap();
 
         let documents = state_machine.get_documents();
 

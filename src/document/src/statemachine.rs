@@ -196,7 +196,9 @@ impl state_machine::StateMachine for DocumentStateMachine {
             Err(_) => HashMap::new(),
         };
 
+        println!("{:?}",map);
         self.map = map;
+
 
         let log: Vec<DocumentRecord> = match decode(&snap_log) {
             Ok(m) => m,
