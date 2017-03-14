@@ -3,8 +3,14 @@ use router::Router;
 use iron::prelude::*;
 use params::{Params, Value};
 use bodyparser;
+use iron::typemap;
+
+use iron_sessionstorage::traits::*;
+use iron_sessionstorage::SessionStorage;
+use iron_sessionstorage::backends::SignedCookieBackend;
 
 use std::fs::read_dir;
+use std::cell::RefCell;
 
 use uuid::Uuid;
 use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, Ipv4Addr};
@@ -24,6 +30,11 @@ use raft::LogId;
 use raft::ServerId;
 use raft::TransactionId;
 use raft::state::{LeaderState, CandidateState, FollowerState};
+use raft::auth::Auth;
+use raft::auth::sha256::Sha256Auth;
+use raft::auth::credentials::SingleCredentials;
+
+use login::Login;
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Mutex};
@@ -44,18 +55,30 @@ struct Context {
 }
 
 pub fn init(binding_addr: SocketAddr,
-            node_addr: SocketAddrV4,
-            states: HashMap<LogId,
-                            (Arc<RwLock<LeaderState>>,
-                             Arc<RwLock<CandidateState>>,
-                             Arc<RwLock<FollowerState>>)>,
-            state_machines: HashMap<LogId, Arc<RwLock<DocumentStateMachine>>>,
-            peers: Arc<RwLock<HashMap<ServerId, SocketAddr>>>) {
+                     node_addr: SocketAddrV4,
+                     states: HashMap<LogId,
+                                     (Arc<RwLock<LeaderState>>,
+                                      Arc<RwLock<CandidateState>>,
+                                      Arc<RwLock<FollowerState>>)>,
+                     state_machines: HashMap<LogId, Arc<RwLock<DocumentStateMachine>>>,
+                     peers: Arc<RwLock<HashMap<ServerId, SocketAddr>>>,
+                     auth: Sha256Auth<SingleCredentials>) {
     let mut router = Router::new();
 
     let states = Arc::new(states);
     let state_machines = Arc::new(state_machines);
     let context = Context { node_addr: node_addr };
+    let auth = Arc::new(auth);
+
+    router.get("/auth/login",
+               move |request: &mut Request| http_display_login(request),
+               "get_login");
+
+    {
+    router.post("/auth/login",
+                move |request: &mut Request| http_login(request, auth.clone()),
+                "login");
+    }
 
     router.get("/document/:lid/:fileId",
                move |request: &mut Request| http_get(request, &context),
@@ -146,7 +169,9 @@ pub fn init(binding_addr: SocketAddr,
                         (status::BadRequest, "LogId is invalid"));
 
         let state_machine = iexpect!(state_machines.get(&lid),
-                                     (status::BadRequest, "No log found")).read().unwrap();
+                                     (status::BadRequest, "No log found"))
+            .read()
+            .unwrap();
 
         let documents = state_machine.get_documents();
 
@@ -240,8 +265,57 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     spawn(move || {
-        Iron::new(router).http(binding_addr);
+        let my_secret = b"verysecret".to_vec();
+        let mut ch = Chain::new(router);
+        ch.link_around(SessionStorage::new(SignedCookieBackend::new(my_secret)));
+        Iron::new(ch).http(binding_addr);
     });
+
+    //TODO change to generic
+    fn http_login(req: &mut Request, auth: Arc<Sha256Auth<SingleCredentials>>) -> IronResult<Response>
+    {
+        let username = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("username"));
+
+            p.as_str().unwrap().to_string()
+        };
+
+        let password = {
+            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
+            let ref p = iexpect!(body.find("password"));
+
+            p.as_str().unwrap().to_string()
+        };
+
+        let hash_password = auth.hash(&password);
+
+        match auth.find(&username, &hash_password) { 
+            true => {
+                let login = Login::new(username,hash_password); 
+                try!(req.session().set(login));
+
+                Ok(Response::with(status::Ok))
+            }
+            false => {
+                Ok(Response::with((status::Unauthorized))) 
+            }
+        }
+    }
+
+    fn http_display_login(req: &mut Request) -> IronResult<Response> {
+        let session = try!(req.session().get::<Login>());
+
+        match session {
+            Some(account) => {
+                Ok(Response::with((status::Ok, format!("Logged as {}", account.username))))
+            }
+            None => {
+                Ok(Response::with((status::Unauthorized, "Not logged")))
+            }
+        }
+
+    }
 
     // TODO implement user & password
     fn http_get(req: &mut Request, context: &Context) -> IronResult<Response> {
@@ -311,7 +385,7 @@ pub fn init(binding_addr: SocketAddr,
 
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"));
 
-                let id = Uuid::new_v4();
+        let id = Uuid::new_v4();
 
         let document = Document {
             id: id,

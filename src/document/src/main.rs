@@ -13,6 +13,7 @@ extern crate iron;
 extern crate router;
 extern crate params;
 extern crate bodyparser;
+extern crate iron_sessionstorage;
 
 extern crate docopt;
 extern crate bincode;
@@ -23,6 +24,7 @@ extern crate serde_json;
 extern crate serde_derive;
 extern crate uuid;
 extern crate toml;
+extern crate base64;
 
 #[macro_use]
 extern crate lazy_static;
@@ -34,6 +36,7 @@ pub mod config;
 pub mod doclog;
 mod statemachine;
 mod parser;
+mod login;
 
 use std::net::SocketAddr;
 use docopt::Docopt;
@@ -57,7 +60,7 @@ use config::*;
 use handler::Handler;
 use doclog::DocLog;
 
-use raft::auth::simple::SimpleAuth;
+use raft::auth::sha256::Sha256Auth;
 use raft::auth::credentials::SingleCredentials;
 
 use http_handler::*;
@@ -257,13 +260,13 @@ fn server(args: &Args) {
     }
 
     let credentials = SingleCredentials::new(config.security.username.clone(), config.security.password.clone());
-    let auth = SimpleAuth::new(credentials);
+    let auth = Sha256Auth::new(credentials);
 
     let (mut server, mut event_loop) = Server::new(ServerId::from(config.server.node_id),
                                                    server_addr,
                                                    &peers,
                                                    config.server.community_string.to_string(),
-                                                   auth,
+                                                   auth.clone(),
                                                    logs)
         .unwrap();
 
@@ -282,7 +285,7 @@ fn server(args: &Args) {
         let state_machines = server.log_manager.get_state_machines();
         let peers = server.log_manager.get_peers();
 
-        init(config.get_binding_addr(), node_addr, states, state_machines,peers);
+        init(config.get_binding_addr(), node_addr, states, state_machines,peers, auth);
     }
 
     server.init(&mut event_loop);
