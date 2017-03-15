@@ -337,20 +337,25 @@ pub fn init(binding_addr: SocketAddr,
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
                                (status::BadRequest, "Cannot find logid"));
 
-        let document = itry!(Handler::get(&SocketAddr::V4(context.node_addr),
-                                    &username,
-                                    &password,
-                                    &Uuid::parse_str(*fileId).unwrap(),
-                                    &LogId::from(lid).unwrap()));
+        match Handler::get(&SocketAddr::V4(context.node_addr),
+                           &username,
+                           &password,
+                           &Uuid::parse_str(*fileId).unwrap(),
+                           &LogId::from(lid).unwrap()) {
+            Ok(document) => {
+                let http_doc = http_Response {
+                    version: document.version,
+                    payload: document.payload.as_slice().to_base64(STANDARD),
+                };
 
-        let http_doc = http_Response {
-            version: document.version,
-            payload: document.payload.as_slice().to_base64(STANDARD),
-        };
+                let encoded = itry!(to_json(&http_doc), "Cannot encode document to json");
 
-        let encoded = itry!(to_json(&http_doc), "Cannot encode document to json");
-
-        Ok(Response::with((status::Ok, encoded)))
+                Ok(Response::with((status::Ok, encoded)))
+            }
+            Err(ref error) => {
+                Ok(Response::with((status::InternalServerError, format!("{}", error))))
+            }
+        }
     }
 
     fn http_post(req: &mut Request, context: &Context) -> IronResult<Response> {
