@@ -373,7 +373,7 @@ pub fn init(binding_addr: SocketAddr,
             str_payload.from_base64().expect("Payload is not base64")
         };
 
-        let ref session = iexpect!(try!(req.session().get::<Login>()));
+        let ref session = iexpect!(try!(req.session().get::<Login>()), (status::BadRequest, "No session! Please login"));
 
         let ref username = session.username;
         let ref password = session.hashed_password;
@@ -398,7 +398,7 @@ pub fn init(binding_addr: SocketAddr,
                             &LogId::from(lid).unwrap()) {
             Ok(id) => Ok(Response::with((status::Ok, format!("{}", id)))),
             Err(err) => {
-                Ok(Response::with((status::InternalServerError,
+                Ok(Response::with((status::BadRequest,
                                    "An error occured when posting new document")))
             }
         }
