@@ -88,8 +88,9 @@ impl Transaction {
         scoped_debug!("BROADCAST TRANSACTION ROLLBACK");
         let message = messages::transaction_rollback(lid,
                                                      &self.session
-                                                         .expect("Cannot rollback transaction when \
-                                                                  no TransactionId has been set"));
+                                                         .expect("Cannot rollback transaction \
+                                                                  when no TransactionId has \
+                                                                  been set"));
         actions.peer_messages_broadcast.push(message);
     }
 

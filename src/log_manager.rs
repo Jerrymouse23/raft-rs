@@ -137,7 +137,7 @@ impl<L, M> LogManager<L, M>
                         actions: &mut Actions) {
 
         for (&lid, ref mut messages) in requests_in_queue.iter_mut() {
-            //TODO implement deref for LogId 
+            // TODO implement deref for LogId
             self.consensus
                 .get_mut(&LogId::from(&format!("{}", lid)).unwrap())
                 .unwrap()
@@ -165,7 +165,7 @@ impl<L, M> LogManager<L, M>
         result
     }
 
-    pub fn get_state_machines(&self) -> HashMap<LogId, Arc<RwLock<M>>>{
+    pub fn get_state_machines(&self) -> HashMap<LogId, Arc<RwLock<M>>> {
         let mut result = HashMap::new();
 
         for (&lid, cons) in self.consensus.iter() {

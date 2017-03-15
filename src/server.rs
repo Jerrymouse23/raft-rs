@@ -299,7 +299,7 @@ impl<L, M, A> Server<L, M, A>
             scoped_debug!("Messages appended to queue {}", transaction_queue.len());
             for (lid, cid, message) in transaction_queue {
                 let mut messages = self.requests_in_queue.get_mut(&lid).unwrap();
-                messages.push((cid,message));
+                messages.push((cid, message));
             }
         }
 
@@ -384,8 +384,8 @@ impl<L, M, A> Server<L, M, A>
         }
     }
 
-    fn handle_queue(&mut self,actions: &mut Actions) {
-        self.log_manager.handle_queue(&mut self.requests_in_queue,actions);
+    fn handle_queue(&mut self, actions: &mut Actions) {
+        self.log_manager.handle_queue(&mut self.requests_in_queue, actions);
     }
 
     /// Reads messages from the connection until no more are available.

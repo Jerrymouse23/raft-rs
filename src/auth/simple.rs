@@ -20,7 +20,7 @@ impl<C> SimpleAuth<C>
 impl<C> Auth for SimpleAuth<C>
     where C: Credentials
 {
-    fn hash(&self,plain: &str) -> String {
+    fn hash(&self, plain: &str) -> String {
         plain.to_string()
     }
 

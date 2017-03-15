@@ -20,7 +20,7 @@ impl<C> NullAuth<C>
 impl<C> Auth for NullAuth<C>
     where C: Credentials
 {
-    fn hash(&self,plain: &str) -> String {
+    fn hash(&self, plain: &str) -> String {
         format!("hashed_{}", plain)
     }
 

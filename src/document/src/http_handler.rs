@@ -329,11 +329,10 @@ pub fn init(binding_addr: SocketAddr,
         let ref username = session.username;
         let ref password = session.hashed_password;
 
-        let ref fileId = req.extensions
+        let ref fileId = iexpect!(req.extensions
             .get::<Router>()
             .unwrap()
-            .find("fileId")
-            .unwrap();
+            .find("fileId"));
 
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
                                (status::BadRequest, "Cannot find logid"));

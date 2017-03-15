@@ -23,7 +23,7 @@ impl<C> Sha256Auth<C>
 impl<C> Auth for Sha256Auth<C>
     where C: Credentials
 {
-    fn hash(&self,plain: &str) -> String {
+    fn hash(&self, plain: &str) -> String {
         let mut hasher = Sha256::new();
         hasher.input_str(plain);
         hasher.result_str()
