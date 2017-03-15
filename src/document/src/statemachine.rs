@@ -134,15 +134,13 @@ impl state_machine::StateMachine for DocumentStateMachine {
         let message = decode(&new_value).unwrap();
 
         let response = match message {
-            Message::Get(_) => self.query(new_value),
+            Message::Get(_) => self.query(new_value), // delegate to query when propose
             Message::Post(document) => self.post(document),
             Message::Remove(id) => self.remove(id),
             Message::Put(id, new_payload) => self.put(id, new_payload),
         };
 
         self.snapshot();
-
-        println!("{:?}", self.get_documents());
 
         response
     }
@@ -151,7 +149,9 @@ impl state_machine::StateMachine for DocumentStateMachine {
         let message = decode(&query).unwrap();
 
         let response = match message {
-            Message::Get(id) => self.map.get(&id).unwrap().clone().payload,
+            Message::Get(id) => {
+                encode(&self.map.get(&id).unwrap().clone(), SizeLimit::Infinite).unwrap()
+            }
             _ => {
                 let response = encode(&"Wrong usage of .query()", SizeLimit::Infinite);
 
@@ -196,7 +196,7 @@ impl state_machine::StateMachine for DocumentStateMachine {
             Err(_) => HashMap::new(),
         };
 
-        println!("{:?}",map);
+        println!("{:?}", map);
         self.map = map;
 
 
