@@ -46,6 +46,11 @@ or use the bash:
 You can copy the config from `docker_build/config/config.toml`
 
 You can find the test scripts in `docker_build/test`. 
+## FAQ ##
+
+> I'm getting the error "failed to run custom build command for `openssl-sys v0.9.8`". How do I fix this?
+
+Follow the instructions on https://github.com/sfackler/rust-openssl - install pkg-config and libssl-dev :+1:
 
 ## Documentation ##
 
