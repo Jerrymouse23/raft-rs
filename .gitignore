@@ -5,3 +5,4 @@ voted_for
 /data
 src/messages_capnp.rs
 user_creds.creds
+test/session_cookie
