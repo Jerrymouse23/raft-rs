@@ -19,14 +19,26 @@ doc_id=$(curl --fail --verbose -b session_cookie -X POST -H "Content-Type: appli
 }' "$url/document/$lid" ) && echo "$green document post successful" || echo "$red failed to  post data"
 
 echo "$normal"
-sleep 1
+sleep 2 
 
-echo $(curl --fail --verbose -b session_cookie -X GET "$url/meta/log/$lid/documents")
+curl --fail --verbose -b session_cookie -X GET "$url/document/$lid/$doc_id" && echo "$green document get successful" || echo "$red failed to get document"
 
 echo "$normal"
 sleep 1
 
-curl --fail --verbose -b session_cookie -X GET "$url/document/$lid/$doc_id" && echo "$green document get successful" || echo "$red failed to get document"
+curl --fail --verbose -b session_cookie -X PUT -H "Content-Type: application/json" -H "Cache-Control: no-cache" -d '{
+	"payload":"dXBkYXRlZA=="
+}' "$url/document/$lid/document/$doc_id" && echo "$green updating document successful" || echo "$red updating document failed"
+
+echo "$normal"
+sleep 1
+
+curl --fail --verbose -b session_cookie -X DELETE "$url/document/$lid/$doc_id" && echo "$green deleting document successful" || echo "$red deleting document failed"
+
+echo "$normal"
+sleep 1
+
+curl --fail --verbose -b session_cookie -X GET "$url/meta/log/$lid/documents" && echo "$green fetching all documents was successful" || echo "$red failed to fetch all documents"
 
 
 
