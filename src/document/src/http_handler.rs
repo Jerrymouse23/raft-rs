@@ -92,17 +92,17 @@ pub fn init(binding_addr: SocketAddr,
     router.post("/document/:lid/transaction/:session",
                 move |request: &mut Request| http_trans_post(request, &context),
                 "post_trans_document");
-    router.delete("/document/:lid/:fileId",
+    router.delete("/document/:lid/:id",
                   move |request: &mut Request| http_delete(request, &context),
                   "delete_document");
-    router.delete("/document/:lid/:fileId/transaction/:session",
+    router.delete("/document/:lid/:id/transaction/:session",
                   move |request: &mut Request| http_trans_delete(request, &context),
                   "delete_trans_document");
-    router.put("/document/:lid",
+    router.put("/document/:lid/document/:id",
                move |request: &mut Request| http_put(request, &context),
                "put_document");
-    router.put("/document/:lid/transaction/:session",
-               move |request: &mut Request| http_put(request, &context),
+    router.put("/document/:lid/transaction/:session/document/:id",
+               move |request: &mut Request| http_trans_put(request, &context),
                "put_trans_document");
     router.post("/transaction/begin/:lid",
                 move |request: &mut Request| http_begin_transaction(request, &context),
@@ -373,7 +373,8 @@ pub fn init(binding_addr: SocketAddr,
             str_payload.from_base64().expect("Payload is not base64")
         };
 
-        let ref session = iexpect!(try!(req.session().get::<Login>()), (status::BadRequest, "No session! Please login"));
+        let ref session = iexpect!(try!(req.session().get::<Login>()),
+                                   (status::BadRequest, "No session! Please login"));
 
         let ref username = session.username;
         let ref password = session.hashed_password;
@@ -463,10 +464,10 @@ pub fn init(binding_addr: SocketAddr,
 
         let session = TransactionId::new();
 
-        let ref fileId = iexpect!(req.extensions
+        let ref doc_id = iexpect!(req.extensions
             .get::<Router>()
             .unwrap()
-            .find("fileId"));
+            .find("id"));
 
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"));
 
@@ -474,7 +475,7 @@ pub fn init(binding_addr: SocketAddr,
         let res = match Handler::remove(&SocketAddr::V4(context.node_addr),
                                         &username,
                                         &password,
-                                        &Uuid::parse_str(*fileId).unwrap(),
+                                        &Uuid::parse_str(*doc_id).unwrap(),
                                         &session,
                                         &LogId::from(lid).unwrap()) {
             Ok(()) => Response::with((status::Ok, "Ok")),
@@ -500,17 +501,17 @@ pub fn init(binding_addr: SocketAddr,
             p.as_str().unwrap().parse().unwrap()
         };
 
-        let ref fileId = iexpect!(req.extensions
+        let ref doc_id = iexpect!(req.extensions
             .get::<Router>()
             .unwrap()
-            .find("fileId"));
+            .find("id"));
 
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"));
 
         let res = match Handler::remove(&SocketAddr::V4(context.node_addr),
                                         &username,
                                         &password,
-                                        &Uuid::parse_str(*fileId).unwrap(),
+                                        &Uuid::parse_str(*doc_id).unwrap(),
                                         &session,
                                         &LogId::from(lid).unwrap()) {
             Ok(()) => Response::with((status::Ok, "Ok")),
@@ -534,6 +535,7 @@ pub fn init(binding_addr: SocketAddr,
 
             let p = iexpect!(body.find("payload"));
 
+            // TODO should not panic
             let str_payload = match *p {
                 serde_json::Value::String(ref load) => load,
                 _ => panic!("Unexpected payload type"),
