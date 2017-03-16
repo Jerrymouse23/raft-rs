@@ -376,11 +376,11 @@ impl<L, M> Consensus<L, M>
             }
             client_request::Which::TransactionRollback(Ok(_)) => {
                 if self.is_leader() {
+                    self.transaction.broadcast_rollback(&self.lid, actions);
                     let (commit_index, last_applied, _) = self.transaction.rollback();
                     self.commit_index = commit_index;
                     self.last_applied = last_applied;
                     self.log.rollback(commit_index).expect("Transaction rollback failed");
-                    self.transaction.broadcast_rollback(&self.lid, actions);
 
                     let message = messages::command_transaction_success("".as_bytes(), &self.lid);
 
