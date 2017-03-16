@@ -150,7 +150,15 @@ impl state_machine::StateMachine for DocumentStateMachine {
 
         let response = match message {
             Message::Get(id) => {
-                encode(&self.map.get(&id).unwrap().clone(), SizeLimit::Infinite).unwrap()
+                let doc = match self.map.get(&id){
+                    Some(doc) => doc,
+                    None => {
+                        println!("Cannot find document");    
+                        return Vec::new()
+                    }
+                };
+
+                encode(&doc, SizeLimit::Infinite).unwrap()
             }
             _ => {
                 let response = encode(&"Wrong usage of .query()", SizeLimit::Infinite);
