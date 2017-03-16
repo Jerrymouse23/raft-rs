@@ -40,5 +40,20 @@ sleep 1
 
 curl --fail --verbose -b session_cookie -X GET "$url/meta/log/$lid/documents" && echo "$green fetching all documents was successful" || echo "$red failed to fetch all documents"
 
+echo "$normal"
+sleep 1
+
+curl --fail --verbose -b session_cookie -X GET "$url/meta/$lid/state/leader" && echo "$green get leader meta data"  || echo "$red failed to get leader meta data"
+
+echo "$normal"
+sleep 1
+
+curl --fail --verbose -b session_cookie -X GET "$url/meta/$lid/state/candidate" && echo "$green get candidate meta data" || echo "$red failed to get candidate meta data"
+
+echo "$normal"
+sleep 1
+
+curl --fail --verbose -b session_cookie -X GET "$url/meta/$lid/state/follower" && echo "$green get follower meta data" || echo "$red failed to get follower meta data"
+
 
 
