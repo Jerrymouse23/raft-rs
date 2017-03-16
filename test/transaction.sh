@@ -30,5 +30,5 @@ echo  "**Remove transaction $document_id **"
 
 sleep 1
 
-# RUST_LOG=raft=$log_level $binary rollback $lid $ip $username $password $transaction_id
+RUST_LOG=raft=$log_level $binary rollback $lid $ip $username $password $transaction_id
 echo  "** Rollback transaction **"

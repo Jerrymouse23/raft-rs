@@ -108,11 +108,11 @@ pub fn init(binding_addr: SocketAddr,
                 move |request: &mut Request| http_begin_transaction(request, &context),
                 "begin_transaction");
 
-    router.post("/transaction/commit/:lid",
+    router.post("/transaction/commit/:lid/:session",
                 move |request: &mut Request| http_commit_transaction(request, &context),
                 "commit_transaction");
 
-    router.post("/transaction/rollback/:lid",
+    router.post("/transaction/rollback/:lid/:session",
                 move |request: &mut Request| http_rollback_transaction(request, &context),
                 "rollback_transaction");
 
@@ -424,14 +424,17 @@ pub fn init(binding_addr: SocketAddr,
         let ref username = session.username;
         let ref password = session.hashed_password;
 
-        let session: TransactionId = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("session"));
+        // TODO do not panic
+        let ref session: TransactionId = req.extensions
+            .get::<Router>()
+            .unwrap()
+            .find("session")
+            .expect("Cannot find session")
+            .parse()
+            .expect("Failed to parse session id");
 
-            p.as_str().unwrap().parse().unwrap()
-        };
-
-        let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"));
+        let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
+                               (status::BadRequest, "Cannot find lid"));
 
         let id = Uuid::new_v4();
 
@@ -494,12 +497,15 @@ pub fn init(binding_addr: SocketAddr,
         let ref username = session.username;
         let ref password = session.hashed_password;
 
-        let session: TransactionId = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("session"));
+        // TODO do not panic
+        let ref session: TransactionId = req.extensions
+            .get::<Router>()
+            .unwrap()
+            .find("session")
+            .expect("Cannot find session")
+            .parse()
+            .expect("Failed to parse session id");
 
-            p.as_str().unwrap().parse().unwrap()
-        };
 
         let ref doc_id = iexpect!(req.extensions
             .get::<Router>()
@@ -595,12 +601,14 @@ pub fn init(binding_addr: SocketAddr,
                   (status::BadRequest, "Payload is not base64"))
         };
 
-        let session: TransactionId = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("session"));
-
-            p.as_str().unwrap().parse().unwrap()
-        };
+        // TODO do not panic
+        let ref session: TransactionId = req.extensions
+            .get::<Router>()
+            .unwrap()
+            .find("session")
+            .expect("Cannot find session")
+            .parse()
+            .expect("Failed to parse session id");
 
         let ref id = iexpect!(req.extensions.get::<Router>().unwrap().find("id"));
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"));
@@ -628,8 +636,7 @@ pub fn init(binding_addr: SocketAddr,
         let ref username = session.username;
         let ref password = session.hashed_password;
 
-        let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
-                               (status::BadRequest, "Cannot find logid"));
+        let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"));
 
         match Handler::begin_transaction(&SocketAddr::V4(context.node_addr),
                                          &username,
@@ -647,12 +654,14 @@ pub fn init(binding_addr: SocketAddr,
         let ref username = session.username;
         let ref password = session.hashed_password;
 
-        let session: TransactionId = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("session"));
-
-            p.as_str().unwrap().parse().unwrap()
-        };
+        // TODO do not panic
+        let ref session: TransactionId = req.extensions
+            .get::<Router>()
+            .unwrap()
+            .find("session")
+            .expect("Cannot find session")
+            .parse()
+            .expect("Failed to parse session id");
 
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
                                (status::BadRequest, "Cannot find logid"));
@@ -673,13 +682,14 @@ pub fn init(binding_addr: SocketAddr,
         let ref username = session.username;
         let ref password = session.hashed_password;
 
-        let session: TransactionId = {
-            let ref body = req.get::<bodyparser::Json>().unwrap().unwrap();
-            let ref p = iexpect!(body.find("session"));
-
-            p.as_str().unwrap().parse().unwrap()
-        };
-
+        // TODO do not panic
+        let ref session: TransactionId = req.extensions
+            .get::<Router>()
+            .unwrap()
+            .find("session")
+            .expect("Cannot find session")
+            .parse()
+            .expect("Failed to parse session id");
 
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
                                (status::BadRequest, "Cannot find logid"));
