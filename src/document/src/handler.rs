@@ -36,9 +36,9 @@ impl Handler {
 
     fn new_client(addr: &SocketAddr, username: &str, password: &str, lid: &LogId) -> Client {
         Client::new::<SimpleAuth<SingleCredentials>>(Self::to_hashset(*addr),
-                                username.to_string(),
-                                password.to_string(),
-                                *lid)
+                                                     username.to_string(),
+                                                     password.to_string(),
+                                                     *lid)
     }
 
     pub fn get(addr: &SocketAddr,
@@ -164,9 +164,17 @@ impl Handler {
                              -> Result<String> {
         let mut client = Self::new_client(addr, username, password, lid);
 
-        let res = client.begin_transaction(session);
-
-        Ok(Uuid::from_bytes(res.unwrap().as_slice()).unwrap().hyphenated().to_string())
+        match client.begin_transaction(session) {
+            Ok(res) => Ok(Uuid::from_bytes(res.as_slice()).unwrap().hyphenated().to_string()),
+            Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
+                return Handler::begin_transaction(&parse_addr(&leader_str),
+                                                  &username,
+                                                  &password,
+                                                  &session,
+                                                  &lid);
+            } 
+            Err(err) => return Err(err),
+        }
     }
 
     pub fn commit_transaction(addr: &SocketAddr,
@@ -177,9 +185,17 @@ impl Handler {
                               -> Result<String> {
         let mut client = Self::new_client(addr, username, password, lid);
 
-        let res = client.end_transaction(session);
-
-        Ok(from_utf8(res.unwrap().as_slice()).unwrap().to_string())
+        match client.end_transaction(session) {
+            Ok(res) => Ok(from_utf8(res.as_slice()).unwrap().to_string()),
+            Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
+                return Handler::commit_transaction(&parse_addr(&leader_str),
+                                                   &username,
+                                                   &password,
+                                                   &lid,
+                                                   &session);
+            } 
+            Err(err) => return Err(err),
+        }
     }
 
     pub fn rollback_transaction(addr: &SocketAddr,
@@ -190,8 +206,19 @@ impl Handler {
                                 -> Result<String> {
         let mut client = Self::new_client(addr, username, password, lid);
 
-        let res = client.rollback_transaction(session);
 
-        Ok(from_utf8(res.unwrap().as_slice()).unwrap().to_string())
+
+        match client.rollback_transaction(session) {
+            Ok(res) => Ok(from_utf8(res.as_slice()).unwrap().to_string()),
+            Err(RError::Raft(RaftError::ClusterViolation(ref leader_str))) => {
+                return Handler::rollback_transaction(&parse_addr(&leader_str),
+                                                     &username,
+                                                     &password,
+                                                     &lid,
+                                                     &session);
+            } 
+            Err(err) => return Err(err),
+        }
+
     }
 }
