@@ -225,62 +225,30 @@ impl<L, M> Consensus<L, M>
             }
             message::Which::TransactionBegin(Ok(response)) => {
                 // TODO do not panic if invalid
-                let session = TransactionId::from_bytes(response.get_session().unwrap())
-                    .expect("Invalid TransactionId");
-
-                if !self.transaction.is_active {
-                    self.transaction.begin(session,
-                                           self.commit_index,
-                                           self.last_applied,
-                                           Some(self.follower_state.read().unwrap().min_index));
-                } else {
-                    scoped_warn!("A transaction is already running");
-                }
+                self.transaction_begin(from,
+                                       TransactionId::from_bytes(response.get_session().unwrap())
+                                           .expect("Invalid TransactionId"),
+                                       actions)
             }
             message::Which::TransactionCommit(Ok(message)) => {
                 // TODO do not panic if invalid
-                let session = TransactionId::from_bytes(message.get_session().unwrap())
-                    .expect("Invalid TransactionId");
-
-                if self.transaction.is_active {
-                    assert_eq!(self.transaction.session.expect("No TransactionSession defined"),
-                               session);
-                    self.transaction.end();
-                } else {
-                    scoped_warn!("Received TransactionCommit but no transaction is currently \
-                                  running");
-                }
+                self.transaction_commit(from,
+                                        TransactionId::from_bytes(message.get_session().unwrap())
+                                            .expect("Invalid TransactionId"),
+                                        actions)
             }
             message::Which::TransactionRollback(Ok(message)) => {
-                // TODO refactor to seperate method
                 scoped_debug!("Rollback");
 
-                let session = TransactionId::from_bytes(message.get_session().unwrap())
-                    .expect("Invalid TransactionId");
+                // TODO do not panic if invalid
+                self.transaction_rollback(from,
+                                          TransactionId::from_bytes(message.get_session().unwrap())
+                                              .expect("Invalid TransactionId"),
+                                          actions)
 
-                if self.transaction.is_active {
-                    let (commit_index, last_applied, follower_state_min) = self.transaction
-                        .rollback();
-                    self.follower_state.write().unwrap().min_index = follower_state_min.unwrap();
-                    self.commit_index = commit_index;
-                    self.last_applied = last_applied;
-
-                    {
-                        let entries_failed = self.log.rollback(commit_index).unwrap();
-
-                        for &(_, ref command) in entries_failed.iter().rev() {
-                            self.state_machine.write().unwrap().revert(command.as_slice());
-                        }
-                    }
-
-                    self.log.truncate(commit_index).unwrap();
-                    self.state_machine.write().unwrap().rollback();
-                } else {
-                    scoped_warn!("Cannot rollback; no transaction running");
-                }
             }
             _ => panic!("cannot handle message"),
-        };
+        }
     }
 
     /// Applies a client message to the consensus state machine.
@@ -328,89 +296,20 @@ impl<L, M> Consensus<L, M>
                 }
             }
             client_request::Which::TransactionBegin(Ok(request)) => {
-                if self.is_leader() {
-                    let session = TransactionId::from_bytes(request.get_session().unwrap())
-                        .expect("Invalid TransactionId");
-                    self.transaction
-                        .begin(session, self.commit_index, self.last_applied, None);
-                    self.transaction.broadcast_begin(&self.lid, actions);
-
-                    let message = messages::command_transaction_success(request.get_session()
-                                                                            .unwrap(),
-                                                                        &self.lid);
-
-                    actions.client_messages.push((from, message));
-                } else {
-                    let message =
-                        messages::command_response_not_leader(&self.peers[&self.follower_state
-                                                                  .read()
-                                                                  .unwrap()
-                                                                  .leader
-                                                                  .unwrap()],
-                                                              &self.lid);
-                    actions.client_messages.push((from, message));
-                }
+                self.client_transaction_begin(from,
+                                              TransactionId::from_bytes(request.get_session()
+                                                      .unwrap())
+                                                  .expect("Transaction invalid"),
+                                              actions);
             }
             client_request::Which::TransactionCommit(Ok(_)) => {
-                if self.is_leader() {
-                    self.transaction.broadcast_end(&self.lid, actions);
-                    self.transaction.end();
-
-                    let message = messages::command_transaction_success("Transaction has been \
-                                                                         stopped"
-                                                                            .as_bytes(),
-                                                                        &self.lid);
-
-                    actions.client_messages.push((from, message));
-
-                } else {
-                    let message =
-                        messages::command_response_not_leader(&self.peers[&self.follower_state
-                                                                  .read()
-                                                                  .unwrap()
-                                                                  .leader
-                                                                  .unwrap()],
-                                                              &self.lid);
-                    actions.client_messages.push((from, message));
-                }
+                self.client_transaction_commit(from,
+                                               actions);
             }
             client_request::Which::TransactionRollback(Ok(_)) => {
-                if self.is_leader() {
-                    self.transaction.broadcast_rollback(&self.lid, actions);
-                    let (commit_index, last_applied, _) = self.transaction.rollback();
-                    self.commit_index = commit_index;
-                    self.last_applied = last_applied;
-                    self.log.rollback(commit_index).expect("Transaction rollback failed");
+                self.client_transaction_rollback(from,
+                                                 actions);
 
-                    let message = messages::command_transaction_success("".as_bytes(), &self.lid);
-
-                    let mut leader_state = self.leader_state.write().unwrap();
-                    for &peer in self.peers.keys() {
-                        leader_state.set_next_index(peer, commit_index + 1);
-                    }
-
-                    {
-                        let entries_failed = self.log.rollback(commit_index).unwrap();
-
-                        for &(_, ref command) in entries_failed.iter().rev() {
-                            self.state_machine.write().unwrap().revert(command.as_slice());
-                        }
-                    }
-
-                    self.log.truncate(commit_index).unwrap();
-                    self.state_machine.write().unwrap().rollback();
-
-                    actions.client_messages.push((from, message));
-                } else {
-                    let message =
-                        messages::command_response_not_leader(&self.peers[&self.follower_state
-                                                                  .read()
-                                                                  .unwrap()
-                                                                  .leader
-                                                                  .unwrap()],
-                                                              &self.lid);
-                    actions.client_messages.push((from, message));
-                }
             }
             _ => panic!("cannot handle message"),
         }
@@ -878,6 +777,151 @@ impl<L, M> Consensus<L, M>
             panic!("ProposalRequest: no entry given")
         }
     }
+
+    fn transaction_begin(&mut self,
+                         from: ServerId,
+                         session: TransactionId,
+                         actions: &mut Actions) {
+        if !self.is_leader() {
+            if !self.transaction.is_active {
+                self.transaction.begin(session,
+                                       self.commit_index,
+                                       self.last_applied,
+                                       Some(self.follower_state.read().unwrap().min_index));
+            } else {
+                scoped_warn!("A transaction is already running");
+            }
+        }
+    }
+
+    fn transaction_commit(&mut self,
+                          from: ServerId,
+                          session: TransactionId,
+                          actions: &mut Actions) {
+        if self.transaction.is_active {
+            assert_eq!(self.transaction.session.expect("No TransactionSession defined"),
+                       session);
+            self.transaction.end();
+        } else {
+            scoped_warn!("Received TransactionCommit but no transaction is currently running");
+        }
+
+    }
+
+    fn transaction_rollback(&mut self,
+                            from: ServerId,
+                            session: TransactionId,
+                            actions: &mut Actions) {
+        if self.transaction.is_active {
+            let (commit_index, last_applied, follower_state_min) = self.transaction
+                .rollback();
+            self.follower_state.write().unwrap().min_index = follower_state_min.unwrap();
+            self.commit_index = commit_index;
+            self.last_applied = last_applied;
+
+            {
+                let entries_failed = self.log.rollback(commit_index).unwrap();
+
+                for &(_, ref command) in entries_failed.iter().rev() {
+                    self.state_machine.write().unwrap().revert(command.as_slice());
+                }
+            }
+
+            self.log.truncate(commit_index).unwrap();
+            self.state_machine.write().unwrap().rollback();
+        } else {
+            scoped_warn!("Cannot rollback; no transaction running");
+        }
+    }
+
+    fn client_transaction_begin(&mut self,
+                                from: ClientId,
+                                session: TransactionId,
+                                actions: &mut Actions) {
+        if self.is_leader() {
+            self.transaction
+                .begin(session, self.commit_index, self.last_applied, None);
+            self.transaction.broadcast_begin(&self.lid, actions);
+
+            let message = messages::command_transaction_success(&session.as_bytes(),
+                                                                &self.lid);
+
+            actions.client_messages.push((from, message));
+        } else {
+            let message = messages::command_response_not_leader(&self.peers[&self.follower_state
+                                                                    .read()
+                                                                    .unwrap()
+                                                                    .leader
+                                                                    .unwrap()],
+                                                                &self.lid);
+            actions.client_messages.push((from, message));
+        }
+    }
+
+    fn client_transaction_commit(&mut self,
+                                 from: ClientId,
+                                 actions: &mut Actions) {
+        if self.is_leader() {
+            self.transaction.broadcast_end(&self.lid, actions);
+            self.transaction.end();
+
+            let message = messages::command_transaction_success("Transaction has been stopped"
+                                                                    .as_bytes(),
+                                                                &self.lid);
+
+            actions.client_messages.push((from, message));
+
+        } else {
+            let message = messages::command_response_not_leader(&self.peers[&self.follower_state
+                                                                    .read()
+                                                                    .unwrap()
+                                                                    .leader
+                                                                    .unwrap()],
+                                                                &self.lid);
+            actions.client_messages.push((from, message));
+        }
+    }
+
+    fn client_transaction_rollback(&mut self,
+                                   from: ClientId,
+                                   actions: &mut Actions) {
+        if self.is_leader() {
+            self.transaction.broadcast_rollback(&self.lid, actions);
+            let (commit_index, last_applied, _) = self.transaction.rollback();
+            self.commit_index = commit_index;
+            self.last_applied = last_applied;
+            self.log.rollback(commit_index).expect("Transaction rollback failed");
+
+            let message = messages::command_transaction_success("".as_bytes(), &self.lid);
+
+            let mut leader_state = self.leader_state.write().unwrap();
+            for &peer in self.peers.keys() {
+                leader_state.set_next_index(peer, commit_index + 1);
+            }
+
+            {
+                let entries_failed = self.log.rollback(commit_index).unwrap();
+
+                for &(_, ref command) in entries_failed.iter().rev() {
+                    self.state_machine.write().unwrap().revert(command.as_slice());
+                }
+            }
+
+            self.log.truncate(commit_index).unwrap();
+            self.state_machine.write().unwrap().rollback();
+
+            actions.client_messages.push((from, message));
+        } else {
+            let message = messages::command_response_not_leader(&self.peers[&self.follower_state
+                                                                    .read()
+                                                                    .unwrap()
+                                                                    .leader
+                                                                    .unwrap()],
+                                                                &self.lid);
+            actions.client_messages.push((from, message));
+        }
+    }
+
 
     /// Applies a client query to the state machine.
     pub fn query_request(&mut self,
