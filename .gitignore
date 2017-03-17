@@ -6,3 +6,4 @@ voted_for
 src/messages_capnp.rs
 user_creds.creds
 test/session_cookie
+Dockerfile_local_dev

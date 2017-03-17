@@ -35,8 +35,10 @@ cargo build && cd ../../
 
 Now, you can start a database cluster with docker:
 
+**Please mind that the directories must exist in the data directories or the db panics.**
+
 ```bash
-docker-compose up
+cd docker && docker-compose up
 ```
 or use the bash:
 
