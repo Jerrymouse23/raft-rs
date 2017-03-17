@@ -246,8 +246,6 @@ fn server(args: &Args) {
     let mut logs: Vec<(LogId, DocLog, DocumentStateMachine)> = Vec::new();
 
     for l in config.logs.iter() {
-        let logid = LogId::from(&l.lid).expect(&format!("The logid given was invalid {:?}", l.lid));
-        let log = DocLog::new(&l.path, LogId::from(&l.lid).unwrap());
         let mut state_machine = DocumentStateMachine::new(&l.path);
         {
             let snap_map = state_machine.get_snapshot_map().unwrap_or(Vec::new());
@@ -255,6 +253,8 @@ fn server(args: &Args) {
 
             state_machine.restore_snapshot(snap_map, snap_log);
         }
+        let logid = LogId::from(&l.lid).expect(&format!("The logid given was invalid {:?}", l.lid));
+        let log = DocLog::new(&l.path, LogId::from(&l.lid).unwrap());
         logs.push((logid, log, state_machine));
         println!("Init {:?}", l.lid);
     }

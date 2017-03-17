@@ -15,6 +15,7 @@ use std::fs::read_dir;
 use std::io::Read;
 use std::io::Write;
 use std::io::Error as IoError;
+use std::path::Path;
 
 use doclog::DocLog;
 use handler::Message;
@@ -34,15 +35,22 @@ pub struct DocumentStateMachine {
 }
 
 impl DocumentStateMachine {
-    // We get a clone from DocLog. Which is ok because we are only using the .get_volume() which
-    // won't be changed during the entire execution of the application
     pub fn new(volume: &str) -> Self {
+
+        if !Self::check_if_volume_exists(volume){
+            panic!("Cannot find volume {}. You might need to create it",volume);
+        }
+
         DocumentStateMachine {
             volume: volume.to_string(),
             map: HashMap::new(),
             log: Vec::new(),
             transaction_offset: 0,
         }
+    }
+
+    fn check_if_volume_exists(volume: &str) -> bool{
+        Path::new(volume).exists()
     }
 
     pub fn get_documents(&self) -> Vec<DocumentId> {
