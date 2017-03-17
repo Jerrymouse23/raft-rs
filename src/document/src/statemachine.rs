@@ -171,12 +171,11 @@ impl state_machine::StateMachine for DocumentStateMachine {
     }
 
     fn snapshot(&self) -> (Vec<u8>, Vec<u8>) {
-
         let mut file = OpenOptions::new()
-            .read(false)
+            .read(true)
             .write(true)
             .create(true)
-            .open(&format!("./{}/snapshot_map", self.volume))
+            .open(&format!("{}/snapshot_map", self.volume))
             .expect("Unable to create snapshot file");
 
         let map = encode(&self.map, SizeLimit::Infinite).unwrap();
@@ -187,7 +186,7 @@ impl state_machine::StateMachine for DocumentStateMachine {
             .read(false)
             .write(true)
             .create(true)
-            .open(&format!("./{}/snapshot_log", self.volume))
+            .open(&format!("{}/snapshot_log", self.volume))
             .expect("Unable to create snapshot file");
 
         let log = encode(&self.log, SizeLimit::Infinite).unwrap();
