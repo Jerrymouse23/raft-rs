@@ -30,7 +30,7 @@ use messages_capnp::{append_entries_request, append_entries_response, client_req
 use state::{ConsensusState, LeaderState, CandidateState, FollowerState};
 use state_machine::StateMachine;
 use uuid::Uuid;
-use transaction::Transaction;
+use transaction::TransactionManager;
 use persistent_log::Log;
 use mio::Timeout as TimeoutHandle;
 
@@ -142,7 +142,7 @@ pub struct Consensus<L, M> {
     pub candidate_state: Arc<RwLock<CandidateState>>,
     /// State necessary while a `Follower`. Should not be used otherwise.
     pub follower_state: Arc<RwLock<FollowerState>>,
-    pub transaction: Transaction,
+    pub transaction: TransactionManager,
     /// The ID of this consensus instance for the log_manager
     lid: LogId,
     /// Currently registered consensus timeouts.
@@ -173,7 +173,7 @@ impl<L, M> Consensus<L, M>
             leader_state: Arc::new(RwLock::new(leader_state)),
             candidate_state: Arc::new(RwLock::new(CandidateState::new())),
             follower_state: Arc::new(RwLock::new(FollowerState::new())),
-            transaction: Transaction::new(),
+            transaction: TransactionManager::new(),
             lid: lid,
             consensus_timeouts: HashMap::new(),
         }

@@ -9,7 +9,7 @@ use ClientId;
 use TransactionId;
 
 #[derive(Clone)]
-pub struct Transaction {
+pub struct TransactionManager {
     pub is_active: bool,
     pub session: Option<TransactionId>,
     pub queue: Vec<(ClientId, Rc<Builder<HeapAllocator>>)>,
@@ -19,9 +19,9 @@ pub struct Transaction {
     follower_state_min: Option<LogIndex>,
 }
 
-impl Transaction {
+impl TransactionManager {
     pub fn new() -> Self {
-        Transaction {
+        TransactionManager {
             is_active: false,
             session: None,
             queue: vec![],
