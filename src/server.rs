@@ -185,7 +185,7 @@ impl<L, M, A> Server<L, M, A>
 
         try!(self.connections[token].register(event_loop, token));
 
-        let message = messages::server_add(self.id, &self.addr);
+        let message = messages::server_add(self.id, &self.community_string, &self.addr);
 
         self.send_message(event_loop, token, message);
 
@@ -421,6 +421,7 @@ impl<L, M, A> Server<L, M, A>
                         connection_preamble::id::Which::ServerAdd(peer) => {
                             let peer = try!(peer);
                             let peer_id = ServerId(peer.get_id());
+                            let community_string = peer.get_community().unwrap();
 
                             // Not the source address of this connection, but the
                             // address the peer tells us it's listening on.
@@ -429,12 +430,19 @@ impl<L, M, A> Server<L, M, A>
                                           peer_id,
                                           peer_addr);
 
-                            if !self.log_manager.check_peer_exists(peer_id) {
-                                self.log_manager.add_peer(peer_id, peer_addr);
-                                self.add_peer_static(event_loop, peer_id, peer_addr);
+                            if self.community_string == community_string {
+
+                                if !self.log_manager.check_peer_exists(peer_id) {
+                                    self.log_manager.add_peer(peer_id, peer_addr);
+                                    self.add_peer_static(event_loop, peer_id, peer_addr);
+                                } else {
+                                    // Was already connected
+                                    scoped_debug!("Dynamic peer wants to reconnect {:?}",
+                                                  peer_addr);
+                                }
                             } else {
-                                // Was already connected
-                                scoped_debug!("Dynamic peer wants to reconnect {:?}", peer_addr);
+                                scoped_warn!("The community_string is not equal and therefore \
+                                              the connection will need to be established");
                             }
 
                         }

@@ -27,6 +27,7 @@ struct ConnectionPreamble {
 struct ServerAdd{
    id @0 :UInt64;
    addr @1 :Text;
+   community @2 :Text;
 }
 
 struct Peer {
