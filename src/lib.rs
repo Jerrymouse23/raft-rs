@@ -90,6 +90,7 @@ extern crate wrapped_enum;
 extern crate env_logger;
 extern crate bincode;
 extern crate crypto;
+#[macro_use]
 extern crate lazy_static;
 extern crate serde;
 #[macro_use]

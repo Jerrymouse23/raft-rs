@@ -25,6 +25,7 @@ extern crate uuid;
 extern crate toml;
 extern crate base64;
 
+#[macro_use]
 extern crate lazy_static;
 
 pub mod document;
