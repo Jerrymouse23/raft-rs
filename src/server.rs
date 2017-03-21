@@ -5,7 +5,7 @@
 
 use std::{fmt, io};
 use std::str::FromStr;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::rc::Rc;
 
@@ -138,7 +138,7 @@ impl<L, M, A> Server<L, M, A>
         };
 
         for (peer_id, peer_addr) in peers {
-            server.add_peer_static(&mut event_loop, *peer_id, *peer_addr);
+            server.add_peer_static(&mut event_loop, *peer_id, *peer_addr).unwrap();
         }
 
         Ok((server, event_loop))
@@ -213,7 +213,7 @@ impl<L, M, A> Server<L, M, A>
 
         server.init(&mut event_loop);
 
-        event_loop.run(&mut server);
+        event_loop.run(&mut server).unwrap();
 
         server
     }
@@ -434,7 +434,7 @@ impl<L, M, A> Server<L, M, A>
 
                                 if !self.log_manager.check_peer_exists(peer_id) {
                                     self.log_manager.add_peer(peer_id, peer_addr);
-                                    self.add_peer_static(event_loop, peer_id, peer_addr);
+                                    self.add_peer_static(event_loop, peer_id, peer_addr).unwrap();
                                 } else {
                                     // Was already connected
                                     scoped_debug!("Dynamic peer wants to reconnect {:?}",
@@ -471,8 +471,6 @@ impl<L, M, A> Server<L, M, A>
                                 // Connect also to the other peers
 
                                 if let Ok(peers) = peer.get_peers() {
-                                    let num_peers: u32 = peers.len();
-
                                     // Filter peers which are already connected to
                                     let peers_vec: Vec<(ServerId, SocketAddr)> = peers.iter()
                                         .map(|entry| {
@@ -488,7 +486,7 @@ impl<L, M, A> Server<L, M, A>
                                         .collect();
 
                                     for &(id, addr) in peers_vec.iter() {
-                                        self.peering_request(event_loop, id, addr);
+                                        self.peering_request(event_loop, id, addr).unwrap();
                                     }
                                 }
 

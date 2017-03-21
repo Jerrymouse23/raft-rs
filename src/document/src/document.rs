@@ -1,16 +1,4 @@
-// use bincode::rustc_serialize::{encode, decode, decode_from};
-use std::fs::File;
-use std::fs::OpenOptions;
-use std::fs::read_dir;
-use std::io::Write;
 use std::net::ToSocketAddrs;
-
-use std::collections::HashSet;
-
-use handler::Message;
-// use io_handler::Handler;
-use doclog::DocLog;
-
 use std::net::SocketAddr;
 use uuid::Uuid;
 

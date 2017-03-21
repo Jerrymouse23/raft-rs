@@ -71,6 +71,8 @@
 //! least the majority of the cluster and has been commited. `.query()` will perform better if
 //! you wish to only read data and not have it pass through the persisted log.
 //!
+
+#![allow(non_snake_case)]
 #![cfg_attr(test, feature(test))]
 extern crate bufstream;
 extern crate capnp;
@@ -88,9 +90,7 @@ extern crate wrapped_enum;
 extern crate env_logger;
 extern crate bincode;
 extern crate crypto;
-#[macro_use]
 extern crate lazy_static;
-#[macro_use]
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;

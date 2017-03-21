@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+
 use std::fmt::Debug;
 
 pub trait Credentials: Debug + Clone + Send + 'static {

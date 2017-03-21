@@ -5,7 +5,6 @@ use uuid::Uuid;
 use parser::Parser;
 use parser::toml::Parser as tParser;
 use toml::DecodeError;
-use raft::LogId;
 use raft::ServerId;
 
 #[derive(Debug,Deserialize,Clone)]

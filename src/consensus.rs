@@ -16,7 +16,6 @@ use std::{cmp, fmt};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 use capnp::message::{Builder, Allocator, ReaderOptions, HeapAllocator, Reader};
 use rand::{self, Rng};
@@ -29,7 +28,6 @@ use messages_capnp::{append_entries_request, append_entries_response, client_req
                      request_vote_response};
 use state::{ConsensusState, LeaderState, CandidateState, FollowerState};
 use state_machine::StateMachine;
-use uuid::Uuid;
 use transaction::TransactionManager;
 use persistent_log::Log;
 use mio::Timeout as TimeoutHandle;
@@ -778,9 +776,9 @@ impl<L, M> Consensus<L, M>
     }
 
     fn transaction_begin(&mut self,
-                         from: ServerId,
+                         _: ServerId,
                          session: TransactionId,
-                         actions: &mut Actions) {
+                         _: &mut Actions) {
         if !self.is_leader() {
             if !self.transaction.is_active {
                 self.transaction.begin(session,
@@ -794,9 +792,9 @@ impl<L, M> Consensus<L, M>
     }
 
     fn transaction_commit(&mut self,
-                          from: ServerId,
+                          _: ServerId,
                           session: TransactionId,
-                          actions: &mut Actions) {
+                          _: &mut Actions) {
         if self.transaction.is_active {
             assert_eq!(self.transaction.session.expect("No TransactionSession defined"),
                        session);
@@ -808,9 +806,9 @@ impl<L, M> Consensus<L, M>
     }
 
     fn transaction_rollback(&mut self,
-                            from: ServerId,
-                            session: TransactionId,
-                            actions: &mut Actions) {
+                            _: ServerId,
+                            _: TransactionId,
+                            _: &mut Actions) {
         if self.transaction.is_active {
             let (commit_index, last_applied, follower_state_min) = self.transaction
                 .rollback();
@@ -1008,7 +1006,7 @@ impl<L, M> Consensus<L, M>
         if self.transaction.is_active {
             self.transaction.broadcast_rollback(&self.lid, actions);
 
-            let (commit_index, last_applied, follower_state_min) = self.transaction
+            let (commit_index, last_applied, _) = self.transaction
                 .rollback();
             self.commit_index = commit_index;
             self.last_applied = last_applied;

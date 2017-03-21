@@ -331,7 +331,7 @@ pub fn transaction_begin(lid: &LogId, session: &TransactionId) -> Rc<Builder<Hea
     {
         let mut request = message.init_root::<message::Builder>();
         request.set_log_id(&lid.as_bytes());
-        let mut request = request.init_transaction_begin().set_session(&session.as_bytes());
+        request.init_transaction_begin().set_session(&session.as_bytes());
     }
     Rc::new(message)
 }
@@ -351,7 +351,7 @@ pub fn client_transaction_begin(lid: &LogId, session: &TransactionId) -> Builder
     {
         let mut request = message.init_root::<client_request::Builder>();
         request.set_log_id(&lid.as_bytes());
-        let mut request = request.init_transaction_begin()
+        request.init_transaction_begin()
             .set_session(&session.as_bytes());
     }
     message

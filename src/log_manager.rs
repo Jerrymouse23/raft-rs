@@ -6,11 +6,9 @@ use std::net::SocketAddr;
 use std::collections::HashMap;
 use persistent_log::Log;
 use state_machine::StateMachine;
-use std::rc::Rc;
-use std::cell::RefCell;
 use uuid::Uuid;
 
-use std::sync::{Arc, RwLock, Mutex};
+use std::sync::{Arc, RwLock};
 
 use state::{LeaderState, CandidateState, FollowerState};
 
@@ -141,7 +139,7 @@ impl<L, M> LogManager<L, M>
             self.consensus
                 .get_mut(&LogId::from(&format!("{}", lid)).unwrap())
                 .unwrap()
-                .handle_queue(messages, actions);
+                .handle_queue(messages, actions).unwrap();
         }
     }
 

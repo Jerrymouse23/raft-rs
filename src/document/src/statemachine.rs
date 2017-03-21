@@ -3,29 +3,19 @@ use raft::state_machine;
 
 use bincode::serde::serialize as encode;
 use bincode::serde::deserialize as decode;
-use bincode::serde::deserialize_from as decode_from;
 use bincode::SizeLimit;
-use uuid::Uuid;
-use std::net::{SocketAddr, ToSocketAddrs};
-use std::error::Error;
 
 use std::fs::File;
 use std::fs::OpenOptions;
-use std::fs::read_dir;
 use std::io::Read;
 use std::io::Write;
 use std::io::Error as IoError;
 use std::path::Path;
 
-use doclog::DocLog;
 use handler::Message;
 use document::DocumentId;
 use std::collections::HashMap;
 
-use serde_json::to_string;
-
-// TODO implement transaction_offset reset when peer panics
-// TODO REMOVE volume
 #[derive(Debug,Clone)]
 pub struct DocumentStateMachine {
     log: Vec<DocumentRecord>,
@@ -108,7 +98,7 @@ impl DocumentStateMachine {
     }
 
 
-    fn findById(&self, id: DocumentId) -> DocumentRecord {
+    fn find_by_id(&self, id: DocumentId) -> DocumentRecord {
         for s in self.log.iter().rev().skip(self.transaction_offset) {
             if s.get_id() == id {
                 return s.clone();
@@ -221,6 +211,7 @@ impl state_machine::StateMachine for DocumentStateMachine {
         self.log = log;
     }
 
+    #[allow(unused_variables)]
     fn revert(&mut self, command: &[u8]) {
         let message = decode(&command).unwrap();
 
@@ -230,7 +221,7 @@ impl state_machine::StateMachine for DocumentStateMachine {
                 self.remove(document.id);
             }
             Message::Remove(id) => {
-                let record = self.findById(id);
+                let record = self.find_by_id(id);
                 let document = Document {
                     id: record.get_id(),
                     payload: record.get_old_payload().unwrap(),
@@ -240,7 +231,7 @@ impl state_machine::StateMachine for DocumentStateMachine {
                 self.post(document);
             }
             Message::Put(id, new_payload) => {
-                let record = self.findById(id);
+                let record = self.find_by_id(id);
 
                 let new_payload = record.get_old_payload().unwrap();
                 self.put(id, new_payload);

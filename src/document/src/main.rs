@@ -4,7 +4,6 @@
 
 extern crate raft;
 
-#[macro_use]
 extern crate log;
 extern crate env_logger;
 
@@ -26,7 +25,6 @@ extern crate uuid;
 extern crate toml;
 extern crate base64;
 
-#[macro_use]
 extern crate lazy_static;
 
 pub mod document;
@@ -233,10 +231,7 @@ fn server(args: &Args) {
         _ => panic!("The node address given must be IPv4"),
     };
 
-    let mut node_ids: Vec<u64> = Vec::new();
-    let mut node_addresses: Vec<SocketAddr> = Vec::new();
-
-    let (mut node_ids, mut node_addresses) = config.get_nodes();
+    let (node_ids, node_addresses) = config.get_nodes();
 
     let peers = node_ids.iter()
         .zip(node_addresses.iter())
@@ -274,7 +269,7 @@ fn server(args: &Args) {
         if peers.len() == 0 {
             match config.get_dynamic_peering() {
                 Some((peer_id, peer_addr)) => {
-                    server.peering_request(&mut event_loop, ServerId::from(peer_id), peer_addr);
+                    server.peering_request(&mut event_loop, ServerId::from(peer_id), peer_addr).unwrap();
                 }
                 None => panic!("No peers or dynamic peering defined"),
             }
@@ -290,7 +285,7 @@ fn server(args: &Args) {
 
     server.init(&mut event_loop);
 
-    event_loop.run(&mut server);
+    event_loop.run(&mut server).unwrap();
 }
 
 fn get(addr: &SocketAddr, doc_id: &Uuid, username: &str, password: &str, lid: &LogId) {

@@ -1,30 +1,22 @@
+#![allow(non_camel_case_types)]
+
 use iron::status;
 use router::Router;
 use iron::prelude::*;
-use params::{Params, Value};
 use bodyparser;
-use iron::typemap;
 
 use iron_sessionstorage::traits::*;
 use iron_sessionstorage::SessionStorage;
 use iron_sessionstorage::backends::SignedCookieBackend;
 
-use std::fs::read_dir;
-use std::cell::RefCell;
-
 use uuid::Uuid;
-use std::net::{SocketAddr, ToSocketAddrs, SocketAddrV4, Ipv4Addr};
-
-use std::error::Error;
+use std::net::{SocketAddr,  SocketAddrV4};
 
 use document::*;
 use handler::Handler;
 use statemachine::DocumentStateMachine;
-use doclog::DocLog;
 
 use std::thread::spawn;
-use std::collections::HashSet;
-use std::boxed::Box;
 
 use raft::LogId;
 use raft::ServerId;
@@ -37,9 +29,9 @@ use raft::auth::credentials::SingleCredentials;
 use login::Login;
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, Mutex};
+use std::sync::{Arc, RwLock};
 
-use rustc_serialize::base64::{self, ToBase64, FromBase64, STANDARD};
+use rustc_serialize::base64::{ToBase64, FromBase64, STANDARD};
 use serde_json;
 use serde_json::to_string as to_json;
 
@@ -83,7 +75,7 @@ pub fn init(binding_addr: SocketAddr,
                 move |request: &mut Request| http_logout(request),
                 "logout");
 
-    router.get("/document/:lid/:fileId",
+    router.get("/document/:lid/:id",
                move |request: &mut Request| http_get(request, &context),
                "get_document");
     router.post("/document/:lid",
@@ -163,7 +155,7 @@ pub fn init(binding_addr: SocketAddr,
 
     // TODO implement user & password
     fn http_get_documents(req: &mut Request,
-                          context: &Context,
+                          _: &Context,
                           state_machines: Arc<HashMap<LogId, Arc<RwLock<DocumentStateMachine>>>>)
                           -> IronResult<Response> {
         let raw_lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
@@ -186,8 +178,8 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     // TODO implement user & password
-    fn http_logs(req: &mut Request,
-                 context: &Context,
+    fn http_logs(_: &mut Request,
+                 _: &Context,
                  state: Arc<HashMap<LogId,
                                     (Arc<RwLock<LeaderState>>,
                                      Arc<RwLock<CandidateState>>,
@@ -206,7 +198,7 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     fn http_meta_state_leader(req: &mut Request,
-                              context: &Context,
+                              _: &Context,
                               state: Arc<HashMap<LogId,
                                                  (Arc<RwLock<LeaderState>>,
                                                   Arc<RwLock<CandidateState>>,
@@ -228,7 +220,7 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     fn http_meta_state_candidate(req: &mut Request,
-                                 context: &Context,
+                                 _: &Context,
                                  state: Arc<HashMap<LogId,
                                                     (Arc<RwLock<LeaderState>>,
                                                      Arc<RwLock<CandidateState>>,
@@ -244,7 +236,7 @@ pub fn init(binding_addr: SocketAddr,
     }
 
     fn http_meta_state_follower(req: &mut Request,
-                                context: &Context,
+                                _: &Context,
                                 state: Arc<HashMap<LogId,
                                                    (Arc<RwLock<LeaderState>>,
                                                     Arc<RwLock<CandidateState>>,
@@ -258,8 +250,8 @@ pub fn init(binding_addr: SocketAddr,
         Ok(Response::with((status::Ok, format!("{}", to_json(&*lock).unwrap()))))
     }
 
-    fn http_meta_peers(req: &mut Request,
-                       context: &Context,
+    fn http_meta_peers(_: &mut Request,
+                       _: &Context,
                        peers: Arc<RwLock<HashMap<ServerId, SocketAddr>>>)
                        -> IronResult<Response> {
         let lock = peers.read().unwrap();
@@ -271,7 +263,7 @@ pub fn init(binding_addr: SocketAddr,
         let my_secret = b"verysecret".to_vec();
         let mut ch = Chain::new(router);
         ch.link_around(SessionStorage::new(SignedCookieBackend::new(my_secret)));
-        Iron::new(ch).http(binding_addr);
+        Iron::new(ch).http(binding_addr).unwrap();
     });
 
     // TODO change to generic
@@ -329,10 +321,10 @@ pub fn init(binding_addr: SocketAddr,
         let ref username = session.username;
         let ref password = session.hashed_password;
 
-        let ref fileId = iexpect!(req.extensions
+        let ref id = iexpect!(req.extensions
             .get::<Router>()
             .unwrap()
-            .find("fileId"));
+            .find("id"));
 
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
                                (status::BadRequest, "Cannot find logid"));
@@ -340,7 +332,7 @@ pub fn init(binding_addr: SocketAddr,
         match Handler::get(&SocketAddr::V4(context.node_addr),
                            &username,
                            &password,
-                           &Uuid::parse_str(*fileId).unwrap(),
+                           &Uuid::parse_str(*id).unwrap(),
                            &LogId::from(lid).unwrap()) {
             Ok(document) => {
                 let http_doc = http_Response {
@@ -398,7 +390,7 @@ pub fn init(binding_addr: SocketAddr,
                             &session,
                             &LogId::from(lid).unwrap()) {
             Ok(id) => Ok(Response::with((status::Ok, format!("{}", id)))),
-            Err(err) => {
+            Err(_) => {
                 Ok(Response::with((status::BadRequest,
                                    "An error occured when posting new document")))
             }
@@ -451,7 +443,7 @@ pub fn init(binding_addr: SocketAddr,
                             &session,
                             &LogId::from(lid).unwrap()) {
             Ok(id) => Ok(Response::with((status::Ok, format!("{}", id)))),
-            Err(err) => {
+            Err(_) => {
                 Ok(Response::with((status::InternalServerError,
                                    "An error occured when posting new document")))
             }
@@ -482,7 +474,7 @@ pub fn init(binding_addr: SocketAddr,
                                         &session,
                                         &LogId::from(lid).unwrap()) {
             Ok(()) => Response::with((status::Ok, "Ok")),
-            Err(err) => {
+            Err(_) => {
                 Response::with((status::InternalServerError,
                                 "An error occured when removing document"))
             }
@@ -521,7 +513,7 @@ pub fn init(binding_addr: SocketAddr,
                                         &session,
                                         &LogId::from(lid).unwrap()) {
             Ok(()) => Response::with((status::Ok, "Ok")),
-            Err(err) => {
+            Err(_) => {
                 Response::with((status::InternalServerError,
                                 "An error occured when removing document"))
             }
@@ -551,8 +543,6 @@ pub fn init(binding_addr: SocketAddr,
                   (status::BadRequest, "Payload is not base64"))
         };
 
-        let session = TransactionId::new();
-
         let ref id = iexpect!(req.extensions.get::<Router>().unwrap().find("id"),
                               (status::BadRequest, "Cannot find id"));
         let ref lid = iexpect!(req.extensions.get::<Router>().unwrap().find("lid"),
@@ -572,7 +562,7 @@ pub fn init(binding_addr: SocketAddr,
                                      &session,
                                      &LogId::from(lid).unwrap()) {
             Ok(()) => Response::with((status::Ok, "Ok")),
-            Err(err) => {
+            Err(_) => {
                 Response::with((status::InternalServerError,
                                 "An error occured when updating document"))
             }
@@ -621,7 +611,7 @@ pub fn init(binding_addr: SocketAddr,
                                      &session,
                                      &LogId::from(lid).unwrap()) {
             Ok(()) => Response::with((status::Ok, "Ok")),
-            Err(err) => {
+            Err(_) => {
                 Response::with((status::InternalServerError,
                                 "An error occured when updating document"))
             }

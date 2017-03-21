@@ -1,4 +1,6 @@
-#[allow(dead_code)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+
 use auth::Auth;
 use auth::credentials::Credentials;
 

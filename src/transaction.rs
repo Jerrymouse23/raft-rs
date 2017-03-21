@@ -1,7 +1,6 @@
 use capnp::message::{Builder, HeapAllocator};
 use consensus::Actions;
 use messages;
-use uuid::Uuid;
 use std::rc::Rc;
 use LogIndex;
 use LogId;

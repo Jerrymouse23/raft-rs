@@ -71,16 +71,6 @@ impl Connection {
         })
     }
 
-    pub fn connect_unknown(addr: SocketAddr) -> Result<Connection> {
-        let stream = try!(TcpStream::connect(&addr));
-        Ok(Connection {
-            kind: ConnectionKind::Unknown,
-            addr: addr,
-            stream: Some(MessageStream::new(stream, ReaderOptions::new())),
-            backoff: Backoff::with_duration_range(50, 10000),
-        })
-    }
-
     /// Creates a new peer connection.
     pub fn peer(id: ServerId, addr: SocketAddr) -> Result<Connection> {
         let stream = try!(TcpStream::connect(&addr));
