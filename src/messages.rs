@@ -52,13 +52,14 @@ pub fn client_connection_preamble(id: ClientId,
     Rc::new(message)
 }
 
-pub fn server_add(id: ServerId, addr: &SocketAddr) -> Rc<Builder<HeapAllocator>> {
+pub fn server_add(id: ServerId, community_string: &str, addr: &SocketAddr) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
         let mut message = message.init_root::<connection_preamble::Builder>()
             .init_id()
             .init_server_add();
         message.set_id(id.as_u64());
+        message.set_community(community_string);
         message.set_addr(&format!("{}", addr));
     }
     Rc::new(message)

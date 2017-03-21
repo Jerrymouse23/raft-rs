@@ -41,6 +41,7 @@ const ELECTION_MAX: u64 = 3000;
 const HEARTBEAT_DURATION: u64 = 1000;
 
 /// Consensus timeout types.
+//TODO Remove LogId, because not neccessary
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum ConsensusTimeout {
     // An election timeout. Randomized value.
@@ -303,12 +304,10 @@ impl<L, M> Consensus<L, M>
                                               actions);
             }
             client_request::Which::TransactionCommit(Ok(_)) => {
-                self.client_transaction_commit(from,
-                                               actions);
+                self.client_transaction_commit(from, actions);
             }
             client_request::Which::TransactionRollback(Ok(_)) => {
-                self.client_transaction_rollback(from,
-                                                 actions);
+                self.client_transaction_rollback(from, actions);
 
             }
             _ => panic!("cannot handle message"),
@@ -843,8 +842,7 @@ impl<L, M> Consensus<L, M>
                 .begin(session, self.commit_index, self.last_applied, None);
             self.transaction.broadcast_begin(&self.lid, actions);
 
-            let message = messages::command_transaction_success(&session.as_bytes(),
-                                                                &self.lid);
+            let message = messages::command_transaction_success(&session.as_bytes(), &self.lid);
 
             actions.client_messages.push((from, message));
         } else {
@@ -858,9 +856,7 @@ impl<L, M> Consensus<L, M>
         }
     }
 
-    fn client_transaction_commit(&mut self,
-                                 from: ClientId,
-                                 actions: &mut Actions) {
+    fn client_transaction_commit(&mut self, from: ClientId, actions: &mut Actions) {
         if self.is_leader() {
             self.transaction.broadcast_end(&self.lid, actions);
             self.transaction.end();
@@ -882,9 +878,7 @@ impl<L, M> Consensus<L, M>
         }
     }
 
-    fn client_transaction_rollback(&mut self,
-                                   from: ClientId,
-                                   actions: &mut Actions) {
+    fn client_transaction_rollback(&mut self, from: ClientId, actions: &mut Actions) {
         if self.is_leader() {
             self.transaction.broadcast_rollback(&self.lid, actions);
             let (commit_index, last_applied, _) = self.transaction.rollback();
