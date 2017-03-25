@@ -310,14 +310,14 @@ mod tests {
             expect_preamble(&mut connection, client_id).unwrap();
             expect_proposal(&mut connection, to_propose).unwrap();
             // Send response! (success!)
-            let response = messages::command_response_success(b"Foxes", &*lid);
+            let response = messages::command_response_success(b"Foxes", *lid);
             serialize::write_message(&mut connection, &*response).unwrap();
             connection.flush().unwrap();
         });
 
         // Propose. It's a marriage made in heaven! :)
         // Should be ok
-        assert_eq!(client.propose(&TransactionId::new(), to_propose).unwrap(),
+        assert_eq!(client.propose(TransactionId::new(), to_propose).unwrap(),
                    b"Foxes");
         assert!(client.leader_connection.is_some());
 
@@ -348,13 +348,13 @@ mod tests {
             scoped_debug!("Should get proposal. Responds UnknownLeader");
             expect_proposal(&mut connection, to_propose).unwrap();
             // Send response! (unknown leader!) Client should drop connection.
-            let response = messages::command_response_unknown_leader(&*lid);
+            let response = messages::command_response_unknown_leader(*lid);
             serialize::write_message(&mut connection, &*response).unwrap();
             connection.flush().unwrap();
         });
 
         // Propose. It's a marriage made in heaven! :)
-        assert!(client.propose(&TransactionId::new(), to_propose).is_err());
+        assert!(client.propose(TransactionId::new(), to_propose).is_err());
 
         child.join().unwrap();
     }
@@ -388,7 +388,7 @@ mod tests {
             expect_proposal(&mut connection, to_propose).unwrap();
 
             // Send response! (not leader!)
-            let response = messages::command_response_not_leader(&second_addr, &*lid);
+            let response = messages::command_response_not_leader(&second_addr, *lid);
             serialize::write_message(&mut connection, &*response).unwrap();
             connection.flush().unwrap();
 
@@ -399,7 +399,7 @@ mod tests {
             expect_proposal(&mut connection, to_propose).unwrap();
 
             // Send final response! (Success!)
-            let response = messages::command_response_success(b"Foxes", &*lid);
+            let response = messages::command_response_success(b"Foxes", *lid);
             serialize::write_message(&mut connection, &*response).unwrap();
         });
 
@@ -412,7 +412,7 @@ mod tests {
         };
 
         // Should be ok, change leader connection.
-        assert_eq!(client.propose(&TransactionId::new(), to_propose).unwrap(),
+        assert_eq!(client.propose(TransactionId::new(), to_propose).unwrap(),
                    b"Foxes");
         assert!(client.leader_connection.is_some());
 
@@ -450,7 +450,7 @@ mod tests {
             expect_proposal(&mut connection, to_propose).unwrap();
 
             // Send response! (not leader!)
-            let response = messages::command_response_not_leader(&second_addr, &*lid);
+            let response = messages::command_response_not_leader(&second_addr, *lid);
             serialize::write_message(&mut connection, &*response).unwrap();
             connection.flush().unwrap();
 
@@ -466,7 +466,7 @@ mod tests {
         };
 
         // Should be err, change leader connection but to wrong ip..
-        assert!(client.propose(&TransactionId::new(), to_propose).is_err());
+        assert!(client.propose(TransactionId::new(), to_propose).is_err());
         assert!(client.leader_connection.is_none());
 
         child.join().unwrap();

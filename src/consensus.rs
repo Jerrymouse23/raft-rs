@@ -1430,7 +1430,7 @@ mod tests {
 
             let value: &[u8] = b"foo";
             let reader =
-                into_reader(&messages::proposal_request(&TransactionId::new(), value, &*lid));
+                into_reader(&messages::proposal_request(TransactionId::new(), value, *lid));
             let message_reader = reader.get_root::<client_request::Reader>()
                 .unwrap();
             let mut actions = Actions::new();
@@ -1508,7 +1508,7 @@ mod tests {
         elect_leader(leader, &mut peers);
 
         let value: &[u8] = b"foo";
-        let reader = into_reader(&messages::proposal_request(&TransactionId::new(), value, &*lid));
+        let reader = into_reader(&messages::proposal_request(TransactionId::new(), value, *lid));
         let message_reader = reader.get_root::<client_request::Reader>()
             .unwrap();
         let client = ClientId::new();
