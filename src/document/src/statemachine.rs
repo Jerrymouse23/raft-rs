@@ -27,21 +27,30 @@ pub struct DocumentStateMachine {
 impl DocumentStateMachine {
     pub fn new(volume: &str) -> Self {
 
-        if !Self::check_if_volume_exists(volume){
-            panic!("Cannot find volume {}. You might need to create it",volume);
-        }
-
-        DocumentStateMachine {
+        let s = DocumentStateMachine {
             volume: volume.to_string(),
             map: HashMap::new(),
             log: Vec::new(),
             transaction_offset: 0,
+        };
+
+        if !Self::check_if_volume_exists(volume) {
+            s.create_dir()
+                .expect(&format!("Cannot find volume {}. You might need to create it", volume));
         }
+
+        s
     }
 
-    fn check_if_volume_exists(volume: &str) -> bool{
+    fn check_if_volume_exists(volume: &str) -> bool {
         Path::new(volume).exists()
     }
+
+    fn create_dir(&self) -> ::std::io::Result<()> {
+        ::std::fs::create_dir_all(&self.volume)
+    }
+
+
 
     pub fn get_documents(&self) -> Vec<DocumentId> {
         self.map.keys().into_iter().cloned().collect()
@@ -148,11 +157,11 @@ impl state_machine::StateMachine for DocumentStateMachine {
 
         let response = match message {
             Message::Get(id) => {
-                let doc = match self.map.get(&id){
+                let doc = match self.map.get(&id) {
                     Some(doc) => doc,
                     None => {
-                        println!("Cannot find document");    
-                        return Vec::new()
+                        println!("Cannot find document");
+                        return Vec::new();
                     }
                 };
 

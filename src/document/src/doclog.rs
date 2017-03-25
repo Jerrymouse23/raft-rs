@@ -49,10 +49,15 @@ impl DocLog {
             logid: lid,
         };
 
+        d.create_dir().expect(&format!("Cannot find volume {}. You might need to create it",prefix));
         d.set_current_term(Term::from(0)).unwrap();
         d.restore_snapshot();
 
         d
+    }
+
+    fn create_dir(&self) -> ::std::io::Result<()>{
+        ::std::fs::create_dir_all(&self.prefix)
     }
 
     pub fn get_volume(&self) -> String {
