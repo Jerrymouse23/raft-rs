@@ -63,9 +63,9 @@ impl Client {
     /// Proposes an entry to be appended to the replicated log. This will only
     /// return once the entry has been durably committed.
     /// Returns `Error` when the entire cluster has an unknown leader. Try proposing again later.
-    pub fn propose(&mut self, session: &TransactionId, entry: &[u8]) -> Result<Vec<u8>> {
+    pub fn propose(&mut self, session: TransactionId, entry: &[u8]) -> Result<Vec<u8>> {
         scoped_trace!("{:?}: propose", self);
-        let mut message = messages::proposal_request(session, entry, &self.lid);
+        let mut message = messages::proposal_request(session, entry, self.lid);
         self.send_message(&mut message)
     }
 
@@ -77,18 +77,18 @@ impl Client {
         self.send_message(&mut message)
     }
 
-    pub fn begin_transaction(&mut self, session: &TransactionId) -> Result<Vec<u8>> {
-        let mut message = messages::client_transaction_begin(&self.lid, session);
+    pub fn begin_transaction(&mut self, session: TransactionId) -> Result<Vec<u8>> {
+        let mut message = messages::client_transaction_begin(self.lid, session);
         self.send_message(&mut message)
     }
 
-    pub fn end_transaction(&mut self, session: &TransactionId) -> Result<Vec<u8>> {
-        let mut message = messages::client_transaction_commit(&self.lid, session);
+    pub fn end_transaction(&mut self, session: TransactionId) -> Result<Vec<u8>> {
+        let mut message = messages::client_transaction_commit(self.lid, session);
         self.send_message(&mut message)
     }
 
-    pub fn rollback_transaction(&mut self, session: &TransactionId) -> Result<Vec<u8>> {
-        let mut message = messages::client_transaction_rollback(&self.lid, session);
+    pub fn rollback_transaction(&mut self, session: TransactionId) -> Result<Vec<u8>> {
+        let mut message = messages::client_transaction_rollback(self.lid, session);
         self.send_message(&mut message)
     }
 

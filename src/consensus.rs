@@ -39,7 +39,7 @@ const ELECTION_MAX: u64 = 3000;
 const HEARTBEAT_DURATION: u64 = 1000;
 
 /// Consensus timeout types.
-//TODO Remove LogId, because not neccessary
+// TODO Remove LogId, because not neccessary
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum ConsensusTimeout {
     // An election timeout. Randomized value.
@@ -271,7 +271,7 @@ impl<L, M> Consensus<L, M>
 
                         let entry = request.get_entry().unwrap();
 
-                        let message = messages::proposal_request(&session, entry, &self.lid);
+                        let message = messages::proposal_request(session, entry, self.lid);
 
                         actions.transaction_queue.push((self.lid, from, message));
 
@@ -713,7 +713,7 @@ impl<L, M> Consensus<L, M>
             // A vote was received!
             if let Ok(request_vote_response::Granted(_)) = response.which() {
                 {
-                    self.candidate_state.write().unwrap().record_vote(from.clone());
+                    self.candidate_state.write().unwrap().record_vote(from);
                 }
                 if self.candidate_state.read().unwrap().count_votes() >= majority {
                     scoped_info!("election for term {} won; transitioning to Leader",
@@ -733,14 +733,14 @@ impl<L, M> Consensus<L, M>
         if self.is_candidate() ||
            (self.is_follower() && self.follower_state.read().unwrap().leader.is_none()) {
             actions.client_messages
-                .push((from, messages::command_response_unknown_leader(&self.lid)));
+                .push((from, messages::command_response_unknown_leader(self.lid)));
         } else if self.is_follower() {
             let message = messages::command_response_not_leader(&self.peers[&self.follower_state
                                                                     .read()
                                                                     .unwrap()
                                                                     .leader
                                                                     .unwrap()],
-                                                                &self.lid);
+                                                                self.lid);
             actions.client_messages.push((from, message));
         } else if let Ok(entry) = request.get_entry() {
             let prev_log_index = self.latest_log_index();
@@ -775,10 +775,7 @@ impl<L, M> Consensus<L, M>
         }
     }
 
-    fn transaction_begin(&mut self,
-                         _: ServerId,
-                         session: TransactionId,
-                         _: &mut Actions) {
+    fn transaction_begin(&mut self, _: ServerId, session: TransactionId, _: &mut Actions) {
         if !self.is_leader() {
             if !self.transaction.is_active {
                 self.transaction.begin(session,
@@ -791,10 +788,7 @@ impl<L, M> Consensus<L, M>
         }
     }
 
-    fn transaction_commit(&mut self,
-                          _: ServerId,
-                          session: TransactionId,
-                          _: &mut Actions) {
+    fn transaction_commit(&mut self, _: ServerId, session: TransactionId, _: &mut Actions) {
         if self.transaction.is_active {
             assert_eq!(self.transaction.session.expect("No TransactionSession defined"),
                        session);
@@ -805,10 +799,7 @@ impl<L, M> Consensus<L, M>
 
     }
 
-    fn transaction_rollback(&mut self,
-                            _: ServerId,
-                            _: TransactionId,
-                            _: &mut Actions) {
+    fn transaction_rollback(&mut self, _: ServerId, _: TransactionId, _: &mut Actions) {
         if self.transaction.is_active {
             let (commit_index, last_applied, follower_state_min) = self.transaction
                 .rollback();
@@ -838,9 +829,9 @@ impl<L, M> Consensus<L, M>
         if self.is_leader() {
             self.transaction
                 .begin(session, self.commit_index, self.last_applied, None);
-            self.transaction.broadcast_begin(&self.lid, actions);
+            self.transaction.broadcast_begin(self.lid, actions);
 
-            let message = messages::command_transaction_success(&session.as_bytes(), &self.lid);
+            let message = messages::command_transaction_success(&session.as_bytes(), self.lid);
 
             actions.client_messages.push((from, message));
         } else {
@@ -849,19 +840,18 @@ impl<L, M> Consensus<L, M>
                                                                     .unwrap()
                                                                     .leader
                                                                     .unwrap()],
-                                                                &self.lid);
+                                                                self.lid);
             actions.client_messages.push((from, message));
         }
     }
 
     fn client_transaction_commit(&mut self, from: ClientId, actions: &mut Actions) {
         if self.is_leader() {
-            self.transaction.broadcast_end(&self.lid, actions);
+            self.transaction.broadcast_end(self.lid, actions);
             self.transaction.end();
 
-            let message = messages::command_transaction_success("Transaction has been stopped"
-                                                                    .as_bytes(),
-                                                                &self.lid);
+            let message = messages::command_transaction_success(b"Transaction has been stopped",
+                                                                self.lid);
 
             actions.client_messages.push((from, message));
 
@@ -871,20 +861,20 @@ impl<L, M> Consensus<L, M>
                                                                     .unwrap()
                                                                     .leader
                                                                     .unwrap()],
-                                                                &self.lid);
+                                                                self.lid);
             actions.client_messages.push((from, message));
         }
     }
 
     fn client_transaction_rollback(&mut self, from: ClientId, actions: &mut Actions) {
         if self.is_leader() {
-            self.transaction.broadcast_rollback(&self.lid, actions);
+            self.transaction.broadcast_rollback(self.lid, actions);
             let (commit_index, last_applied, _) = self.transaction.rollback();
             self.commit_index = commit_index;
             self.last_applied = last_applied;
             self.log.rollback(commit_index).expect("Transaction rollback failed");
 
-            let message = messages::command_transaction_success("".as_bytes(), &self.lid);
+            let message = messages::command_transaction_success(b"", self.lid);
 
             let mut leader_state = self.leader_state.write().unwrap();
             for &peer in self.peers.keys() {
@@ -909,7 +899,7 @@ impl<L, M> Consensus<L, M>
                                                                     .unwrap()
                                                                     .leader
                                                                     .unwrap()],
-                                                                &self.lid);
+                                                                self.lid);
             actions.client_messages.push((from, message));
         }
     }
@@ -924,12 +914,12 @@ impl<L, M> Consensus<L, M>
         if self.is_candidate() ||
            (self.is_follower() && self.follower_state.read().unwrap().leader.is_none()) {
             actions.client_messages
-                .push((from, messages::command_response_unknown_leader(&self.lid)));
+                .push((from, messages::command_response_unknown_leader(self.lid)));
         } else {
             // TODO: This is probably not exactly safe.
             let query = request.get_query().unwrap();
             let result = self.state_machine.read().unwrap().query(query);
-            let message = messages::command_response_success(&result, &self.lid);
+            let message = messages::command_response_success(&result, self.lid);
             actions.client_messages.push((from, message));
         }
     }
@@ -1004,7 +994,7 @@ impl<L, M> Consensus<L, M>
         // reset transaction
 
         if self.transaction.is_active {
-            self.transaction.broadcast_rollback(&self.lid, actions);
+            self.transaction.broadcast_rollback(self.lid, actions);
 
             let (commit_index, last_applied, _) = self.transaction
                 .rollback();
@@ -1072,8 +1062,8 @@ impl<L, M> Consensus<L, M>
                 scoped_trace!("responding to client {} for entry {}", client, index);
                 // We know that there will be an index here since it was commited
                 // and the index is less than that which has been commited.
-                let result = results.get(&index).unwrap();
-                let message = messages::command_response_success(result, &self.lid);
+                let ref result = results[&index];
+                let message = messages::command_response_success(result.as_slice(), self.lid);
                 actions.client_messages.push((client, message));
                 leader_state.proposals.pop_front();
             } else {

@@ -65,28 +65,28 @@ impl TransactionManager {
         self.follower_state_min = None;
     }
 
-    pub fn broadcast_begin(&mut self, lid: &LogId, actions: &mut Actions) {
+    pub fn broadcast_begin(&mut self, lid: LogId, actions: &mut Actions) {
         scoped_debug!("BROADCAST TRANSACTION BEGINS");
         let message = messages::transaction_begin(lid,
-                                                  &self.session
+                                                  self.session
                                                       .expect("Cannot start transaction when no \
                                                                TransactionId has been set"));
         actions.peer_messages_broadcast.push(message);
     }
 
-    pub fn broadcast_end(&self, lid: &LogId, actions: &mut Actions) {
+    pub fn broadcast_end(&self, lid: LogId, actions: &mut Actions) {
         scoped_debug!("BROADCAST TRANSACTION ENDS");
         let message = messages::transaction_commit(lid,
-                                                   &self.session
+                                                   self.session
                                                        .expect("Cannot end transaction when \
                                                                 no TransactionId has been set"));
         actions.peer_messages_broadcast.push(message);
     }
 
-    pub fn broadcast_rollback(&self, lid: &LogId, actions: &mut Actions) {
+    pub fn broadcast_rollback(&self, lid: LogId, actions: &mut Actions) {
         scoped_debug!("BROADCAST TRANSACTION ROLLBACK");
         let message = messages::transaction_rollback(lid,
-                                                     &self.session
+                                                     self.session
                                                          .expect("Cannot rollback transaction \
                                                                   when no TransactionId has \
                                                                   been set"));

@@ -113,7 +113,7 @@ impl<L, M, A> Server<L, M, A>
 
         let mut requests_in_queue = HashMap::new();
 
-        for &(lid, _, _) in logs.iter() {
+        for &(lid,_,_) in &logs {
             requests_in_queue.insert(lid, Vec::new());
         }
 
@@ -295,7 +295,7 @@ impl<L, M, A> Server<L, M, A>
             }
         }
 
-        if transaction_queue.len() > 0 {
+        if transaction_queue.is_empty() {
             scoped_debug!("Messages appended to queue {}", transaction_queue.len());
             for (lid, cid, message) in transaction_queue {
                 let mut messages = self.requests_in_queue.get_mut(&lid).unwrap();
@@ -316,7 +316,7 @@ impl<L, M, A> Server<L, M, A>
                 .get_mut(lid)
                 .expect(&format!("Log {:?} is not registered in the log_manager", lid));
 
-            for (timeout, &handle) in consensus.consensus_timeouts.iter() {
+            for (timeout, &handle) in &consensus.consensus_timeouts {
                 scoped_assert!(event_loop.clear_timeout(handle),
                                "unable to clear timeout; {:?}",
                                timeout);
@@ -485,7 +485,7 @@ impl<L, M, A> Server<L, M, A>
                                         })
                                         .collect();
 
-                                    for &(id, addr) in peers_vec.iter() {
+                                    for &(id, addr) in &peers_vec{
                                         self.peering_request(event_loop, id, addr).unwrap();
                                     }
                                 }

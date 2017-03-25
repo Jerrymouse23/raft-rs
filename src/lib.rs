@@ -136,8 +136,14 @@ pub use client::Client;
 use std::{io, net, ops, fmt};
 use uuid::Uuid;
 
+use std::sync::{Arc,RwLock};
+use state::{LeaderState, CandidateState, FollowerState};
+
 /// A simple convienence type.
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Wrappertype for Stateinformation for HTTP meta
+pub type StateInformation = (Arc<RwLock<LeaderState>>, Arc<RwLock<CandidateState>>, Arc<RwLock<FollowerState>>);
 
 wrapped_enum!{
     #[doc = "The generic `raft::Error` is composed of one of the errors that can originate from the"]
@@ -198,26 +204,26 @@ impl fmt::Display for RaftError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             RaftError::ConnectionLimitReached => {
-                fmt::Display::fmt("The connection has been reached",f)
+                fmt::Display::fmt("The connection has been reached", f)
             }
             RaftError::InvalidClientId => {
-                fmt::Display::fmt("A client reported an invalid client id",f)
+                fmt::Display::fmt("A client reported an invalid client id", f)
             }
-            RaftError::ClusterViolation(ref error) => fmt::Display::fmt(error,f),
+            RaftError::ClusterViolation(ref error) => fmt::Display::fmt(error, f),
             RaftError::UnknownConnectionType => {
                 fmt::Display::fmt("A remote connection attempted to use an unknown conection type \
-                                   in the connection preamble",f)
-                                  
+                                   in the connection preamble",
+                                  f)
             }
-            RaftError::InvalidPeerSet => fmt::Display::fmt("An invalid peer in the peer set",f),
+            RaftError::InvalidPeerSet => fmt::Display::fmt("An invalid peer in the peer set", f),
             RaftError::ConnectionRegisterFailed => {
-                fmt::Display::fmt("Registering a connection failed",f)
+                fmt::Display::fmt("Registering a connection failed", f)
             }
             RaftError::LeaderSearchExhausted => {
-                fmt::Display::fmt("Cannot find leader in the cluster",f)
+                fmt::Display::fmt("Cannot find leader in the cluster", f)
             }
-            RaftError::TransactionError(ref error) => fmt::Display::fmt(error,f), 
-            RaftError::Other(ref error) => fmt::Display::fmt(error,f),
+            RaftError::TransactionError(ref error) |
+            RaftError::Other(ref error) => fmt::Display::fmt(error, f), 
         }
     }
 }
@@ -225,26 +231,17 @@ impl fmt::Display for RaftError {
 impl ::std::error::Error for RaftError {
     fn description(&self) -> &str {
         match *self {
-            RaftError::ConnectionLimitReached => {
-                "The connection has been reached"
-            }
-            RaftError::InvalidClientId => {
-                "A client reported an invalid client id"
-            }
-            RaftError::ClusterViolation(ref error) => error, 
+            RaftError::ConnectionLimitReached => "The connection has been reached",
+            RaftError::InvalidClientId => "A client reported an invalid client id",
             RaftError::UnknownConnectionType => {
                 "A remote connection attempted to use an unknown conection type \
                                    in the connection preamble"
-                                  
             }
             RaftError::InvalidPeerSet => "An invalid peer in the peer set",
-            RaftError::ConnectionRegisterFailed => {
-                "Registering a connection failed"
-            }
-            RaftError::LeaderSearchExhausted => {
-                "Cannot find leader in the cluster"
-            }
-            RaftError::TransactionError(ref error) => error,
+            RaftError::ConnectionRegisterFailed => "Registering a connection failed",
+            RaftError::LeaderSearchExhausted => "Cannot find leader in the cluster",
+            RaftError::TransactionError(ref error) |
+            RaftError::ClusterViolation(ref error) |
             RaftError::Other(ref error) => error,
         }
     }
@@ -392,13 +389,9 @@ impl fmt::Display for ClientId {
 }
 
 /// The ID of a Raft log.
-#[derive(Copy, Clone, Hash, Eq,PartialOrd,Ord,Serialize,Deserialize)]
+#[derive(Default, Copy, Clone, Hash, Eq,PartialOrd,Ord,Serialize,Deserialize)]
 pub struct LogId(Uuid);
 impl LogId {
-    pub fn new() -> LogId {
-        LogId(Uuid::new_v4())
-    }
-
     pub fn as_bytes(self) -> [u8; 16] {
         *self.0.as_bytes()
     }
@@ -425,7 +418,7 @@ impl fmt::Display for LogId {
 
 impl PartialEq for LogId {
     fn eq(&self, other: &LogId) -> bool {
-        if self.0 == other.0 { true } else { false }
+        self.0 == other.0
     }
 }
 
@@ -433,7 +426,7 @@ impl PartialEq for LogId {
 #[derive(Copy, Clone, Hash, Eq,PartialOrd,Ord,Serialize,Deserialize)]
 pub struct TransactionId(Uuid);
 impl TransactionId {
-    pub fn new() -> TransactionId {
+    pub fn new() -> Self{
         TransactionId(Uuid::new_v4())
     }
 
@@ -476,6 +469,6 @@ impl fmt::Display for TransactionId {
 
 impl PartialEq for TransactionId {
     fn eq(&self, other: &TransactionId) -> bool {
-        if self.0 == other.0 { true } else { false }
+        self.0 == other.0
     }
 }

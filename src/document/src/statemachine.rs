@@ -44,7 +44,7 @@ impl DocumentStateMachine {
     }
 
     pub fn get_documents(&self) -> Vec<DocumentId> {
-        self.map.keys().into_iter().map(|id| *id).collect()
+        self.map.keys().into_iter().cloned().collect()
     }
 
     fn post(&mut self, document: Document) -> Vec<u8> {
@@ -63,7 +63,7 @@ impl DocumentStateMachine {
             DocumentRecord::new(id, format!("{}/{}", &self.volume, &id), ActionType::Remove);
 
         {
-            let old_document = self.map.get(&id).unwrap();
+            let old_document = &self.map[&id];
 
             record.set_old_payload(old_document.payload.clone());
             self.log.push(record);
@@ -78,7 +78,7 @@ impl DocumentStateMachine {
             DocumentRecord::new(id, format!("{}/{}", &self.volume, &id), ActionType::Put);
 
         {
-            let old_document = self.map.get(&id).unwrap();
+            let old_document = &self.map[&id];
 
             record.set_old_payload(old_document.payload.clone());
 

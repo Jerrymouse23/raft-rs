@@ -1,6 +1,7 @@
 use ServerId;
 use ClientId;
 use LogId;
+use StateInformation;
 use consensus::{Consensus, Actions, ConsensusTimeout};
 use std::net::SocketAddr;
 use std::collections::HashMap;
@@ -53,12 +54,12 @@ impl<L, M> LogManager<L, M>
     }
 
     pub fn active_transaction(&self, logid: &LogId) -> bool {
-        self.consensus.get(logid).unwrap().transaction.is_active
+        self.consensus[logid].transaction.is_active
     }
 
     pub fn init(&self) -> Actions {
         let mut actions = Actions::new();
-        for (id, _) in self.consensus.iter() {
+        for id in self.consensus.keys() {
             scoped_info!("Consensus Election timeout initialised: {:?}", id);
 
             actions.timeouts.push(ConsensusTimeout::Election(*id));
@@ -117,7 +118,7 @@ impl<L, M> LogManager<L, M>
                                  peer: ServerId,
                                  addr: SocketAddr,
                                  actions: &mut Actions) {
-        for (_, mut cons) in self.consensus.iter_mut() {
+        for mut cons in self.consensus.values_mut() {
             cons.peer_connection_reset(peer, addr, actions);
         }
     }
@@ -139,20 +140,17 @@ impl<L, M> LogManager<L, M>
             self.consensus
                 .get_mut(&LogId::from(&format!("{}", lid)).unwrap())
                 .unwrap()
-                .handle_queue(messages, actions).unwrap();
+                .handle_queue(messages, actions)
+                .unwrap();
         }
     }
 
     pub fn get_states(&self)
                       -> HashMap<LogId,
-                                 (Arc<RwLock<LeaderState>>,
-                                  Arc<RwLock<CandidateState>>,
-                                  Arc<RwLock<FollowerState>>)> {
+                                  StateInformation> {
         let mut result: HashMap<LogId,
-                                (Arc<RwLock<LeaderState>>,
-                                 Arc<RwLock<CandidateState>>,
-                                 Arc<RwLock<FollowerState>>)> = HashMap::new();
-        for (&lid, cons) in self.consensus.iter() {
+                                 StateInformation> = HashMap::new();
+        for (&lid, cons) in &self.consensus {
             let leader_state = cons.leader_state.clone();
             let candidate_state = cons.candidate_state.clone();
             let follower_state = cons.follower_state.clone();
@@ -166,7 +164,7 @@ impl<L, M> LogManager<L, M>
     pub fn get_state_machines(&self) -> HashMap<LogId, Arc<RwLock<M>>> {
         let mut result = HashMap::new();
 
-        for (&lid, cons) in self.consensus.iter() {
+        for (&lid, cons) in &self.consensus {
             let state_machine = cons.state_machine.clone();
 
             result.insert(lid, state_machine);
@@ -178,7 +176,8 @@ impl<L, M> LogManager<L, M>
     pub fn add_peer(&mut self, peer_id: ServerId, peer_addr: SocketAddr) {
         let mut lock = self.peers.write().unwrap();
         assert!(lock.insert(peer_id, peer_addr).is_none());
-        for (_, mut cons) in self.consensus.iter_mut() {
+
+        for mut cons in self.consensus.values_mut(){
             cons.add_peer(peer_id, peer_addr);
         }
     }

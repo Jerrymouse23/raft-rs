@@ -1,4 +1,4 @@
-#[allow(dead_code)]
+#![allow(dead_code)]
 use auth::Auth;
 use auth::credentials::Credentials;
 
@@ -30,11 +30,7 @@ impl<C> Auth for Sha256Auth<C>
     }
 
     fn compare(&self, hash1: &str, hash2: &str) -> bool {
-        if hash1 == hash2 {
-            return true;
-        } else {
-            return false;
-        }
+        hash1 == hash2
     }
 
     fn find(&self, user: &str, hash: &str) -> bool {

@@ -25,6 +25,7 @@ use raft::state::{LeaderState, CandidateState, FollowerState};
 use raft::auth::Auth;
 use raft::auth::sha256::Sha256Auth;
 use raft::auth::credentials::SingleCredentials;
+use raft::StateInformation;
 
 use login::Login;
 
@@ -34,6 +35,7 @@ use std::sync::{Arc, RwLock};
 use rustc_serialize::base64::{ToBase64, FromBase64, STANDARD};
 use serde_json;
 use serde_json::to_string as to_json;
+
 
 #[derive(Deserialize,Serialize)]
 struct http_Response {
@@ -48,10 +50,7 @@ struct Context {
 
 pub fn init(binding_addr: SocketAddr,
             node_addr: SocketAddrV4,
-            states: HashMap<LogId,
-                            (Arc<RwLock<LeaderState>>,
-                             Arc<RwLock<CandidateState>>,
-                             Arc<RwLock<FollowerState>>)>,
+            states: HashMap<LogId,StateInformation>,
             state_machines: HashMap<LogId, Arc<RwLock<DocumentStateMachine>>>,
             peers: Arc<RwLock<HashMap<ServerId, SocketAddr>>>,
             auth: Sha256Auth<SingleCredentials>) {
@@ -316,7 +315,7 @@ pub fn init(binding_addr: SocketAddr,
 
     // TODO implement user & password
     fn http_get(req: &mut Request, context: &Context) -> IronResult<Response> {
-        let ref session = iexpect!(try!(req.session().get::<Login>()));
+        let session = iexpect!(try!(req.session().get::<Login>()));
 
         let ref username = session.username;
         let ref password = session.hashed_password;
@@ -332,8 +331,8 @@ pub fn init(binding_addr: SocketAddr,
         match Handler::get(&SocketAddr::V4(context.node_addr),
                            &username,
                            &password,
-                           &Uuid::parse_str(*id).unwrap(),
-                           &LogId::from(lid).unwrap()) {
+                           Uuid::parse_str(*id).unwrap(),
+                           LogId::from(*lid).unwrap()) {
             Ok(document) => {
                 let http_doc = http_Response {
                     version: document.version,
@@ -365,7 +364,7 @@ pub fn init(binding_addr: SocketAddr,
             str_payload.from_base64().expect("Payload is not base64")
         };
 
-        let ref session = iexpect!(try!(req.session().get::<Login>()),
+        let session = iexpect!(try!(req.session().get::<Login>()),
                                    (status::BadRequest, "No session! Please login"));
 
         let ref username = session.username;
@@ -387,8 +386,8 @@ pub fn init(binding_addr: SocketAddr,
                             &username,
                             &password,
                             document,
-                            &session,
-                            &LogId::from(lid).unwrap()) {
+                            session,
+                            LogId::from(lid).unwrap()) {
             Ok(id) => Ok(Response::with((status::Ok, format!("{}", id)))),
             Err(_) => {
                 Ok(Response::with((status::BadRequest,
@@ -417,7 +416,7 @@ pub fn init(binding_addr: SocketAddr,
         let ref password = session.hashed_password;
 
         // TODO do not panic
-        let ref session: TransactionId = req.extensions
+        let session: TransactionId = req.extensions
             .get::<Router>()
             .unwrap()
             .find("session")
@@ -440,8 +439,8 @@ pub fn init(binding_addr: SocketAddr,
                             &username,
                             &password,
                             document,
-                            &session,
-                            &LogId::from(lid).unwrap()) {
+                            session,
+                            LogId::from(lid).unwrap()) {
             Ok(id) => Ok(Response::with((status::Ok, format!("{}", id)))),
             Err(_) => {
                 Ok(Response::with((status::InternalServerError,
@@ -470,9 +469,9 @@ pub fn init(binding_addr: SocketAddr,
         let res = match Handler::remove(&SocketAddr::V4(context.node_addr),
                                         &username,
                                         &password,
-                                        &Uuid::parse_str(*doc_id).unwrap(),
-                                        &session,
-                                        &LogId::from(lid).unwrap()) {
+                                        Uuid::parse_str(*doc_id).unwrap(),
+                                        session,
+                                        LogId::from(lid).unwrap()) {
             Ok(()) => Response::with((status::Ok, "Ok")),
             Err(_) => {
                 Response::with((status::InternalServerError,
@@ -509,9 +508,9 @@ pub fn init(binding_addr: SocketAddr,
         let res = match Handler::remove(&SocketAddr::V4(context.node_addr),
                                         &username,
                                         &password,
-                                        &Uuid::parse_str(*doc_id).unwrap(),
-                                        &session,
-                                        &LogId::from(lid).unwrap()) {
+                                        Uuid::parse_str(*doc_id).unwrap(),
+                                        *session,
+                                        LogId::from(lid).unwrap()) {
             Ok(()) => Response::with((status::Ok, "Ok")),
             Err(_) => {
                 Response::with((status::InternalServerError,
@@ -557,10 +556,10 @@ pub fn init(binding_addr: SocketAddr,
         let res = match Handler::put(&SocketAddr::V4(context.node_addr),
                                      &username,
                                      &password,
-                                     &Uuid::parse_str(&id).unwrap(),
+                                     Uuid::parse_str(&id).unwrap(),
                                      bytes,
-                                     &session,
-                                     &LogId::from(lid).unwrap()) {
+                                     session,
+                                     LogId::from(lid).unwrap()) {
             Ok(()) => Response::with((status::Ok, "Ok")),
             Err(_) => {
                 Response::with((status::InternalServerError,
@@ -592,7 +591,7 @@ pub fn init(binding_addr: SocketAddr,
         };
 
         // TODO do not panic
-        let ref session: TransactionId = req.extensions
+        let session: TransactionId = req.extensions
             .get::<Router>()
             .unwrap()
             .find("session")
@@ -606,10 +605,10 @@ pub fn init(binding_addr: SocketAddr,
         let res = match Handler::put(&SocketAddr::V4(context.node_addr),
                                      &username,
                                      &password,
-                                     &Uuid::parse_str(&id).unwrap(),
+                                     Uuid::parse_str(&id).unwrap(),
                                      payload,
-                                     &session,
-                                     &LogId::from(lid).unwrap()) {
+                                     session,
+                                     LogId::from(lid).unwrap()) {
             Ok(()) => Response::with((status::Ok, "Ok")),
             Err(_) => {
                 Response::with((status::InternalServerError,
@@ -631,15 +630,15 @@ pub fn init(binding_addr: SocketAddr,
         match Handler::begin_transaction(&SocketAddr::V4(context.node_addr),
                                          &username,
                                          &password,
-                                         &TransactionId::new(),
-                                         &LogId::from(lid).unwrap()) {
+                                         TransactionId::new(),
+                                         LogId::from(lid).unwrap()) {
             Ok(session) => Ok(Response::with((status::Ok, session))),
             Err(_) => Ok(Response::with((status::InternalServerError, "Something went wrong :("))),
         }
     }
 
     fn http_commit_transaction(req: &mut Request, context: &Context) -> IronResult<Response> {
-        let ref session = iexpect!(try!(req.session().get::<Login>()));
+        let session = iexpect!(try!(req.session().get::<Login>()));
 
         let ref username = session.username;
         let ref password = session.hashed_password;
@@ -659,15 +658,15 @@ pub fn init(binding_addr: SocketAddr,
         match Handler::commit_transaction(&SocketAddr::V4(context.node_addr),
                                           &username,
                                           &password,
-                                          &LogId::from(lid).unwrap(),
-                                          &session) {
+                                          LogId::from(lid).unwrap(),
+                                          *session) {
             Ok(res) => Ok(Response::with((status::Ok, res))),
             Err(_) => Ok(Response::with((status::InternalServerError, "Something went wrong :("))),
         }
     }
 
     fn http_rollback_transaction(req: &mut Request, context: &Context) -> IronResult<Response> {
-        let ref session = iexpect!(try!(req.session().get::<Login>()));
+        let session = iexpect!(try!(req.session().get::<Login>()));
 
         let ref username = session.username;
         let ref password = session.hashed_password;
@@ -687,8 +686,8 @@ pub fn init(binding_addr: SocketAddr,
         match Handler::rollback_transaction(&SocketAddr::V4(context.node_addr),
                                             &username,
                                             &password,
-                                            &LogId::from(lid).unwrap(),
-                                            &session) {
+                                            LogId::from(lid).unwrap(),
+                                            *session) {
             Ok(res) => Ok(Response::with((status::Ok, res))),
             Err(_) => Ok(Response::with((status::InternalServerError, "Something went wrong :("))),
         }

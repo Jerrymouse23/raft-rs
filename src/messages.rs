@@ -52,7 +52,10 @@ pub fn client_connection_preamble(id: ClientId,
     Rc::new(message)
 }
 
-pub fn server_add(id: ServerId, community_string: &str, addr: &SocketAddr) -> Rc<Builder<HeapAllocator>> {
+pub fn server_add(id: ServerId,
+                  community_string: &str,
+                  addr: &SocketAddr)
+                  -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
         let mut message = message.init_root::<connection_preamble::Builder>()
@@ -272,9 +275,9 @@ pub fn query_request(entry: &[u8], lid: &LogId) -> Builder<HeapAllocator> {
 
 // Proposal
 
-pub fn proposal_request(session: &TransactionId,
+pub fn proposal_request(session: TransactionId,
                         entry: &[u8],
-                        lid: &LogId)
+                        lid: LogId)
                         -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
@@ -289,7 +292,7 @@ pub fn proposal_request(session: &TransactionId,
 
 // Query / Proposal Response
 
-pub fn command_response_success(data: &[u8], lid: &LogId) -> Rc<Builder<HeapAllocator>> {
+pub fn command_response_success(data: &[u8], lid: LogId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
         let mut response = message.init_root::<client_response::Builder>();
@@ -300,7 +303,7 @@ pub fn command_response_success(data: &[u8], lid: &LogId) -> Rc<Builder<HeapAllo
     Rc::new(message)
 }
 
-pub fn command_response_unknown_leader(lid: &LogId) -> Rc<Builder<HeapAllocator>> {
+pub fn command_response_unknown_leader(lid: LogId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
         let mut response = message.init_root::<client_response::Builder>();
@@ -312,7 +315,7 @@ pub fn command_response_unknown_leader(lid: &LogId) -> Rc<Builder<HeapAllocator>
 }
 
 pub fn command_response_not_leader(leader_hint: &SocketAddr,
-                                   lid: &LogId)
+                                   lid: LogId)
                                    -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
@@ -326,7 +329,7 @@ pub fn command_response_not_leader(leader_hint: &SocketAddr,
 
 // Transaction
 
-pub fn transaction_begin(lid: &LogId, session: &TransactionId) -> Rc<Builder<HeapAllocator>> {
+pub fn transaction_begin(lid: LogId, session: TransactionId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
         let mut request = message.init_root::<message::Builder>();
@@ -336,7 +339,7 @@ pub fn transaction_begin(lid: &LogId, session: &TransactionId) -> Rc<Builder<Hea
     Rc::new(message)
 }
 
-pub fn transaction_commit(lid: &LogId, session: &TransactionId) -> Rc<Builder<HeapAllocator>> {
+pub fn transaction_commit(lid: LogId, session: TransactionId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
         let mut request = message.init_root::<message::Builder>();
@@ -346,7 +349,7 @@ pub fn transaction_commit(lid: &LogId, session: &TransactionId) -> Rc<Builder<He
     Rc::new(message)
 }
 
-pub fn client_transaction_begin(lid: &LogId, session: &TransactionId) -> Builder<HeapAllocator> {
+pub fn client_transaction_begin(lid: LogId, session: TransactionId) -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
         let mut request = message.init_root::<client_request::Builder>();
@@ -356,7 +359,7 @@ pub fn client_transaction_begin(lid: &LogId, session: &TransactionId) -> Builder
     }
     message
 }
-pub fn client_transaction_commit(lid: &LogId, session: &TransactionId) -> Builder<HeapAllocator> {
+pub fn client_transaction_commit(lid: LogId, session: TransactionId) -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
         let mut request = message.init_root::<client_request::Builder>();
@@ -367,7 +370,7 @@ pub fn client_transaction_commit(lid: &LogId, session: &TransactionId) -> Builde
     message
 }
 
-pub fn client_transaction_rollback(lid: &LogId, session: &TransactionId) -> Builder<HeapAllocator> {
+pub fn client_transaction_rollback(lid: LogId, session: TransactionId) -> Builder<HeapAllocator> {
     let mut message = Builder::new_default();
     {
         let mut request = message.init_root::<client_request::Builder>();
@@ -377,7 +380,7 @@ pub fn client_transaction_rollback(lid: &LogId, session: &TransactionId) -> Buil
     message
 }
 
-pub fn command_transaction_success(data: &[u8], lid: &LogId) -> Rc<Builder<HeapAllocator>> {
+pub fn command_transaction_success(data: &[u8], lid: LogId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
         let mut response = message.init_root::<client_response::Builder>();
@@ -388,7 +391,7 @@ pub fn command_transaction_success(data: &[u8], lid: &LogId) -> Rc<Builder<HeapA
     Rc::new(message)
 }
 
-pub fn command_transaction_failure(data: &[u8], lid: &LogId) -> Rc<Builder<HeapAllocator>> {
+pub fn command_transaction_failure(data: &[u8], lid: LogId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
         let mut response = message.init_root::<client_response::Builder>();
@@ -399,7 +402,7 @@ pub fn command_transaction_failure(data: &[u8], lid: &LogId) -> Rc<Builder<HeapA
     Rc::new(message)
 }
 
-pub fn transaction_rollback(lid: &LogId, session: &TransactionId) -> Rc<Builder<HeapAllocator>> {
+pub fn transaction_rollback(lid: LogId, session: TransactionId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
         let mut request = message.init_root::<message::Builder>();

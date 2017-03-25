@@ -154,7 +154,7 @@ fn main() {
         if args.cmd_get {
             let id = args.get_doc_id();
 
-            get(&node_addr, &id, &username, &password, &lid);
+            get(&node_addr, id, &username, &password, lid);
 
         } else if args.cmd_post {
 
@@ -162,34 +162,34 @@ fn main() {
                  &args.arg_filepath,
                  &username,
                  &password,
-                 &TransactionId::new(),
-                 &lid);
+                 TransactionId::new(),
+                 lid);
         } else if args.cmd_remove {
             let id = args.get_doc_id();
 
-            remove(&node_addr, &id, &username, &password, &TransactionId::new(), &lid);
+            remove(&node_addr, id, &username, &password, TransactionId::new(), lid);
         } else if args.cmd_put {
             let id = args.get_doc_id();
 
             put(&node_addr,
-                &id,
+                id,
                 &args.arg_filepath,
                 &username,
                 &password,
-                &TransactionId::new(),
-                &lid);
+                TransactionId::new(),
+                lid);
         } else if args.cmd_begintrans {
             let res =
-                Handler::begin_transaction(&node_addr, &username, &password, &TransactionId::new(), &lid);
+                Handler::begin_transaction(&node_addr, &username, &password, TransactionId::new(), lid);
 
             println!("{}", res.unwrap());
         } else if args.cmd_commit{
             let tid = args.get_trans_id();
-            let res = Handler::commit_transaction(&node_addr, &username, &password, &lid, &tid);
+            let res = Handler::commit_transaction(&node_addr, &username, &password, lid, tid);
             println!("{}", res.unwrap());
         } else if args.cmd_rollback {
             let tid = args.get_trans_id();
-            let res = Handler::rollback_transaction(&node_addr, &username, &password, &lid,&tid);
+            let res = Handler::rollback_transaction(&node_addr, &username, &password, lid,tid);
 
             println!("{}", res.unwrap());
         } else if args.cmd_transpost {
@@ -199,25 +199,25 @@ fn main() {
                  &args.arg_filepath,
                  &username,
                  &password,
-                 &tid,
-                 &lid);
+                 tid,
+                 lid);
 
         } else if args.cmd_transremove {
             let id = args.get_doc_id();
             let tid = args.get_trans_id();
 
-            remove(&node_addr, &id, &username, &password, &tid, &lid);
+            remove(&node_addr, id, &username, &password, tid, lid);
         } else if args.cmd_transput {
             let id = args.get_doc_id();
             let tid = args.get_trans_id();
 
             put(&node_addr,
-                &id,
+                id,
                 &args.arg_filepath,
                 &username,
                 &password,
-                &tid,
-                &lid);
+                tid,
+                lid);
         }
     }
 }
@@ -241,11 +241,11 @@ fn server(args: &Args) {
 
     let mut logs: Vec<(LogId, DocLog, DocumentStateMachine)> = Vec::new();
 
-    for l in config.logs.iter() {
+    for l in &config.logs {
         let mut state_machine = DocumentStateMachine::new(&l.path);
         {
-            let snap_map = state_machine.get_snapshot_map().unwrap_or(Vec::new());
-            let snap_log = state_machine.get_snapshot_log().unwrap_or(Vec::new());
+            let snap_map = state_machine.get_snapshot_map().unwrap_or_default();
+            let snap_log = state_machine.get_snapshot_log().unwrap_or_default();
 
             state_machine.restore_snapshot(snap_map, snap_log);
         }
@@ -267,7 +267,7 @@ fn server(args: &Args) {
         .unwrap();
 
     {
-        if peers.len() == 0 {
+        if peers.is_empty() {
             match config.get_dynamic_peering() {
                 Some((peer_id, peer_addr)) => {
                     server.peering_request(&mut event_loop, ServerId::from(peer_id), peer_addr).unwrap();
@@ -289,7 +289,7 @@ fn server(args: &Args) {
     event_loop.run(&mut server).unwrap();
 }
 
-fn get(addr: &SocketAddr, doc_id: &Uuid, username: &str, password: &str, lid: &LogId) {
+fn get(addr: &SocketAddr, doc_id: Uuid, username: &str, password: &str, lid: LogId) {
     let document = Handler::get(addr, &username, &password, doc_id, lid);
     println!("{:?}", document);
 }
@@ -298,8 +298,8 @@ fn post(addr: &SocketAddr,
         filepath: &str,
         username: &str,
         password: &str,
-        session: &TransactionId,
-        lid: &LogId) {
+        session: TransactionId,
+        lid: LogId) {
 
     let mut handler = File::open(&filepath).expect(&format!("Unable to open the file{}", filepath));
     let mut buffer: Vec<u8> = Vec::new();
@@ -321,12 +321,12 @@ fn post(addr: &SocketAddr,
 }
 
 fn put(addr: &SocketAddr,
-       doc_id: &Uuid,
+       doc_id: Uuid,
        filepath: &str,
        username: &str,
        password: &str,
-       session: &TransactionId,
-       lid: &LogId) {
+       session: TransactionId,
+       lid: LogId) {
 
     let mut handler = File::open(filepath).expect(&format!("Unable to open the file{}", filepath));
     let mut buffer: Vec<u8> = Vec::new();
@@ -342,11 +342,11 @@ fn put(addr: &SocketAddr,
 }
 
 fn remove(addr: &SocketAddr,
-          doc_id: &Uuid,
+          doc_id: Uuid,
           username: &str,
           password: &str,
-          session: &TransactionId,
-          lid: &LogId) {
+          session: TransactionId,
+          lid: LogId) {
     match Handler::remove(addr, &username, &password, doc_id, session, lid) {
         Ok(()) => println!("Ok"),
         Err(err) => panic!(err),

@@ -34,23 +34,23 @@ impl Handler {
         hashset
     }
 
-    fn new_client(addr: &SocketAddr, username: &str, password: &str, lid: &LogId) -> Client {
+    fn new_client(addr: &SocketAddr, username: &str, password: &str, lid: LogId) -> Client {
         Client::new::<SimpleAuth<SingleCredentials>>(Self::to_hashset(*addr),
                                                      username.to_string(),
                                                      password.to_string(),
-                                                     *lid)
+                                                     lid)
     }
 
     pub fn get(addr: &SocketAddr,
                username: &str,
                plain_password: &str,
-               id: &Uuid,
-               lid: &LogId)
+               id: Uuid,
+               lid: LogId)
                -> Result<Document> {
 
         let mut client = Self::new_client(addr, username, plain_password, lid);
 
-        let payload = encode(&Message::Get(*id), SizeLimit::Infinite).unwrap();
+        let payload = encode(&Message::Get(id), SizeLimit::Infinite).unwrap();
 
         let response = match client.query(payload.as_slice()) {
             Ok(res) => res,
@@ -58,8 +58,8 @@ impl Handler {
                 return Handler::get(&parse_addr(&leader_str),
                                     &username,
                                     &plain_password,
-                                    &id,
-                                    &lid);
+                                    id,
+                                    lid);
             } 
             Err(err) => return Err(err),
         };
@@ -73,8 +73,8 @@ impl Handler {
                 username: &str,
                 plain_password: &str,
                 document: Document,
-                session: &TransactionId,
-                lid: &LogId)
+                session: TransactionId,
+                lid: LogId)
                 -> Result<Uuid> {
 
         let mut client = Self::new_client(addr, username, plain_password, lid);
@@ -88,8 +88,8 @@ impl Handler {
                                      &username,
                                      &plain_password,
                                      document,
-                                     &session,
-                                     &lid);
+                                     session,
+                                     lid);
             } 
             Err(err) => return Err(err),
         };
@@ -102,13 +102,13 @@ impl Handler {
     pub fn remove(addr: &SocketAddr,
                   username: &str,
                   plain_password: &str,
-                  id: &Uuid,
-                  session: &TransactionId,
-                  lid: &LogId)
+                  id: Uuid,
+                  session: TransactionId,
+                  lid: LogId)
                   -> Result<()> {
         let mut client = Self::new_client(addr, username, plain_password, lid);
 
-        let payload = encode(&Message::Remove(*id), SizeLimit::Infinite).unwrap();
+        let payload = encode(&Message::Remove(id), SizeLimit::Infinite).unwrap();
 
         match client.propose(session, payload.as_slice()) {
             Ok(res) => res,
@@ -116,9 +116,9 @@ impl Handler {
                 return Handler::remove(&parse_addr(&leader_str),
                                        &username,
                                        &plain_password,
-                                       &id,
-                                       &session,
-                                       &lid);
+                                       id,
+                                       session,
+                                       lid);
             } 
             Err(err) => return Err(err),
         };
@@ -129,15 +129,15 @@ impl Handler {
     pub fn put(addr: &SocketAddr,
                username: &str,
                plain_password: &str,
-               id: &Uuid,
+               id: Uuid,
                new_payload: Vec<u8>,
-               session: &TransactionId,
-               lid: &LogId)
+               session: TransactionId,
+               lid: LogId)
                -> Result<()> {
 
         let mut client = Self::new_client(addr, username, plain_password, lid);
 
-        let payload = encode(&Message::Put(*id, new_payload.clone()), SizeLimit::Infinite).unwrap();
+        let payload = encode(&Message::Put(id, new_payload.clone()), SizeLimit::Infinite).unwrap();
 
         match client.propose(session, payload.as_slice()) {
             Ok(res) => res,
@@ -145,10 +145,10 @@ impl Handler {
                 return Handler::put(&parse_addr(&leader_str),
                                     &username,
                                     &plain_password,
-                                    &id,
+                                    id,
                                     new_payload,
-                                    &session,
-                                    &lid);
+                                    session,
+                                    lid);
             } 
             Err(err) => return Err(err),
         };
@@ -159,8 +159,8 @@ impl Handler {
     pub fn begin_transaction(addr: &SocketAddr,
                              username: &str,
                              password: &str,
-                             session: &TransactionId,
-                             lid: &LogId)
+                             session: TransactionId,
+                             lid: LogId)
                              -> Result<String> {
         let mut client = Self::new_client(addr, username, password, lid);
 
@@ -170,8 +170,8 @@ impl Handler {
                 return Handler::begin_transaction(&parse_addr(&leader_str),
                                                   &username,
                                                   &password,
-                                                  &session,
-                                                  &lid);
+                                                  session,
+                                                  lid);
             } 
             Err(err) => return Err(err),
         }
@@ -180,8 +180,8 @@ impl Handler {
     pub fn commit_transaction(addr: &SocketAddr,
                               username: &str,
                               password: &str,
-                              lid: &LogId,
-                              session: &TransactionId)
+                              lid: LogId,
+                              session: TransactionId)
                               -> Result<String> {
         let mut client = Self::new_client(addr, username, password, lid);
 
@@ -191,8 +191,8 @@ impl Handler {
                 return Handler::commit_transaction(&parse_addr(&leader_str),
                                                    &username,
                                                    &password,
-                                                   &lid,
-                                                   &session);
+                                                   lid,
+                                                   session);
             } 
             Err(err) => return Err(err),
         }
@@ -201,8 +201,8 @@ impl Handler {
     pub fn rollback_transaction(addr: &SocketAddr,
                                 username: &str,
                                 password: &str,
-                                lid: &LogId,
-                                session: &TransactionId)
+                                lid: LogId,
+                                session: TransactionId)
                                 -> Result<String> {
         let mut client = Self::new_client(addr, username, password, lid);
 
@@ -214,8 +214,8 @@ impl Handler {
                 return Handler::rollback_transaction(&parse_addr(&leader_str),
                                                      &username,
                                                      &password,
-                                                     &lid,
-                                                     &session);
+                                                     lid,
+                                                     session);
             } 
             Err(err) => return Err(err),
         }

@@ -72,7 +72,7 @@ impl Config {
         match self.dynamic_peer {
             Some(ref dpeer) => {
                 let id = dpeer.node_id;
-                let ref addr = dpeer.node_address;
+                let addr = &dpeer.node_address;
 
                 let server: Vec<SocketAddr> = addr.to_socket_addrs().unwrap().collect();
 
@@ -90,7 +90,7 @@ impl Config {
         let mut node_ids: Vec<u64> = Vec::new();
         let mut node_addresses: Vec<SocketAddr> = Vec::new();
 
-        for peer in self.peers.clone().into_iter() {
+        for peer in self.peers.clone() {
             node_ids.push(peer.node_id);
 
             let addr: Vec<SocketAddr> = peer.node_address.to_socket_addrs().unwrap().collect();

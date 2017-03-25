@@ -56,7 +56,7 @@ impl DocLog {
     }
 
     pub fn get_volume(&self) -> String {
-        format!("{}", self.prefix)
+        self.prefix.clone()
     }
 
     // TODO implement Result

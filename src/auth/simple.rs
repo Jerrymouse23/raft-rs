@@ -25,11 +25,7 @@ impl<C> Auth for SimpleAuth<C>
     }
 
     fn compare(&self, hash1: &str, hash2: &str) -> bool {
-        if hash1 == hash2 {
-            return true;
-        } else {
-            return false;
-        }
+        hash1 == hash2
     }
 
     fn find(&self, user: &str, hash: &str) -> bool {
