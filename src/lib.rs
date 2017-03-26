@@ -184,6 +184,7 @@ pub enum RaftError {
     ConnectionRegisterFailed,
     /// Failed to find a leader in the cluster. Try again later.
     LeaderSearchExhausted,
+    /// An error during transaction
     TransactionError(String),
     Other(String),
 }

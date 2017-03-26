@@ -8,6 +8,7 @@ use toml::DecodeError;
 use raft::ServerId;
 
 #[derive(Debug,Deserialize,Clone)]
+/// Contains the configuration of config.toml
 pub struct Config {
     pub server: ServerConfig,
     pub peers: Vec<PeerConfig>,
@@ -17,6 +18,7 @@ pub struct Config {
 }
 
 #[derive(Debug,Deserialize,Clone)]
+/// The specific server configuration
 pub struct ServerConfig {
     pub node_id: u64,
     pub node_address: String,
@@ -25,24 +27,28 @@ pub struct ServerConfig {
 }
 
 #[derive(Debug,Deserialize,Clone)]
+/// Configuration for dynamic peer adding
 pub struct DynamicPeer {
     pub node_id: u64,
     pub node_address: String,
 }
 
 #[derive(Debug,Deserialize,Clone)]
+/// Configuration for a single peer
 pub struct PeerConfig {
     pub node_id: u64,
     pub node_address: String,
 }
 
 #[derive(Debug,Deserialize,Clone)]
+/// Configuration for a single log
 pub struct LogConfig {
     pub path: String,
     pub lid: String,
 }
 
 #[derive(Debug,Deserialize,Clone)]
+/// Configuration for Client-Security
 pub struct SecurityConfig {
     pub username: String,
     pub password: String,

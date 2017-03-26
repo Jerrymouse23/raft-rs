@@ -3,12 +3,16 @@ use bincode::serde::{serialize,deserialize};
 use bincode::SizeLimit;
 
 #[derive(Clone, Serialize, Deserialize)]
+/// This struct is contains the data for the HTTP-session
 pub struct Login {
+    /// The username of the user
     pub username: String,
+    /// The password of the user. This is String is hashed
     pub hashed_password : String
 }
 
 impl Login{
+    /// Creates new Login
     pub fn new(username: String, hashed_password: String) -> Self{
         Login{
             username,

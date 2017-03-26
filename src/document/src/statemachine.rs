@@ -50,8 +50,6 @@ impl DocumentStateMachine {
         ::std::fs::create_dir_all(&self.volume)
     }
 
-
-
     pub fn get_documents(&self) -> Vec<DocumentId> {
         self.map.keys().into_iter().cloned().collect()
     }

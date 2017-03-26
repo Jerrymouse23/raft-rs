@@ -9,21 +9,26 @@ use TransactionId;
 
 #[derive(Clone)]
 pub struct TransactionManager {
+    /// Whether a transaction is running
     pub is_active: bool,
+    /// The ID of the current transaction. If `None`, no transaction is running
     pub session: Option<TransactionId>,
-    pub queue: Vec<(ClientId, Rc<Builder<HeapAllocator>>)>,
+    /// The amount of the messages which has been applied during transaction
     counter: usize,
+    /// The commit_index before the transaction
     commit_index: LogIndex,
+    /// The last_applied index before the transaction
     last_applied: LogIndex,
+    /// The follower_state_min index before the transaction
     follower_state_min: Option<LogIndex>,
 }
 
 impl TransactionManager {
+    /// Creates new TransactionManager
     pub fn new() -> Self {
         TransactionManager {
             is_active: false,
             session: None,
-            queue: vec![],
             counter: 0,
             commit_index: LogIndex::from(0),
             last_applied: LogIndex::from(0),
@@ -31,6 +36,13 @@ impl TransactionManager {
         }
     }
 
+    /// Begins new transaction
+    /// 
+    /// # Arguments
+    /// * `session` - The ID of the transaction
+    /// * `commit_index` - The commit_index before the transaction
+    /// * `last_applied` - The last_applied index before the transaction
+    /// * `follower_state_min` - The follower_state_min index before the transaction
     pub fn begin(&mut self,
                  session: TransactionId,
                  commit_index: LogIndex,
@@ -45,6 +57,7 @@ impl TransactionManager {
         self.follower_state_min = follower_state_min;
     }
 
+    /// Reverts all messages which has been applied during transaction
     pub fn rollback(&mut self) -> (LogIndex, LogIndex, Option<LogIndex>) {
         let commit_index = self.commit_index;
         let last_applied = self.last_applied;
@@ -54,6 +67,7 @@ impl TransactionManager {
         (commit_index, last_applied, follower_state_min)
     }
 
+    /// Resets all values of the TransactionManager for the next transaction
     pub fn end(&mut self) {
         scoped_debug!("TRANSACTION FINISHED! {} messages received", self.counter);
 
@@ -65,6 +79,7 @@ impl TransactionManager {
         self.follower_state_min = None;
     }
 
+    /// Sends to all peers a message that a transaction has been started
     pub fn broadcast_begin(&mut self, lid: LogId, actions: &mut Actions) {
         scoped_debug!("BROADCAST TRANSACTION BEGINS");
         let message = messages::transaction_begin(lid,
@@ -74,6 +89,7 @@ impl TransactionManager {
         actions.peer_messages_broadcast.push(message);
     }
 
+    /// Sends to all peers a message that the currently running transaction should be commited
     pub fn broadcast_end(&self, lid: LogId, actions: &mut Actions) {
         scoped_debug!("BROADCAST TRANSACTION ENDS");
         let message = messages::transaction_commit(lid,
@@ -83,6 +99,8 @@ impl TransactionManager {
         actions.peer_messages_broadcast.push(message);
     }
 
+    /// Sends to all peers a messages that the all messages which has been applied during the
+    /// transaction should be reverted
     pub fn broadcast_rollback(&self, lid: LogId, actions: &mut Actions) {
         scoped_debug!("BROADCAST TRANSACTION ROLLBACK");
         let message = messages::transaction_rollback(lid,
@@ -93,19 +111,26 @@ impl TransactionManager {
         actions.peer_messages_broadcast.push(message);
     }
 
+    /// Compares the current TransactionId with the given one. If `true`, it is the same
+    /// 
+    /// # Arguments
+    /// * `session` - The TransactionId which will be compared with
     pub fn compare(&self, session: TransactionId) -> bool {
         self.session.expect("No TransactionId has been set") == session
     }
 
 
+    /// Returns whether the a transaction is running
     pub fn get(&self) -> bool {
         self.is_active
     }
 
+    /// Returns how many messages has been applied
     pub fn get_counter(&self) -> usize {
         self.counter
     }
 
+    /// Counts up the message counter
     pub fn count_up(&mut self) {
         self.counter += 1;
     }

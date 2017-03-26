@@ -59,6 +59,12 @@ impl Handler {
         Ok("Document deleted".to_string())
     }
 
+    /// Updates a document
+    /// # Arguments
+    ///
+    /// * `id` - The uuid of the document in order to find the document
+    /// * `payload` - The new payload of the document with the `id`
+    /// * `volume` - The folder where the documents are saved
     pub fn put(id: Uuid, payload: &[u8], volume: &str) -> Result<String, IoError> {
         let mut handler = OpenOptions::new()
             .read(true)

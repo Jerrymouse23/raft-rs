@@ -36,6 +36,7 @@ pub struct Client {
     password: String,
     /// The username to access server
     username: String,
+    /// The LogId for the messages for the connection
     lid: LogId,
 }
 
@@ -77,16 +78,31 @@ impl Client {
         self.send_message(&mut message)
     }
 
+    /// Starts new transaction 
+    /// 
+    /// # Arguments
+    /// * `session` - The ID of the transaction. The server needs this value to identify the
+    /// transaction.
     pub fn begin_transaction(&mut self, session: TransactionId) -> Result<Vec<u8>> {
         let mut message = messages::client_transaction_begin(self.lid, session);
         self.send_message(&mut message)
     }
 
+    /// Commits the transaction
+    /// 
+    /// # Arguments
+    /// * `session` - The ID of the transaction. The server tries to commit the transaction with
+    /// this ID.
     pub fn end_transaction(&mut self, session: TransactionId) -> Result<Vec<u8>> {
         let mut message = messages::client_transaction_commit(self.lid, session);
         self.send_message(&mut message)
     }
 
+    /// Rollbacks the transaction
+    /// 
+    /// # Arguments
+    /// * `session` - The ID of the transaction. The server tries to revert all messages from this
+    /// transaction.
     pub fn rollback_transaction(&mut self, session: TransactionId) -> Result<Vec<u8>> {
         let mut message = messages::client_transaction_rollback(self.lid, session);
         self.send_message(&mut message)

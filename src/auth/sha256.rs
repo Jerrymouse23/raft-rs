@@ -15,6 +15,7 @@ pub struct Sha256Auth<C>
 impl<C> Sha256Auth<C>
     where C: Credentials
 {
+    /// Creates new Auth
     pub fn new(credentials: C) -> Self {
         Sha256Auth { credentials: credentials }
     }

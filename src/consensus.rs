@@ -75,10 +75,10 @@ pub struct Actions {
     pub clear_peer_messages: bool,
     /// Messages which are in queue because there is a transaction active
     pub transaction_queue: Vec<(LogId, ClientId, Builder<HeapAllocator>)>,
+    /// Messages to be send to all peers in the cluster
     pub peer_messages_broadcast: Vec<Rc<Builder<HeapAllocator>>>,
 }
 
-// TODO add transaction_queue
 impl fmt::Debug for Actions {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         let peer_messages: Vec<ServerId> = self.peer_messages
@@ -89,14 +89,19 @@ impl fmt::Debug for Actions {
             .iter()
             .map(|client_message| client_message.0)
             .collect();
+        let transaction_messages: Vec<ClientId> = self.transaction_queue
+            .iter()
+            .map(|transaction_message| transaction_message.1)
+            .collect();
         write!(fmt,
                "Actions {{ peer_messages: {:?}, client_messages: {:?}, clear_timeouts: {:?}, \
-                timeouts: {:?}, clear_peer_messages: {} }}",
+                timeouts: {:?}, clear_peer_messages: {}, transaction_queue: {:?} }}",
                peer_messages,
                client_messages,
                self.clear_timeouts,
                self.timeouts,
-               self.clear_peer_messages)
+               self.clear_peer_messages,
+               transaction_messages)
     }
 }
 
@@ -183,6 +188,7 @@ impl<L, M> Consensus<L, M>
         &self.peers
     }
 
+    /// If a transaction is inactive, method processes client messages
     pub fn handle_queue(&mut self,
                         requests_in_queue: &mut Vec<(ClientId, Builder<HeapAllocator>)>,
                         actions: &mut Actions)
@@ -321,6 +327,11 @@ impl<L, M> Consensus<L, M>
         }
     }
 
+    /// Adds new peer to `peers`
+    ///
+    /// # Arguments
+    /// * `peer_id` - The ID of the new peer
+    /// * `peer_addr` - The socketaddress of the new peer
     pub fn add_peer(&mut self, peer_id: ServerId, peer_addr: SocketAddr) {
         assert_eq!(self.peers.insert(peer_id, peer_addr), None);
 
@@ -775,6 +786,7 @@ impl<L, M> Consensus<L, M>
         }
     }
 
+    /// Starts new transaction
     fn transaction_begin(&mut self, _: ServerId, session: TransactionId, _: &mut Actions) {
         if !self.is_leader() {
             if !self.transaction.is_active {
@@ -788,6 +800,7 @@ impl<L, M> Consensus<L, M>
         }
     }
 
+    /// Ends the current transaction successfully
     fn transaction_commit(&mut self, _: ServerId, session: TransactionId, _: &mut Actions) {
         if self.transaction.is_active {
             assert_eq!(self.transaction.session.expect("No TransactionSession defined"),
@@ -799,6 +812,7 @@ impl<L, M> Consensus<L, M>
 
     }
 
+    /// Ends the current transaction and rolls all messages in this transaction back
     fn transaction_rollback(&mut self, _: ServerId, _: TransactionId, _: &mut Actions) {
         if self.transaction.is_active {
             let (commit_index, last_applied, follower_state_min) = self.transaction
@@ -822,6 +836,7 @@ impl<L, M> Consensus<L, M>
         }
     }
 
+    /// Client starts new transaction
     fn client_transaction_begin(&mut self,
                                 from: ClientId,
                                 session: TransactionId,
@@ -845,6 +860,7 @@ impl<L, M> Consensus<L, M>
         }
     }
 
+    /// Client ends transaction
     fn client_transaction_commit(&mut self, from: ClientId, actions: &mut Actions) {
         if self.is_leader() {
             self.transaction.broadcast_end(self.lid, actions);
@@ -866,6 +882,7 @@ impl<L, M> Consensus<L, M>
         }
     }
 
+    /// Client rollback transaction
     fn client_transaction_rollback(&mut self, from: ClientId, actions: &mut Actions) {
         if self.is_leader() {
             self.transaction.broadcast_rollback(self.lid, actions);

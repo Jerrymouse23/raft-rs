@@ -36,7 +36,6 @@ use log_manager::LogManager;
 const LISTENER: Token = Token(0);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-
 pub enum ServerTimeout {
     Consensus(LogId, ConsensusTimeout),
     Reconnect(Token),
@@ -65,7 +64,7 @@ pub struct Server<L, M, A>
     addr: SocketAddr,
 
     // TODO implement getter for states
-    /// Raft state machine consensus.
+    /// Manages the consensus instances.
     pub log_manager: LogManager<L, M>,
 
     /// Connection listener.
@@ -89,6 +88,7 @@ pub struct Server<L, M, A>
     /// Instance of the authentification module
     auth: A,
 
+    /// Queue for message when a transaction is active
     requests_in_queue: HashMap<LogId, Vec<(ClientId, Builder<HeapAllocator>)>>,
 }
 
@@ -144,6 +144,7 @@ impl<L, M, A> Server<L, M, A>
         Ok((server, event_loop))
     }
 
+    /// Adds new peer to `peers`
     pub fn add_peer_static(&mut self,
                            event_loop: &mut EventLoop<Server<L, M, A>>,
                            peer_id: ServerId,
@@ -167,6 +168,11 @@ impl<L, M, A> Server<L, M, A>
         Ok(())
     }
 
+    /// Sends a ServerAdd message to peer
+    /// 
+    /// # Arguments
+    /// * `peer_id` - The ID of the new peer
+    /// * `peer_addr`- The addr of the new peer
     pub fn peering_request(&mut self,
                            event_loop: &mut EventLoop<Server<L, M, A>>,
                            peer_id: ServerId,
@@ -218,38 +224,6 @@ impl<L, M, A> Server<L, M, A>
         server
     }
 
-    /// Spawns a new Raft server in a background thread.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The ID of the new node.
-    /// * `addr` - The address of the new node.
-    /// * `peers` - The ID and address of all peers in the Raft cluster.
-    /// * `store` - The persistent log store.
-    /// * `state_machine` - The client state machine to which client commands will be applied.
-    /// * `communinity_string` - To allow peers to connect to each other
-    // TODO reimplement
-    //    pub fn spawn(id: ServerId,
-    // addr: SocketAddr,
-    // peers: HashMap<ServerId, SocketAddr>,
-    // store: L,
-    // state_machine: M,
-    // community_string: String,
-    // auth: A)
-    // -> Result<JoinHandle<Result<()>>> {
-    // thread::Builder::new()
-    // .name(format!("raft::Server({})", id))
-    // .spawn(move || {
-    // Server::run(id,
-    // addr,
-    // peers,
-    // store,
-    // state_machine,
-    // community_string,
-    // auth)
-    // })
-    // .map_err(From::from)
-    // }
     /// Sends the message to the connection associated with the provided token.
     /// If sending the message fails, the connection is reset.
     fn send_message(&mut self,
@@ -597,12 +571,14 @@ impl<L, M, A> Server<L, M, A>
     }
 
 
+    /// Inits the consensus instances in the log_manager
     pub fn init(&mut self, event_loop: &mut EventLoop<Server<L, M, A>>) {
         let action = self.log_manager.init();
 
         self.execute_actions(event_loop, action);
     }
 
+    /// Converts a builder message to a reader message
     pub fn into_reader<C>(message: &Builder<C>) -> Reader<OwnedSegments>
         where C: Allocator
     {

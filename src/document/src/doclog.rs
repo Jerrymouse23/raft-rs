@@ -42,6 +42,7 @@ impl error::Error for Error {
 }
 
 impl DocLog {
+    /// Creates a new log
     pub fn new(prefix: &str, lid: LogId) -> Self {
         let mut d = DocLog {
             prefix: prefix.to_string(),
@@ -55,16 +56,19 @@ impl DocLog {
 
         d
     }
-
+    
+    /// Creates the directories if they do not exist
     fn create_dir(&self) -> ::std::io::Result<()>{
         ::std::fs::create_dir_all(&self.prefix)
     }
 
+    /// Returns the directory which information will be saved to 
     pub fn get_volume(&self) -> String {
         self.prefix.clone()
     }
 
     // TODO implement Result
+    /// Saves all LogEntries on the disk
     pub fn snapshot(&self) {
         let mut handler = OpenOptions::new()
             .read(true)
@@ -80,6 +84,7 @@ impl DocLog {
             .expect("Log serialize_into failed");
     }
 
+    /// Restores all LogEntries from disk
     pub fn restore_snapshot(&mut self) {
         let mut handler = match OpenOptions::new()
             .read(true)
