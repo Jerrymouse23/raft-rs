@@ -136,12 +136,12 @@ impl<L, M> LogManager<L, M>
                         actions: &mut Actions) {
 
         for (&lid, ref mut messages) in requests_in_queue.iter_mut() {
+            println!("{}",lid);
             // TODO implement deref for LogId
             self.consensus
                 .get_mut(&LogId::from(&format!("{}", lid)).unwrap())
-                .unwrap()
-                .handle_queue(messages, actions)
-                .unwrap();
+                .expect(&format!("Cannot find {:?} in the logs",lid))
+                .handle_queue(messages, actions);
         }
     }
 
