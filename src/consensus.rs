@@ -204,7 +204,7 @@ impl<L, M> Consensus<L, M>
 
             Ok(())
         } else {
-            Err(())
+            Ok(())
         }
     }
 

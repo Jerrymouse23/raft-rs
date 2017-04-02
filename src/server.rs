@@ -269,7 +269,7 @@ impl<L, M, A> Server<L, M, A>
             }
         }
 
-        if transaction_queue.is_empty() {
+        if !transaction_queue.is_empty() {
             scoped_debug!("Messages appended to queue {}", transaction_queue.len());
             for (lid, cid, message) in transaction_queue {
                 let mut messages = self.requests_in_queue.get_mut(&lid).unwrap();
