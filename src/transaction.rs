@@ -1,3 +1,5 @@
+use std::fmt;
+
 use capnp::message::{Builder, HeapAllocator};
 use consensus::Actions;
 use messages;
@@ -6,6 +8,25 @@ use LogIndex;
 use LogId;
 use ClientId;
 use TransactionId;
+
+#[derive(Debug,Clone)]
+pub enum TransactionError {
+    NotActive,
+    AlreadyActive,
+    Other(String),
+}
+
+impl fmt::Display for TransactionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            TransactionError::NotActive => fmt::Display::fmt("No transaction is active", f),
+            TransactionError::AlreadyActive => {
+                fmt::Display::fmt("A transaction is already active", f)
+            }
+            TransactionError::Other(ref error) => fmt::Display::fmt(error, f),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct TransactionManager {
@@ -37,7 +58,7 @@ impl TransactionManager {
     }
 
     /// Begins new transaction
-    /// 
+    ///
     /// # Arguments
     /// * `session` - The ID of the transaction
     /// * `commit_index` - The commit_index before the transaction
@@ -47,36 +68,55 @@ impl TransactionManager {
                  session: TransactionId,
                  commit_index: LogIndex,
                  last_applied: LogIndex,
-                 follower_state_min: Option<LogIndex>) {
-        scoped_debug!("TRANSACTION BEGINS");
+                 follower_state_min: Option<LogIndex>)
+                 -> Result<(), TransactionError> {
+        assert!(!self.is_active);
 
-        self.session = Some(session);
-        self.is_active = true;
-        self.commit_index = commit_index;
-        self.last_applied = last_applied;
-        self.follower_state_min = follower_state_min;
+        if !self.is_active {
+            scoped_debug!("TRANSACTION BEGINS");
+
+            self.session = Some(session);
+            self.is_active = true;
+            self.commit_index = commit_index;
+            self.last_applied = last_applied;
+            self.follower_state_min = follower_state_min;
+            Ok(())
+        } else {
+            Err(TransactionError::AlreadyActive)
+        }
     }
 
     /// Reverts all messages which has been applied during transaction
-    pub fn rollback(&mut self) -> (LogIndex, LogIndex, Option<LogIndex>) {
-        let commit_index = self.commit_index;
-        let last_applied = self.last_applied;
-        let follower_state_min = self.follower_state_min;
+    pub fn rollback(&mut self) -> Result<(LogIndex, LogIndex, Option<LogIndex>), TransactionError> {
+        if self.is_active {
+            let commit_index = self.commit_index;
+            let last_applied = self.last_applied;
+            let follower_state_min = self.follower_state_min;
 
-        self.end();
-        (commit_index, last_applied, follower_state_min)
+            try!(self.end());
+
+            Ok((commit_index, last_applied, follower_state_min))
+        } else {
+            Err(TransactionError::NotActive)
+        }
     }
 
     /// Resets all values of the TransactionManager for the next transaction
-    pub fn end(&mut self) {
-        scoped_debug!("TRANSACTION FINISHED! {} messages received", self.counter);
+    pub fn end(&mut self) -> Result<(), TransactionError> {
+        if self.is_active {
+            scoped_debug!("TRANSACTION FINISHED! {} messages received", self.counter);
 
-        self.session = None;
-        self.counter = 0;
-        self.is_active = false;
-        self.commit_index = LogIndex::from(0);
-        self.last_applied = LogIndex::from(0);
-        self.follower_state_min = None;
+            self.session = None;
+            self.counter = 0;
+            self.is_active = false;
+            self.commit_index = LogIndex::from(0);
+            self.last_applied = LogIndex::from(0);
+            self.follower_state_min = None;
+
+            Ok(())
+        } else {
+            Err(TransactionError::NotActive)
+        }
     }
 
     /// Sends to all peers a message that a transaction has been started
@@ -112,13 +152,12 @@ impl TransactionManager {
     }
 
     /// Compares the current TransactionId with the given one. If `true`, it is the same
-    /// 
+    ///
     /// # Arguments
     /// * `session` - The TransactionId which will be compared with
     pub fn compare(&self, session: TransactionId) -> bool {
         self.session.expect("No TransactionId has been set") == session
     }
-
 
     /// Returns whether the a transaction is running
     pub fn get(&self) -> bool {

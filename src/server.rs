@@ -113,7 +113,7 @@ impl<L, M, A> Server<L, M, A>
 
         let mut requests_in_queue = HashMap::new();
 
-        for &(lid,_,_) in &logs {
+        for &(lid, _, _) in &logs {
             requests_in_queue.insert(lid, Vec::new());
         }
 
@@ -169,7 +169,7 @@ impl<L, M, A> Server<L, M, A>
     }
 
     /// Sends a ServerAdd message to peer
-    /// 
+    ///
     /// # Arguments
     /// * `peer_id` - The ID of the new peer
     /// * `peer_addr`- The addr of the new peer
@@ -459,7 +459,7 @@ impl<L, M, A> Server<L, M, A>
                                         })
                                         .collect();
 
-                                    for &(id, addr) in &peers_vec{
+                                    for &(id, addr) in &peers_vec {
                                         self.peering_request(event_loop, id, addr).unwrap();
                                     }
                                 }

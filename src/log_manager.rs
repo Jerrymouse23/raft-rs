@@ -139,16 +139,14 @@ impl<L, M> LogManager<L, M>
             // TODO implement deref for LogId
             self.consensus
                 .get_mut(&LogId::from(&format!("{}", lid)).unwrap())
-                .expect(&format!("Cannot find {:?} in the logs",lid))
-                .handle_queue(messages, actions).unwrap();
+                .expect(&format!("Cannot find {:?} in the logs", lid))
+                .handle_queue(messages, actions)
+                .unwrap();
         }
     }
 
-    pub fn get_states(&self)
-                      -> HashMap<LogId,
-                                  StateInformation> {
-        let mut result: HashMap<LogId,
-                                 StateInformation> = HashMap::new();
+    pub fn get_states(&self) -> HashMap<LogId, StateInformation> {
+        let mut result: HashMap<LogId, StateInformation> = HashMap::new();
         for (&lid, cons) in &self.consensus {
             let leader_state = cons.leader_state.clone();
             let candidate_state = cons.candidate_state.clone();
@@ -176,7 +174,7 @@ impl<L, M> LogManager<L, M>
         let mut lock = self.peers.write().unwrap();
         assert!(lock.insert(peer_id, peer_addr).is_none());
 
-        for mut cons in self.consensus.values_mut(){
+        for mut cons in self.consensus.values_mut() {
             cons.add_peer(peer_id, peer_addr);
         }
     }

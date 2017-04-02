@@ -21,6 +21,7 @@ use Result;
 use RaftError;
 use auth::Auth;
 use Error;
+use transaction;
 
 /// The representation of a Client connection to the cluster.
 pub struct Client {
@@ -78,8 +79,8 @@ impl Client {
         self.send_message(&mut message)
     }
 
-    /// Starts new transaction 
-    /// 
+    /// Starts new transaction
+    ///
     /// # Arguments
     /// * `session` - The ID of the transaction. The server needs this value to identify the
     /// transaction.
@@ -89,7 +90,7 @@ impl Client {
     }
 
     /// Commits the transaction
-    /// 
+    ///
     /// # Arguments
     /// * `session` - The ID of the transaction. The server tries to commit the transaction with
     /// this ID.
@@ -99,7 +100,7 @@ impl Client {
     }
 
     /// Rollbacks the transaction
-    /// 
+    ///
     /// # Arguments
     /// * `session` - The ID of the transaction. The server tries to revert all messages from this
     /// transaction.
@@ -207,7 +208,7 @@ impl Client {
                         }
                         Ok(command_response::Which::Failure(data)) => {
                             scoped_debug!("received response failure");
-                            return Err(Error::Raft(RaftError::TransactionError(String::from_utf8(data.unwrap().to_vec()).unwrap())));
+                            return Err(Error::Raft(RaftError::TransactionError(transaction::TransactionError::Other(String::from_utf8(data.unwrap().to_vec()).unwrap()))));
                         }
                         Ok(command_response::Which::UnknownLeader(())) => {
                             scoped_debug!("received response UnknownLeader");

@@ -136,14 +136,16 @@ pub use client::Client;
 use std::{io, net, ops, fmt};
 use uuid::Uuid;
 
-use std::sync::{Arc,RwLock};
+use std::sync::{Arc, RwLock};
 use state::{LeaderState, CandidateState, FollowerState};
 
 /// A simple convienence type.
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Wrappertype for Stateinformation for HTTP meta
-pub type StateInformation = (Arc<RwLock<LeaderState>>, Arc<RwLock<CandidateState>>, Arc<RwLock<FollowerState>>);
+pub type StateInformation = (Arc<RwLock<LeaderState>>,
+                             Arc<RwLock<CandidateState>>,
+                             Arc<RwLock<FollowerState>>);
 
 wrapped_enum!{
     #[doc = "The generic `raft::Error` is composed of one of the errors that can originate from the"]
@@ -185,7 +187,7 @@ pub enum RaftError {
     /// Failed to find a leader in the cluster. Try again later.
     LeaderSearchExhausted,
     /// An error during transaction
-    TransactionError(String),
+    TransactionError(transaction::TransactionError),
     Other(String),
 }
 
@@ -223,7 +225,7 @@ impl fmt::Display for RaftError {
             RaftError::LeaderSearchExhausted => {
                 fmt::Display::fmt("Cannot find leader in the cluster", f)
             }
-            RaftError::TransactionError(ref error) |
+            RaftError::TransactionError(ref error) => fmt::Display::fmt(&format!("{}", error), f),
             RaftError::Other(ref error) => fmt::Display::fmt(error, f), 
         }
     }
@@ -241,7 +243,7 @@ impl ::std::error::Error for RaftError {
             RaftError::InvalidPeerSet => "An invalid peer in the peer set",
             RaftError::ConnectionRegisterFailed => "Registering a connection failed",
             RaftError::LeaderSearchExhausted => "Cannot find leader in the cluster",
-            RaftError::TransactionError(ref error) |
+            RaftError::TransactionError(ref error) => "An error occured during the transaction",
             RaftError::ClusterViolation(ref error) |
             RaftError::Other(ref error) => error,
         }
@@ -427,7 +429,7 @@ impl PartialEq for LogId {
 #[derive(Copy, Clone, Hash, Eq,PartialOrd,Ord,Serialize,Deserialize)]
 pub struct TransactionId(Uuid);
 impl TransactionId {
-    pub fn new() -> Self{
+    pub fn new() -> Self {
         TransactionId(Uuid::new_v4())
     }
 

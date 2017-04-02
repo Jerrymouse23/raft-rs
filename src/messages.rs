@@ -9,6 +9,7 @@ use capnp::message::{Builder, HeapAllocator};
 
 use {ClientId, Term, LogIndex, ServerId, LogId, TransactionId};
 use messages_capnp::{client_request, client_response, connection_preamble, message};
+use transaction;
 
 // ConnectionPreamble
 
@@ -391,13 +392,15 @@ pub fn command_transaction_success(data: &[u8], lid: LogId) -> Rc<Builder<HeapAl
     Rc::new(message)
 }
 
-pub fn command_transaction_failure(data: &[u8], lid: LogId) -> Rc<Builder<HeapAllocator>> {
+pub fn command_transaction_failure(error: transaction::TransactionError,
+                                   lid: LogId)
+                                   -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
         let mut response = message.init_root::<client_response::Builder>();
         response.set_log_id(&lid.as_bytes());
         response.init_transaction()
-            .set_failure(data);
+            .set_failure(format!("{}", error).as_bytes());
     }
     Rc::new(message)
 }

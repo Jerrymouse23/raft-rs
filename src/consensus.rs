@@ -34,6 +34,8 @@ use mio::Timeout as TimeoutHandle;
 
 use std::sync::{Arc, RwLock};
 
+use transaction;
+
 const ELECTION_MIN: u64 = 1500;
 const ELECTION_MAX: u64 = 3000;
 const HEARTBEAT_DURATION: u64 = 1000;
@@ -816,7 +818,8 @@ impl<L, M> Consensus<L, M>
     fn transaction_rollback(&mut self, _: ServerId, _: TransactionId, _: &mut Actions) {
         if self.transaction.is_active {
             let (commit_index, last_applied, follower_state_min) = self.transaction
-                .rollback();
+                .rollback()
+                .unwrap();
             self.follower_state.write().unwrap().min_index = follower_state_min.unwrap();
             self.commit_index = commit_index;
             self.last_applied = last_applied;
@@ -842,13 +845,22 @@ impl<L, M> Consensus<L, M>
                                 session: TransactionId,
                                 actions: &mut Actions) {
         if self.is_leader() {
-            self.transaction
-                .begin(session, self.commit_index, self.last_applied, None);
-            self.transaction.broadcast_begin(self.lid, actions);
+            if !self.transaction.is_active {
+                self.transaction
+                    .begin(session, self.commit_index, self.last_applied, None)
+                    .unwrap();
+                self.transaction.broadcast_begin(self.lid, actions);
 
-            let message = messages::command_transaction_success(&session.as_bytes(), self.lid);
+                let message = messages::command_transaction_success(&session.as_bytes(), self.lid);
 
-            actions.client_messages.push((from, message));
+                actions.client_messages.push((from, message));
+            } else {
+                let message =
+                    messages::command_transaction_failure(transaction::TransactionError::NotActive,
+                                                          self.lid);
+
+                actions.client_messages.push((from, message));
+            }
         } else {
             let message = messages::command_response_not_leader(&self.peers[&self.follower_state
                                                                     .read()
@@ -863,13 +875,22 @@ impl<L, M> Consensus<L, M>
     /// Client ends transaction
     fn client_transaction_commit(&mut self, from: ClientId, actions: &mut Actions) {
         if self.is_leader() {
-            self.transaction.broadcast_end(self.lid, actions);
-            self.transaction.end();
+            if self.transaction.is_active {
+                self.transaction.broadcast_end(self.lid, actions);
+                self.transaction.end().unwrap();
 
-            let message = messages::command_transaction_success(b"Transaction has been stopped",
-                                                                self.lid);
+                let message =
+                    messages::command_transaction_success(b"Transaction has been stopped",
+                                                          self.lid);
 
-            actions.client_messages.push((from, message));
+                actions.client_messages.push((from, message));
+            } else {
+                let message =
+                    messages::command_transaction_failure(transaction::TransactionError::AlreadyActive,
+                                                          self.lid);
+                actions.client_messages.push((from, message));
+
+            }
 
         } else {
             let message = messages::command_response_not_leader(&self.peers[&self.follower_state
@@ -885,31 +906,39 @@ impl<L, M> Consensus<L, M>
     /// Client rollback transaction
     fn client_transaction_rollback(&mut self, from: ClientId, actions: &mut Actions) {
         if self.is_leader() {
-            self.transaction.broadcast_rollback(self.lid, actions);
-            let (commit_index, last_applied, _) = self.transaction.rollback();
-            self.commit_index = commit_index;
-            self.last_applied = last_applied;
-            self.log.rollback(commit_index).expect("Transaction rollback failed");
+            if self.transaction.is_active {
+                self.transaction.broadcast_rollback(self.lid, actions);
+                let (commit_index, last_applied, _) = self.transaction.rollback().unwrap();
+                self.commit_index = commit_index;
+                self.last_applied = last_applied;
+                self.log.rollback(commit_index).expect("Transaction rollback failed");
 
-            let message = messages::command_transaction_success(b"", self.lid);
+                let message = messages::command_transaction_success(b"", self.lid);
 
-            let mut leader_state = self.leader_state.write().unwrap();
-            for &peer in self.peers.keys() {
-                leader_state.set_next_index(peer, commit_index + 1);
-            }
-
-            {
-                let entries_failed = self.log.rollback(commit_index).unwrap();
-
-                for &(_, ref command) in entries_failed.iter().rev() {
-                    self.state_machine.write().unwrap().revert(command.as_slice());
+                let mut leader_state = self.leader_state.write().unwrap();
+                for &peer in self.peers.keys() {
+                    leader_state.set_next_index(peer, commit_index + 1);
                 }
+
+                {
+                    let entries_failed = self.log.rollback(commit_index).unwrap();
+
+                    for &(_, ref command) in entries_failed.iter().rev() {
+                        self.state_machine.write().unwrap().revert(command.as_slice());
+                    }
+                }
+
+                self.log.truncate(commit_index).unwrap();
+                self.state_machine.write().unwrap().rollback();
+
+                actions.client_messages.push((from, message));
+            } else {
+                let message =
+                    messages::command_transaction_failure(transaction::TransactionError::AlreadyActive,
+                                                          self.lid);
+                actions.client_messages.push((from, message));
+
             }
-
-            self.log.truncate(commit_index).unwrap();
-            self.state_machine.write().unwrap().rollback();
-
-            actions.client_messages.push((from, message));
         } else {
             let message = messages::command_response_not_leader(&self.peers[&self.follower_state
                                                                     .read()
@@ -1014,7 +1043,8 @@ impl<L, M> Consensus<L, M>
             self.transaction.broadcast_rollback(self.lid, actions);
 
             let (commit_index, last_applied, _) = self.transaction
-                .rollback();
+                .rollback()
+                .unwrap();
             self.commit_index = commit_index;
             self.last_applied = last_applied;
 
