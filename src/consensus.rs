@@ -36,9 +36,9 @@ use std::sync::{Arc, RwLock};
 
 use transaction;
 
-const ELECTION_MIN: u64 = 1500;
-const ELECTION_MAX: u64 = 3000;
-const HEARTBEAT_DURATION: u64 = 1000;
+const ELECTION_MIN: u64 = 5000;
+const ELECTION_MAX: u64 = 10000;
+const HEARTBEAT_DURATION: u64 = 2000;
 
 /// Consensus timeout types.
 // TODO Remove LogId, because not neccessary
