@@ -6,7 +6,7 @@ authors = ["kper <kevp.per@gmail.com>"]
 [dependencies]
 raft ={path="../.."} 
 env_logger = "*"
-bincode ="*"
+bincode ="0.6"
 capnp = "0.6"
 capnp-nonblock = "0.3"
 log = "0.3"
