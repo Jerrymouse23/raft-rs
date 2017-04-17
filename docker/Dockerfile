@@ -15,7 +15,8 @@ RUN libtoolize && git clone https://github.com/sandstorm-io/capnproto.git && cd 
 
 RUN git clone https://github.com/paenko/paenkodb 
 WORKDIR /code/paenkodb/src/document
-RUN cargo build --release
+# change to release build
+RUN cargo build
 
 EXPOSE 9000
 EXPOSE 3000
