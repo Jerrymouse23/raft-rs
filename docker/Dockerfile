@@ -2,7 +2,7 @@ FROM ubuntu:14.04
 
 RUN mkdir /code
 
-VOLUME /config.toml
+VOLUME /config
 VOLUME /data
 
 WORKDIR /code
@@ -15,10 +15,9 @@ RUN libtoolize && git clone https://github.com/sandstorm-io/capnproto.git && cd 
 
 RUN git clone https://github.com/paenko/paenkodb 
 WORKDIR /code/paenkodb/src/document
-# change to release build
-RUN cargo build
+RUN cargo build --release
 
 EXPOSE 9000
 EXPOSE 3000
 
-CMD ["/code/paenkodb/src/document/target/debug/document","server","/config/config.toml"]
+CMD ["/code/paenkodb/src/document/target/target/document","server","/config/config.toml"]
