@@ -20,4 +20,4 @@ RUN cargo build --release
 EXPOSE 9000
 EXPOSE 3000
 
-CMD ["/code/paenkodb/src/document/target/release/document","server","/config/config.toml"]
+CMD ["/code/paenkodb/src/document/target/debug/document","server","/config/config.toml"]
