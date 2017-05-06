@@ -5,7 +5,7 @@ dev: [![Build Status](https://travis-ci.org/paenko/PaenkoDb.svg?branch=dev)](htt
 
 # Getting started
 
-First, you need the `nigthly` rust compiler. 
+First, you need the `nightly` rust compiler. 
 
 ```bash
 curl -L https://static.rust-lang.org/rustup.sh > rustup
