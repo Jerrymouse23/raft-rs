@@ -35,8 +35,6 @@ cargo build && cd ../../
 
 Now, you can start a database cluster with docker:
 
-**Please mind that the log directories must exist in the data directories or the db panics.**
-
 ```bash
 cd docker && docker-compose up
 ```
@@ -47,7 +45,7 @@ or use the bash:
 ```
 You can copy the config from `docker_build/config/config.toml`
 
-You can find the test scripts in `docker_build/test`. 
+You can find the test scripts in `test` directory. 
 
 ## FAQ ##
 
