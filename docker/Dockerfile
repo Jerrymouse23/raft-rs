@@ -2,7 +2,7 @@ FROM ubuntu:14.04
 
 RUN mkdir /code
 
-VOLUME /config.toml
+VOLUME /config
 VOLUME /data
 
 WORKDIR /code
