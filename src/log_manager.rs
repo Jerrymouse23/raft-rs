@@ -53,6 +53,7 @@ impl<L, M> LogManager<L, M>
         self.consensus.get_mut(&index)
     }
 
+    //TODO rename to `is_active_transaction`
     pub fn active_transaction(&self, logid: &LogId) -> bool {
         self.consensus[logid].transaction.is_active
     }
@@ -106,7 +107,7 @@ impl<L, M> LogManager<L, M>
 
         let log_id = LogId(id);
 
-        // TODO implement error handling
+        /// TODO: implement error handling
         let mut cons = self.consensus
             .get_mut(&log_id)
             .expect(&format!("There is not consensus instance with this {:?}", log_id));
@@ -136,7 +137,7 @@ impl<L, M> LogManager<L, M>
                         actions: &mut Actions) {
 
         for (&lid, ref mut messages) in requests_in_queue.iter_mut() {
-            // TODO implement deref for LogId
+            /// TODO: implement deref for LogId
             self.consensus
                 .get_mut(&LogId::from(&format!("{}", lid)).unwrap())
                 .expect(&format!("Cannot find {:?} in the logs", lid))
@@ -145,6 +146,7 @@ impl<L, M> LogManager<L, M>
         }
     }
 
+    ///TODO: remove method
     pub fn get_states(&self) -> HashMap<LogId, StateInformation> {
         let mut result: HashMap<LogId, StateInformation> = HashMap::new();
         for (&lid, cons) in &self.consensus {
@@ -158,6 +160,7 @@ impl<L, M> LogManager<L, M>
         result
     }
 
+    ///TODO: remove method
     pub fn get_state_machines(&self) -> HashMap<LogId, Arc<RwLock<M>>> {
         let mut result = HashMap::new();
 
@@ -185,6 +188,7 @@ impl<L, M> LogManager<L, M>
         cons.peers().contains_key(&peer_id)
     }
 
+    ///TODO: remove method
     pub fn get_peers(&self) -> Arc<RwLock<HashMap<ServerId, SocketAddr>>> {
         self.peers.clone()
     }

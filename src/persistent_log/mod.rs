@@ -65,6 +65,7 @@ pub trait Log: Clone + Debug + Send + 'static {
                       entries: &[(Term, &[u8])])
                       -> result::Result<(), Self::Error>;
 
+    ///TODO: check use of `truncate`
     fn truncate(&mut self, lo: LogIndex) -> result::Result<(), Self::Error>;
     fn rollback(&mut self, lo: LogIndex) -> result::Result<(Vec<(Term, Vec<u8>)>), Self::Error>;
 }

@@ -83,12 +83,14 @@ pub struct Server<L, M, A>
     reconnection_timeouts: HashMap<Token, TimeoutHandle>,
 
     /// String to allow connecting to different peers
+    //TODO add community_string to auth
     community_string: String,
 
     /// Instance of the authentification module
     auth: A,
 
     /// Queue for message when a transaction is active
+    //TODO using Reader instead of Builder
     requests_in_queue: HashMap<LogId, Vec<(ClientId, Builder<HeapAllocator>)>>,
 }
 

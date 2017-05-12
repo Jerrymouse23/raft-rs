@@ -94,6 +94,7 @@ impl Client {
     /// # Arguments
     /// * `session` - The ID of the transaction. The server tries to commit the transaction with
     /// this ID.
+    ///TODO rename `end_transaction` to `commit_transaction`
     pub fn end_transaction(&mut self, session: TransactionId) -> Result<Vec<u8>> {
         let mut message = messages::client_transaction_commit(self.lid, session);
         self.send_message(&mut message)
@@ -285,7 +286,7 @@ mod tests {
                 let id = Uuid::from_bytes(client.get_id().unwrap()).expect("va*lid bytes");
 
                 Ok(id == client_id)
-            } 
+            }
             _ => Ok(false),
         }
     }
