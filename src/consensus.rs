@@ -36,9 +36,22 @@ use std::sync::{Arc, RwLock};
 
 use transaction;
 
-const ELECTION_MIN: u64 = 5000;
-const ELECTION_MAX: u64 = 10000;
-const HEARTBEAT_DURATION: u64 = 2000;
+#[derive(Copy, Clone, Debug)]
+pub struct TimeoutConfiguration{
+    pub election_timeout_min: u64,
+    pub election_timeout_max: u64,
+    pub heartbeat_timeout: u64
+}
+
+impl Default for TimeoutConfiguration{
+    fn default() -> Self{
+        TimeoutConfiguration{
+            election_timeout_min: 5000,
+            election_timeout_max: 10000,
+            heartbeat_timeout: 2000
+        }
+    }
+}
 
 /// Consensus timeout types.
 // TODO Remove LogId, because not neccessary
@@ -52,12 +65,12 @@ pub enum ConsensusTimeout {
 
 impl ConsensusTimeout {
     /// Returns the timeout period in milliseconds.
-    pub fn duration_ms(&self) -> u64 {
+    pub fn duration_ms(&self, timeout_config: TimeoutConfiguration) -> u64 {
         match *self {
             ConsensusTimeout::Election(..) => {
-                rand::thread_rng().gen_range::<u64>(ELECTION_MIN, ELECTION_MAX)
+                rand::thread_rng().gen_range::<u64>(timeout_config.election_timeout_min, timeout_config.election_timeout_max)
             }
-            ConsensusTimeout::Heartbeat(..) => HEARTBEAT_DURATION,
+            ConsensusTimeout::Heartbeat(..) => timeout_config.heartbeat_timeout,
         }
     }
 }

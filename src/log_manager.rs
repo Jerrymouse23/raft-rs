@@ -53,7 +53,7 @@ impl<L, M> LogManager<L, M>
         self.consensus.get_mut(&index)
     }
 
-    //TODO rename to `is_active_transaction`
+    // TODO rename to `is_active_transaction`
     pub fn active_transaction(&self, logid: &LogId) -> bool {
         self.consensus[logid].transaction.is_active
     }
@@ -146,7 +146,7 @@ impl<L, M> LogManager<L, M>
         }
     }
 
-    ///TODO: remove method
+    /// TODO: remove method
     pub fn get_states(&self) -> HashMap<LogId, StateInformation> {
         let mut result: HashMap<LogId, StateInformation> = HashMap::new();
         for (&lid, cons) in &self.consensus {
@@ -160,7 +160,7 @@ impl<L, M> LogManager<L, M>
         result
     }
 
-    ///TODO: remove method
+    /// TODO: remove method
     pub fn get_state_machines(&self) -> HashMap<LogId, Arc<RwLock<M>>> {
         let mut result = HashMap::new();
 
@@ -188,8 +188,12 @@ impl<L, M> LogManager<L, M>
         cons.peers().contains_key(&peer_id)
     }
 
-    ///TODO: remove method
+    /// TODO: remove method
     pub fn get_peers(&self) -> Arc<RwLock<HashMap<ServerId, SocketAddr>>> {
         self.peers.clone()
+    }
+
+    pub fn count(&self) -> usize {
+        self.consensus.len()
     }
 }

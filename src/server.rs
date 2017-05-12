@@ -8,6 +8,7 @@ use std::str::FromStr;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::rc::Rc;
+use std::mem::replace;
 
 use mio::tcp::TcpListener;
 use mio::util::Slab;
@@ -24,7 +25,7 @@ use ServerId;
 use LogId;
 use messages;
 use messages_capnp::connection_preamble;
-use consensus::{Actions, ConsensusTimeout};
+use consensus::{Actions, ConsensusTimeout, TimeoutConfiguration};
 use state_machine::StateMachine;
 use persistent_log::Log;
 use connection::{Connection, ConnectionKind};
@@ -39,6 +40,91 @@ const LISTENER: Token = Token(0);
 pub enum ServerTimeout {
     Consensus(LogId, ConsensusTimeout),
     Reconnect(Token),
+}
+
+pub struct ServerBuilder<L, M, A>
+    where L: Log,
+          M: StateMachine,
+          A: Auth
+{
+    id: Option<ServerId>,
+    addr: Option<SocketAddr>,
+    peers: Option<HashMap<ServerId, SocketAddr>>,
+    store: Option<Vec<(LogId, L, M)>>,
+    auth: Option<A>,
+    max_connections: usize,
+    community_string: String,
+    timeout_config: TimeoutConfiguration,
+}
+
+impl<L, M, A> ServerBuilder<L, M, A>
+    where L: Log,
+          M: StateMachine,
+          A: Auth
+{
+    fn new() -> ServerBuilder<L, M, A> {
+        ServerBuilder {
+            id: None,
+            addr: None,
+            peers: None,
+            max_connections: 129,
+            store: None,
+            auth: None,
+            community_string: String::new(),
+            timeout_config: Default::default(),
+        }
+    }
+
+    pub fn finalize(&mut self) -> Result<(Server<L, M, A>, EventLoop<Server<L, M, A>>)> {
+        Server::new(replace(&mut self.id, None).expect("Server not configured with ID"),
+                    replace(&mut self.addr, None).expect("Server not configured with SocketAddr"),
+                    replace(&mut self.peers, None).expect("Server not configured with Peers"),
+                    replace(&mut self.store, None).expect("Server not configured with Store"),
+                    replace(&mut self.auth, None).expect("Server not configured with Auth"),
+                    self.community_string.clone(),
+                    self.timeout_config,
+                    self.max_connections)
+    }
+
+    pub fn with_id(mut self, id: ServerId) -> ServerBuilder<L,M,A>{
+        self.id = Some(id);
+        self
+    }
+
+    pub fn with_addr(mut self, addr: SocketAddr) -> ServerBuilder<L,M,A>{
+        self.addr = Some(addr);
+        self
+    }
+
+    pub fn with_peers(mut self, peers: HashMap<ServerId, SocketAddr>) -> ServerBuilder<L,M,A>{
+        self.peers = Some(peers);
+        self
+    }
+
+    pub fn with_max_connections(mut self, count: usize) -> ServerBuilder<L,M,A>{
+        self.max_connections = count;
+        self
+    }
+
+    pub fn with_logs(mut self, logs: Vec<(LogId, L, M)>) -> ServerBuilder<L,M,A>{
+        self.store = Some(logs);
+        self
+    }
+
+    pub fn with_auth(mut self, auth: A) -> ServerBuilder<L,M,A>{
+        self.auth = Some(auth);
+        self
+    }
+
+    pub fn with_community_string(mut self, cstr: String) -> ServerBuilder<L,M,A>{
+        self.community_string = cstr;
+        self
+    }
+
+    pub fn with_timeouts(mut self, settings: TimeoutConfiguration) -> ServerBuilder<L,M,A>{
+        self.timeout_config = settings;
+        self
+    }
 }
 
 /// The `Server` is responsible for receiving events from peer `Server` instance or clients,
@@ -70,6 +156,9 @@ pub struct Server<L, M, A>
     /// Connection listener.
     listener: TcpListener,
 
+    /// The amount of peers + clients who can connect to the server
+    max_connections: usize,
+
     /// Collection of connections indexed by token.
     connections: Slab<Connection>,
 
@@ -83,15 +172,15 @@ pub struct Server<L, M, A>
     reconnection_timeouts: HashMap<Token, TimeoutHandle>,
 
     /// String to allow connecting to different peers
-    //TODO add community_string to auth
     community_string: String,
 
     /// Instance of the authentification module
     auth: A,
 
     /// Queue for message when a transaction is active
-    //TODO using Reader instead of Builder
     requests_in_queue: HashMap<LogId, Vec<(ClientId, Builder<HeapAllocator>)>>,
+
+    timeout_config: TimeoutConfiguration,
 }
 
 /// The implementation of the Server.
@@ -104,11 +193,14 @@ impl<L, M, A> Server<L, M, A>
     /// *Gotcha:* `peers` must not contain the local `id`.
     pub fn new(id: ServerId,
                addr: SocketAddr,
-               peers: &HashMap<ServerId, SocketAddr>,
-               community_string: String,
+               peers: HashMap<ServerId, SocketAddr>,
+               logs: Vec<(LogId, L, M)>,
                auth: A,
-               logs: Vec<(LogId, L, M)>)
+               community_string: String,
+               timeout_config: TimeoutConfiguration,
+               max_connections: usize)
                -> Result<(Server<L, M, A>, EventLoop<Server<L, M, A>>)> {
+
         if peers.contains_key(&id) {
             return Err(Error::Raft(RaftError::InvalidPeerSet));
         }
@@ -126,24 +218,30 @@ impl<L, M, A> Server<L, M, A>
         try!(event_loop.register(&listener, LISTENER, EventSet::all(), PollOpt::level()));
 
         let mut server = Server {
-            id: id,
-            addr: addr,
-            log_manager: log_manager,
-            listener: listener,
+            id,
+            addr,
+            log_manager,
+            listener,
             connections: Slab::new_starting_at(Token(1), 129),
             peer_tokens: HashMap::new(),
             client_tokens: HashMap::new(),
             reconnection_timeouts: HashMap::new(),
             community_string: community_string.clone(),
-            auth: auth,
+            auth,
             requests_in_queue: requests_in_queue,
+            timeout_config,
+            max_connections
         };
 
         for (peer_id, peer_addr) in peers {
-            server.add_peer_static(&mut event_loop, *peer_id, *peer_addr).unwrap();
+            server.add_peer_static(&mut event_loop, peer_id, peer_addr).unwrap();
         }
 
         Ok((server, event_loop))
+    }
+
+    pub fn builder() -> ServerBuilder<L, M, A> {
+        ServerBuilder::new()
     }
 
     /// Adds new peer to `peers`
@@ -211,13 +309,20 @@ impl<L, M, A> Server<L, M, A>
     /// * `state_machine` - The client state machine to which client commands will be applied.
     pub fn run(id: ServerId,
                addr: SocketAddr,
-               peers: &HashMap<ServerId, SocketAddr>,
+               peers: HashMap<ServerId, SocketAddr>,
                community_string: String,
                auth: A,
                logs: Vec<(LogId, L, M)>)
                -> Self {
-        let (mut server, mut event_loop) =
-            Server::new(id, addr, peers, community_string, auth, logs).unwrap();
+        let (mut server, mut event_loop) = Server::new(id,
+                                                       addr,
+                                                       peers,
+                                                       logs,
+                                                       auth,
+                                                       community_string,
+                                                       TimeoutConfiguration::default(),
+                                                       129)
+            .unwrap();
 
         server.init(&mut event_loop);
 
@@ -302,7 +407,7 @@ impl<L, M, A> Server<L, M, A>
         }
 
         for timeout in timeouts {
-            let duration = timeout.duration_ms();
+            let duration = timeout.duration_ms(self.timeout_config);
 
             let lid = match timeout {
                 ConsensusTimeout::Election(lid) => lid,
@@ -759,10 +864,40 @@ mod tests {
         logs.push((*lid, MemLog::new(), NullStateMachine));
         Server::new(ServerId::from(0),
                     SocketAddr::from_str("127.0.0.1:0").unwrap(),
-                    &peers,
-                    "test".to_string(),
+                    peers,
+                    logs,
                     NullAuth::new(SingleCredentials::new("test".to_string(), "test".to_string())),
-                    logs)
+                    "test".to_string(),
+                    TimeoutConfiguration::default(),
+                    129)
+    }
+
+    #[test]
+    fn new_test_server_builder_pattern(){
+        let mut builder = Server::builder();
+        let mut logs: Vec<(LogId, MemLog, NullStateMachine)> = Vec::new();
+        logs.push((*lid, MemLog::new(), NullStateMachine));
+        let mut auth = NullAuth::new(SingleCredentials::new("test".to_string(), "test".to_string()));
+        let addr = SocketAddr::from_str("127.0.0.1:0").unwrap();
+        let mut peers: HashMap<ServerId, SocketAddr>  = HashMap::new();
+        peers.insert(ServerId::from(10), addr);
+
+
+        let (mut server, _) = builder
+            .with_id(ServerId::from(5))
+            .with_addr(addr)
+            .with_peers(peers)
+            .with_max_connections(3000 as usize)
+            .with_logs(logs)
+            .with_auth(auth)
+            .with_community_string("this is a test".to_string())
+            .finalize().unwrap();
+
+        assert_eq!(server.id, ServerId::from(5));
+        assert_eq!(server.addr, addr);
+        assert_eq!(server.max_connections, 3000 as usize);
+        assert_eq!(server.log_manager.count(), 1);
+        assert_eq!(server.community_string, "this is a test".to_string());
     }
 
     /// Attempts to grab a local, unbound socket address for testing.
