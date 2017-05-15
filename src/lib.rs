@@ -132,6 +132,7 @@ pub use server::Server;
 pub use state_machine::StateMachine;
 pub use persistent_log::Log;
 pub use client::Client;
+pub use consensus::TimeoutConfiguration;
 
 use std::{io, net, ops, fmt};
 use uuid::Uuid;
@@ -226,7 +227,7 @@ impl fmt::Display for RaftError {
                 fmt::Display::fmt("Cannot find leader in the cluster", f)
             }
             RaftError::TransactionError(ref error) => fmt::Display::fmt(&format!("{}", error), f),
-            RaftError::Other(ref error) => fmt::Display::fmt(error, f), 
+            RaftError::Other(ref error) => fmt::Display::fmt(error, f),
         }
     }
 }
