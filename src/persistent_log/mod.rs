@@ -19,7 +19,7 @@ use Term;
 use ServerId;
 
 /// A store of persistent Raft state.
-pub trait Log: Clone + Debug + Send + 'static {
+pub trait Log: Debug + Send + 'static {
     type Error: error::Error + Debug + Sized + 'static;
 
     /// Returns the latest known term.
@@ -65,7 +65,7 @@ pub trait Log: Clone + Debug + Send + 'static {
                       entries: &[(Term, &[u8])])
                       -> result::Result<(), Self::Error>;
 
-    ///TODO: check use of `truncate`
+    /// TODO: check use of `truncate`
     fn truncate(&mut self, lo: LogIndex) -> result::Result<(), Self::Error>;
     fn rollback(&mut self, lo: LogIndex) -> result::Result<(Vec<(Term, Vec<u8>)>), Self::Error>;
 }
