@@ -1,11 +1,11 @@
 # Raft-rs #
 
-master: [![Build Status](https://travis-ci.org/paenko/PaenkoDb.svg?branch=master)](https://travis-ci.org/paenko/PaenkoDb)
-dev: [![Build Status](https://travis-ci.org/paenko/PaenkoDb.svg?branch=dev)](https://travis-ci.org/paenko/PaenkoDb)
+master: [![Build Status](https://travis-ci.org/paenko/PaenkoDb.svg?branch=master)](https://travis-ci.org/paenko/raft-rs)
+dev: [![Build Status](https://travis-ci.org/paenko/PaenkoDb.svg?branch=dev)](https://travis-ci.org/paenko/raft-rs)
 
 # Getting started
 
-First, you need the `nightly` rust compiler. 
+First, you need the `nightly` rust compiler.
 
 ```bash
 curl -L https://static.rust-lang.org/rustup.sh > rustup
@@ -45,7 +45,7 @@ or use the bash:
 ```
 You can copy the config from `docker_build/config/config.toml`
 
-You can find the test scripts in `test` directory. 
+You can find the test scripts in `test` directory.
 
 ## FAQ ##
 
@@ -57,7 +57,7 @@ Follow the instructions on https://github.com/sfackler/rust-openssl - install pk
 
 You need to install `gcc`.
 
-# Documentation 
+# Documentation
 
 * [Raft Crate Documentation](https://hoverbear.github.io/raft-rs/raft/)
 * [The Raft site](https://raftconsensus.github.io/)
