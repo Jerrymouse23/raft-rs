@@ -53,7 +53,6 @@ pub struct ServerBuilder<L, M, A>
     store: Option<Vec<(LogId, L, M)>>,
     auth: Option<A>,
     max_connections: usize,
-    community_string: String,
     timeout_config: TimeoutConfiguration,
 }
 
@@ -70,7 +69,6 @@ impl<L, M, A> ServerBuilder<L, M, A>
             max_connections: 129,
             store: None,
             auth: None,
-            community_string: String::new(),
             timeout_config: Default::default(),
         }
     }
@@ -81,7 +79,6 @@ impl<L, M, A> ServerBuilder<L, M, A>
                     replace(&mut self.peers, None).expect("Server not configured with Peers"),
                     replace(&mut self.store, None).expect("Server not configured with Store"),
                     replace(&mut self.auth, None).expect("Server not configured with Auth"),
-                    self.community_string.clone(),
                     self.timeout_config,
                     self.max_connections)
     }
@@ -113,11 +110,6 @@ impl<L, M, A> ServerBuilder<L, M, A>
 
     pub fn with_auth(mut self, auth: A) -> ServerBuilder<L,M,A>{
         self.auth = Some(auth);
-        self
-    }
-
-    pub fn with_community_string(mut self, cstr: String) -> ServerBuilder<L,M,A>{
-        self.community_string = cstr;
         self
     }
 
@@ -171,9 +163,6 @@ pub struct Server<L, M, A>
     /// Currently registered reconnection timeouts.
     reconnection_timeouts: HashMap<Token, TimeoutHandle>,
 
-    /// String to allow connecting to different peers
-    community_string: String,
-
     /// Instance of the authentification module
     auth: A,
 
@@ -196,7 +185,6 @@ impl<L, M, A> Server<L, M, A>
                peers: HashMap<ServerId, SocketAddr>,
                logs: Vec<(LogId, L, M)>,
                auth: A,
-               community_string: String,
                timeout_config: TimeoutConfiguration,
                max_connections: usize)
                -> Result<(Server<L, M, A>, EventLoop<Server<L, M, A>>)> {
@@ -226,7 +214,6 @@ impl<L, M, A> Server<L, M, A>
             peer_tokens: HashMap::new(),
             client_tokens: HashMap::new(),
             reconnection_timeouts: HashMap::new(),
-            community_string: community_string.clone(),
             auth,
             requests_in_queue: requests_in_queue,
             timeout_config,
@@ -260,7 +247,7 @@ impl<L, M, A> Server<L, M, A>
         let peers = self.log_manager.get_peers();
         let message = messages::server_connection_preamble(self.id,
                                                            &self.addr,
-                                                           self.community_string.clone().as_str(),
+                                                           self.auth.get_community_string(),
                                                            &peers.read().unwrap());
 
         self.send_message(event_loop, token, message);
@@ -291,7 +278,7 @@ impl<L, M, A> Server<L, M, A>
 
         try!(self.connections[token].register(event_loop, token));
 
-        let message = messages::server_add(self.id, &self.community_string, &self.addr);
+        let message = messages::server_add(self.id, &self.auth.get_community_string(), &self.addr);
 
         self.send_message(event_loop, token, message);
 
@@ -310,7 +297,6 @@ impl<L, M, A> Server<L, M, A>
     pub fn run(id: ServerId,
                addr: SocketAddr,
                peers: HashMap<ServerId, SocketAddr>,
-               community_string: String,
                auth: A,
                logs: Vec<(LogId, L, M)>)
                -> Self {
@@ -319,7 +305,6 @@ impl<L, M, A> Server<L, M, A>
                                                        peers,
                                                        logs,
                                                        auth,
-                                                       community_string,
                                                        TimeoutConfiguration::default(),
                                                        129)
             .unwrap();
@@ -511,7 +496,7 @@ impl<L, M, A> Server<L, M, A>
                                           peer_id,
                                           peer_addr);
 
-                            if self.community_string == community_string {
+                            if self.auth.compare_community_string(community_string) {
 
                                 if !self.log_manager.check_peer_exists(peer_id) {
                                     self.log_manager.add_peer(peer_id, peer_addr);
@@ -538,7 +523,7 @@ impl<L, M, A> Server<L, M, A>
                                           peer_id,
                                           peer_addr);
 
-                            if peer.get_community().unwrap() != self.community_string {
+                            if peer.get_community().unwrap() != self.auth.get_community_string() {
                                 scoped_debug!("peer with addr {:?} tried to connect with an \
                                               invalid community_string",
                                               peer_addr);
@@ -795,7 +780,7 @@ impl<L, M, A> Handler for Server<L, M, A>
                 self.connections[token]
                     .reconnect_peer(self.id,
                                     &local_addr.unwrap(),
-                                    self.community_string.clone(),
+                                    self.auth.get_community_string().to_string(),
                                     &peers.read().unwrap())
                     .and_then(|_| self.connections[token].register(event_loop, token))
                     .map(|_| {
@@ -851,6 +836,7 @@ mod tests {
     use auth::Auth;
     use auth::null::NullAuth;
     use auth::credentials::SingleCredentials;
+    use auth::credentials::Credentials;
     use uuid::Uuid;
 
     type TestServer = Server<MemLog, NullStateMachine, NullAuth<SingleCredentials>>;
@@ -866,8 +852,7 @@ mod tests {
                     SocketAddr::from_str("127.0.0.1:0").unwrap(),
                     peers,
                     logs,
-                    NullAuth::new(SingleCredentials::new("test".to_string(), "test".to_string())),
-                    "test".to_string(),
+                    NullAuth::new(SingleCredentials::new("test", "test"), "test".to_string()),
                     TimeoutConfiguration::default(),
                     129)
     }
@@ -877,7 +862,7 @@ mod tests {
         let mut builder = Server::builder();
         let mut logs: Vec<(LogId, MemLog, NullStateMachine)> = Vec::new();
         logs.push((*lid, MemLog::new(), NullStateMachine));
-        let mut auth = NullAuth::new(SingleCredentials::new("test".to_string(), "test".to_string()));
+        let mut auth = NullAuth::new(SingleCredentials::new("test", "test"), "this is a test".to_string());
         let addr = SocketAddr::from_str("127.0.0.1:0").unwrap();
         let mut peers: HashMap<ServerId, SocketAddr>  = HashMap::new();
         peers.insert(ServerId::from(10), addr);
@@ -890,14 +875,13 @@ mod tests {
             .with_max_connections(3000 as usize)
             .with_logs(logs)
             .with_auth(auth)
-            .with_community_string("this is a test".to_string())
             .finalize().unwrap();
 
         assert_eq!(server.id, ServerId::from(5));
         assert_eq!(server.addr, addr);
         assert_eq!(server.max_connections, 3000 as usize);
         assert_eq!(server.log_manager.count(), 1);
-        assert_eq!(server.community_string, "this is a test".to_string());
+        assert_eq!(server.auth.get_community_string(), "this is a test");
     }
 
     /// Attempts to grab a local, unbound socket address for testing.
