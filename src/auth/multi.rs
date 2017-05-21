@@ -40,6 +40,10 @@ impl<C> MultiAuthBuilder<C>
     }
 
     pub fn finalize(&mut self) -> MultiAuth<C>{
+        if self.credentials.len() == 0 {
+            panic!("There is no peer defined");
+        }
+
         MultiAuth::new(
             self.credentials.clone(),
             replace(&mut self.community_string, None).unwrap_or(String::new())
@@ -104,6 +108,16 @@ mod tests{
 
         assert_eq!(cstr, "test");
         assert!(auth.find("kper", "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"));
+
+    }
+
+    #[test]
+    #[should_panic(expected = "There is no peer defined")]
+    fn test_MultiAuthBuilder_no_peers() {
+        let mut builder = MultiAuth::<BasicCredentials>::build();
+        let mut auth = builder
+            .with_community_string("test")
+            .finalize();
 
     }
 }
