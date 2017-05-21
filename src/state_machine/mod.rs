@@ -17,6 +17,7 @@ pub enum StateMachineError {
     Io(::std::io::Error),
     Serialization(::bincode::serde::SerializeError),
     Deserialization(::bincode::serde::DeserializeError),
+    NotFound,
     Other(String),
 }
 
@@ -27,6 +28,7 @@ impl ::std::fmt::Display for StateMachineError {
             StateMachineError::Io(ref error) => Display::fmt(&error, f),
             StateMachineError::Serialization(ref error) => Display::fmt(&error, f),
             StateMachineError::Deserialization(ref error) => Display::fmt(&error, f),
+            StateMachineError::NotFound => Display::fmt(&format!("Document not found"), f),
             StateMachineError::Other(ref text) => Display::fmt(&text, f),
         }
     }
