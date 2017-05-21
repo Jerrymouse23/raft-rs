@@ -64,22 +64,22 @@ impl Connection {
     pub fn unknown(socket: TcpStream) -> Result<Connection> {
         let addr = try!(socket.peer_addr());
         Ok(Connection {
-            kind: ConnectionKind::Unknown,
-            addr: addr,
-            stream: Some(MessageStream::new(socket, ReaderOptions::new())),
-            backoff: Backoff::with_duration_range(50, 10000),
-        })
+               kind: ConnectionKind::Unknown,
+               addr: addr,
+               stream: Some(MessageStream::new(socket, ReaderOptions::new())),
+               backoff: Backoff::with_duration_range(50, 10000),
+           })
     }
 
     /// Creates a new peer connection.
     pub fn peer(id: ServerId, addr: SocketAddr) -> Result<Connection> {
         let stream = try!(TcpStream::connect(&addr));
         Ok(Connection {
-            kind: ConnectionKind::Peer(id),
-            addr: addr,
-            stream: Some(MessageStream::new(stream, ReaderOptions::new())),
-            backoff: Backoff::with_duration_range(50, 10000),
-        })
+               kind: ConnectionKind::Peer(id),
+               addr: addr,
+               stream: Some(MessageStream::new(stream, ReaderOptions::new())),
+               backoff: Backoff::with_duration_range(50, 10000),
+           })
     }
 
     pub fn kind(&self) -> &ConnectionKind {
@@ -120,7 +120,11 @@ impl Connection {
     /// Writes queued messages to the socket.
     pub fn writable(&mut self) -> Result<()> {
         scoped_trace!("{:?}: writable", self);
-        if let Connection { stream: Some(ref mut stream), ref mut backoff, .. } = *self {
+        if let Connection {
+                   stream: Some(ref mut stream),
+                   ref mut backoff,
+                   ..
+               } = *self {
             try!(stream.write());
             backoff.reset();
             Ok(())
@@ -175,11 +179,12 @@ impl Connection {
               A: Auth
     {
         scoped_trace!("{:?}: register", self);
-        event_loop.register(self.stream().inner(), token, self.events(), poll_opt())
+        event_loop
+            .register(self.stream().inner(), token, self.events(), poll_opt())
             .map_err(|error| {
-                scoped_warn!("{:?}: reregister failed: {}", self, error);
-                From::from(error)
-            })
+                         scoped_warn!("{:?}: reregister failed: {}", self, error);
+                         From::from(error)
+                     })
     }
 
     /// Reregisters the connection with the event loop.
@@ -192,11 +197,12 @@ impl Connection {
               A: Auth
     {
         scoped_trace!("{:?}: reregister", self);
-        event_loop.reregister(self.stream().inner(), token, self.events(), poll_opt())
+        event_loop
+            .reregister(self.stream().inner(), token, self.events(), poll_opt())
             .map_err(|error| {
-                scoped_warn!("{:?}: register failed: {}", self, error);
-                From::from(error)
-            })
+                         scoped_warn!("{:?}: register failed: {}", self, error);
+                         From::from(error)
+                     })
     }
 
     /// Reconnects to the given peer ID and sends the preamble, advertising the

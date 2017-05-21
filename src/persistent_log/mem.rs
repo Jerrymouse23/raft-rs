@@ -103,7 +103,10 @@ impl Log for MemLog {
                       -> result::Result<(), Error> {
         assert!(self.latest_log_index().unwrap() + 1 >= from);
         self.entries.truncate((from - 1).as_u64() as usize);
-        Ok(self.entries.extend(entries.iter().map(|&(term, command)| (term, command.to_vec()))))
+        Ok(self.entries
+               .extend(entries
+                           .iter()
+                           .map(|&(term, command)| (term, command.to_vec()))))
     }
 
     fn truncate(&mut self, lo: LogIndex) -> result::Result<(), Error> {
@@ -152,7 +155,8 @@ mod test {
         assert_eq!(Term::from(0), store.latest_log_term().unwrap());
 
         // [0.1, 0.2, 0.3, 1.4]
-        store.append_entries(LogIndex(1),
+        store
+            .append_entries(LogIndex(1),
                             &[(Term::from(0), &[1]),
                               (Term::from(0), &[2]),
                               (Term::from(0), &[3]),
@@ -181,7 +185,9 @@ mod test {
                    store.entry(LogIndex::from(3)).unwrap());
 
         // [0.1, 0.2, 2.3, 3.4]
-        store.append_entries(LogIndex::from(3), &[(Term(2), &[3]), (Term(3), &[4])]).unwrap();
+        store
+            .append_entries(LogIndex::from(3), &[(Term(2), &[3]), (Term(3), &[4])])
+            .unwrap();
         assert_eq!(LogIndex(4), store.latest_log_index().unwrap());
         assert_eq!(Term::from(3), store.latest_log_term().unwrap());
         assert_eq!((Term::from(0), &*vec![1u8]),

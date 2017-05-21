@@ -83,37 +83,37 @@ impl<L, M, A> ServerBuilder<L, M, A>
                     self.max_connections)
     }
 
-    pub fn with_id(mut self, id: ServerId) -> ServerBuilder<L,M,A>{
+    pub fn with_id(mut self, id: ServerId) -> ServerBuilder<L, M, A> {
         self.id = Some(id);
         self
     }
 
-    pub fn with_addr(mut self, addr: SocketAddr) -> ServerBuilder<L,M,A>{
+    pub fn with_addr(mut self, addr: SocketAddr) -> ServerBuilder<L, M, A> {
         self.addr = Some(addr);
         self
     }
 
-    pub fn with_peers(mut self, peers: HashMap<ServerId, SocketAddr>) -> ServerBuilder<L,M,A>{
+    pub fn with_peers(mut self, peers: HashMap<ServerId, SocketAddr>) -> ServerBuilder<L, M, A> {
         self.peers = Some(peers);
         self
     }
 
-    pub fn with_max_connections(mut self, count: usize) -> ServerBuilder<L,M,A>{
+    pub fn with_max_connections(mut self, count: usize) -> ServerBuilder<L, M, A> {
         self.max_connections = count;
         self
     }
 
-    pub fn with_logs(mut self, logs: Vec<(LogId, L, M)>) -> ServerBuilder<L,M,A>{
+    pub fn with_logs(mut self, logs: Vec<(LogId, L, M)>) -> ServerBuilder<L, M, A> {
         self.store = Some(logs);
         self
     }
 
-    pub fn with_auth(mut self, auth: A) -> ServerBuilder<L,M,A>{
+    pub fn with_auth(mut self, auth: A) -> ServerBuilder<L, M, A> {
         self.auth = Some(auth);
         self
     }
 
-    pub fn with_timeouts(mut self, settings: TimeoutConfiguration) -> ServerBuilder<L,M,A>{
+    pub fn with_timeouts(mut self, settings: TimeoutConfiguration) -> ServerBuilder<L, M, A> {
         self.timeout_config = settings;
         self
     }
@@ -217,7 +217,9 @@ impl<L, M, A> Server<L, M, A>
         };
 
         for (peer_id, peer_addr) in peers {
-            server.add_peer_static(&mut event_loop, peer_id, peer_addr).unwrap();
+            server
+                .add_peer_static(&mut event_loop, peer_id, peer_addr)
+                .unwrap();
         }
 
         Ok((server, event_loop))
@@ -233,9 +235,10 @@ impl<L, M, A> Server<L, M, A>
                            peer_id: ServerId,
                            peer_addr: SocketAddr)
                            -> Result<()> {
-        let token: Token = try!(self.connections
-            .insert(try!(Connection::peer(peer_id, peer_addr)))
-            .map_err(|_| Error::Raft(RaftError::ConnectionLimitReached)));
+        let token: Token =
+            try!(self.connections
+                     .insert(try!(Connection::peer(peer_id, peer_addr)))
+                     .map_err(|_| Error::Raft(RaftError::ConnectionLimitReached)));
         scoped_assert!(self.peer_tokens.insert(peer_id, token).is_none());
 
         try!(self.connections[token].register(event_loop, token));
@@ -264,9 +267,10 @@ impl<L, M, A> Server<L, M, A>
 
         scoped_debug!("Start peering with {:?}", peer_addr);
 
-        let token: Token = try!(self.connections
-            .insert(try!(Connection::peer(peer_id, peer_addr)))
-            .map_err(|_| Error::Raft(RaftError::ConnectionLimitReached)));
+        let token: Token =
+            try!(self.connections
+                     .insert(try!(Connection::peer(peer_id, peer_addr)))
+                     .map_err(|_| Error::Raft(RaftError::ConnectionLimitReached)));
 
         scoped_assert!(self.peer_tokens.insert(peer_id, token).is_none());
 
@@ -303,7 +307,7 @@ impl<L, M, A> Server<L, M, A>
                                                        auth,
                                                        TimeoutConfiguration::default(),
                                                        129)
-            .unwrap();
+                .unwrap();
 
         server.init(&mut event_loop);
 
@@ -334,13 +338,15 @@ impl<L, M, A> Server<L, M, A>
 
     fn execute_actions(&mut self, event_loop: &mut EventLoop<Server<L, M, A>>, actions: Actions) {
         scoped_trace!("executing actions: {:?}", actions);
-        let Actions { peer_messages,
-                      client_messages,
-                      timeouts,
-                      clear_timeouts,
-                      clear_peer_messages,
-                      peer_messages_broadcast,
-                      transaction_queue } = actions;
+        let Actions {
+            peer_messages,
+            client_messages,
+            timeouts,
+            clear_timeouts,
+            clear_peer_messages,
+            peer_messages_broadcast,
+            transaction_queue,
+        } = actions;
 
         if clear_peer_messages {
             for &token in self.peer_tokens.values() {
@@ -374,9 +380,10 @@ impl<L, M, A> Server<L, M, A>
         }
 
         for lid in clear_timeouts {
-            let mut consensus = self.log_manager
-                .get_mut(lid)
-                .expect(&format!("Log {:?} is not registered in the log_manager", lid));
+            let mut consensus =
+                self.log_manager
+                    .get_mut(lid)
+                    .expect(&format!("Log {:?} is not registered in the log_manager", lid));
 
             for (timeout, &handle) in &consensus.consensus_timeouts {
                 scoped_assert!(event_loop.clear_timeout(handle),
@@ -398,20 +405,23 @@ impl<L, M, A> Server<L, M, A>
             // Registering a timeout may only fail if the maximum number of timeouts
             // is already registered, which is by default 65,536. We use a
             // maximum of one timeout per peer, so this unwrap should be safe.
-            let handle = event_loop.timeout_ms(ServerTimeout::Consensus(lid, timeout), duration)
+            let handle = event_loop
+                .timeout_ms(ServerTimeout::Consensus(lid, timeout), duration)
                 .unwrap();
 
-            let mut consensus = self.log_manager
-                .get_mut(lid)
-                .expect(&format!("Log {:?} is not registered in the log_manager", lid));
+            let mut consensus =
+                self.log_manager
+                    .get_mut(lid)
+                    .expect(&format!("Log {:?} is not registered in the log_manager", lid));
 
-            consensus.consensus_timeouts
+            consensus
+                .consensus_timeouts
                 .insert(timeout, handle)
                 .map(|handle| {
-                    scoped_assert!(event_loop.clear_timeout(handle),
-                                   "unable to clear timeout: {:?}",
-                                   timeout)
-                });
+                         scoped_assert!(event_loop.clear_timeout(handle),
+                                        "unable to clear timeout: {:?}",
+                                        timeout)
+                     });
         }
     }
 
@@ -435,19 +445,24 @@ impl<L, M, A> Server<L, M, A>
                                timeout);
             }
             ConnectionKind::Client(ref id) => {
-                self.connections.remove(token).expect("unable to find client connection");
+                self.connections
+                    .remove(token)
+                    .expect("unable to find client connection");
                 scoped_assert!(self.client_tokens.remove(id).is_some(),
                                "client {:?} not connected",
                                id);
             }
             ConnectionKind::Unknown => {
-                self.connections.remove(token).expect("unable to find unknown connection");
+                self.connections
+                    .remove(token)
+                    .expect("unable to find unknown connection");
             }
         }
     }
 
     fn handle_queue(&mut self, actions: &mut Actions) {
-        self.log_manager.handle_queue(&mut self.requests_in_queue, actions);
+        self.log_manager
+            .handle_queue(&mut self.requests_in_queue, actions);
     }
 
     /// Reads messages from the connection until no more are available.
@@ -469,12 +484,14 @@ impl<L, M, A> Server<L, M, A>
             match *self.connections[token].kind() {
                 ConnectionKind::Peer(id) => {
                     let mut actions = Actions::new();
-                    self.log_manager.apply_peer_message(id, &message, &mut actions);
+                    self.log_manager
+                        .apply_peer_message(id, &message, &mut actions);
                     self.execute_actions(event_loop, actions);
                 }
                 ConnectionKind::Client(id) => {
                     let mut actions = Actions::new();
-                    self.log_manager.apply_client_message(id, &message, &mut actions);
+                    self.log_manager
+                        .apply_client_message(id, &message, &mut actions);
                     self.execute_actions(event_loop, actions);
                 }
                 ConnectionKind::Unknown => {
@@ -496,7 +513,8 @@ impl<L, M, A> Server<L, M, A>
 
                                 if !self.log_manager.check_peer_exists(peer_id) {
                                     self.log_manager.add_peer(peer_id, peer_addr);
-                                    self.add_peer_static(event_loop, peer_id, peer_addr).unwrap();
+                                    self.add_peer_static(event_loop, peer_id, peer_addr)
+                                        .unwrap();
                                 } else {
                                     // Was already connected
                                     scoped_debug!("Dynamic peer wants to reconnect {:?}",
@@ -552,16 +570,17 @@ impl<L, M, A> Server<L, M, A>
                                     }
                                 }
 
-                                let prev_token = Some(match self.peer_tokens
-                                    .insert(peer_id, token) {
-                                    Some(x) => x,
-                                    None => {
-                                        self.log_manager.add_peer(peer_id, peer_addr);
-                                        try!(self.connections[token].register(event_loop, token));
+                                let prev_token =
+                                    Some(match self.peer_tokens.insert(peer_id, token) {
+                                             Some(x) => x,
+                                             None => {
+                                                 self.log_manager.add_peer(peer_id, peer_addr);
+                                                 try!(self.connections[token].register(event_loop,
+                                                                                       token));
 
-                                        token
-                                    }
-                                });
+                                                 token
+                                             }
+                                         });
 
                                 // Close the existing connection, if any.
                                 // Currently, prev_token is never `None`; see above.
@@ -576,8 +595,9 @@ impl<L, M, A> Server<L, M, A>
                                         self.reconnection_timeouts
                                             .remove(&tok)
                                             .map(|handle| {
-                                                scoped_assert!(event_loop.clear_timeout(handle))
-                                            });
+                                                     scoped_assert!(event_loop
+                                                                        .clear_timeout(handle))
+                                                 });
                                     }
                                     _ => unreachable!(),
                                 }
@@ -601,8 +621,7 @@ impl<L, M, A> Server<L, M, A>
 
                                 scoped_debug!("Username and password are okay");
                                 self.connections[token].set_kind(ConnectionKind::Client(client_id));
-                                let prev_token = self.client_tokens
-                                    .insert(client_id, token);
+                                let prev_token = self.client_tokens.insert(client_id, token);
                                 scoped_assert!(prev_token.is_none(),
                                                "{:?}: two clients connected with the same id: \
                                                 {:?}",
@@ -628,17 +647,17 @@ impl<L, M, A> Server<L, M, A>
             .accept()
             .map_err(From::from)
             .and_then(|stream_opt| {
-                stream_opt.ok_or_else(|| {
+                          stream_opt.ok_or_else(|| {
                     Error::Io(io::Error::new(io::ErrorKind::WouldBlock,
                                              "listener.accept() returned None"))
                 })
-            })
+                      })
             .and_then(|(stream, _)| Connection::unknown(stream))
             .and_then(|conn| {
-                self.connections
-                    .insert(conn)
-                    .map_err(|_| Error::Raft(RaftError::ConnectionLimitReached))
-            })
+                          self.connections
+                              .insert(conn)
+                              .map_err(|_| Error::Raft(RaftError::ConnectionLimitReached))
+                      })
             .and_then(|token|
                 // Until this point if any failures occur the connection is simply dropped. From
                 // this point down, the connection is stored in the slab, so dropping it would
@@ -749,7 +768,7 @@ impl<L, M, A> Handler for Server<L, M, A>
                                    .get_mut(lid)
                                    .expect(&format!("Log {:?} is not registered in the \
                                                      log_manager",
-                                                    lid))
+                                                   lid))
                                    .consensus_timeouts
                                    .remove(&ctimeout)
                                    .is_some(),
@@ -780,16 +799,17 @@ impl<L, M, A> Handler for Server<L, M, A>
                                     &peers.read().unwrap())
                     .and_then(|_| self.connections[token].register(event_loop, token))
                     .map(|_| {
-                        let mut actions = Actions::new();
-                        self.log_manager.peer_connection_reset(id, addr, &mut actions);
-                        self.execute_actions(event_loop, actions);
-                    })
+                             let mut actions = Actions::new();
+                             self.log_manager
+                                 .peer_connection_reset(id, addr, &mut actions);
+                             self.execute_actions(event_loop, actions);
+                         })
                     .unwrap_or_else(|error| {
-                        scoped_warn!("unable to reconnect connection {:?}: {}",
-                                     self.connections[token],
-                                     error);
-                        self.reset_connection(event_loop, token);
-                    });
+                                        scoped_warn!("unable to reconnect connection {:?}: {}",
+                                                     self.connections[token],
+                                                     error);
+                                        self.reset_connection(event_loop, token);
+                                    });
             }
         }
     }
@@ -851,19 +871,21 @@ mod tests {
                     SocketAddr::from_str("127.0.0.1:0").unwrap(),
                     peers,
                     logs,
-                    NullAuth::new(PlainCredentials::new::<Sha256Hasher>("username", "pass"), "test".to_string()),
+                    NullAuth::new(PlainCredentials::new::<Sha256Hasher>("username", "pass"),
+                                  "test".to_string()),
                     TimeoutConfiguration::default(),
                     129)
     }
 
     #[test]
-    fn new_test_server_builder_pattern(){
+    fn new_test_server_builder_pattern() {
         let mut builder = Server::builder();
         let mut logs: Vec<(LogId, MemLog, NullStateMachine)> = Vec::new();
         logs.push((*lid, MemLog::new(), NullStateMachine));
-        let mut auth = NullAuth::new(BasicCredentials::new::<Sha256Hasher>("test", "test"), "this is a test".to_string());
+        let mut auth = NullAuth::new(BasicCredentials::new::<Sha256Hasher>("test", "test"),
+                                     "this is a test".to_string());
         let addr = SocketAddr::from_str("127.0.0.1:0").unwrap();
-        let mut peers: HashMap<ServerId, SocketAddr>  = HashMap::new();
+        let mut peers: HashMap<ServerId, SocketAddr> = HashMap::new();
         peers.insert(ServerId::from(10), addr);
 
 
@@ -874,18 +896,25 @@ mod tests {
             .with_max_connections(3000 as usize)
             .with_logs(logs)
             .with_auth(auth)
-            .finalize().unwrap();
+            .finalize()
+            .unwrap();
 
         assert_eq!(server.id, ServerId::from(5));
         assert_eq!(server.addr, addr);
         assert_eq!(server.log_manager.count(), 1);
         assert_eq!(server.auth.get_community_string(), "this is a test");
-        assert!(server.auth.find("test","9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"));
+        assert!(server
+                    .auth
+                    .find("test",
+                          "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"));
     }
 
     /// Attempts to grab a local, unbound socket address for testing.
     fn get_unbound_address() -> SocketAddr {
-        TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap()
+        TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
     }
 
     /// Verifies that the proved stream has been sent a va*lid connection
@@ -1011,7 +1040,7 @@ mod tests {
                                                                         &fake_peer_addr,
                                                                         "test",
                                                                         &HashMap::new()))
-            .unwrap();
+                .unwrap();
         out_stream.flush().unwrap();
         event_loop.run_once(&mut server, None).unwrap();
 
@@ -1023,7 +1052,10 @@ mod tests {
         assert!(stream_shutdown(&mut in_stream));
         // Check that there's a connection which has the fake address
         // stored for reconnection purposes.
-        assert!(server.connections.iter().any(|conn| conn.addr().port() == 12345))
+        assert!(server
+                    .connections
+                    .iter()
+                    .any(|conn| conn.addr().port() == 12345))
     }
 
     /// Tests that the server will accept a client connection, then disposes of
@@ -1046,7 +1078,7 @@ mod tests {
                                  &*messages::client_connection_preamble(client_id,
                                                                         "username",
                                                                         "password"))
-            .unwrap();
+                .unwrap();
         stream.flush().unwrap();
         event_loop.run_once(&mut server, None).unwrap();
 
@@ -1135,7 +1167,7 @@ mod tests {
                                  &*messages::client_connection_preamble(client_id,
                                                                         "username",
                                                                         "password"))
-            .unwrap();
+                .unwrap();
         stream.flush().unwrap();
         event_loop.run_once(&mut server, None).unwrap();
 
@@ -1187,7 +1219,8 @@ mod tests {
 
         // Send a test message (the type is not important).
         let mut actions = Actions::new();
-        actions.peer_messages
+        actions
+            .peer_messages
             .push((peer_id,
                    messages::server_connection_preamble(peer_id,
                                                         &peer_addr,

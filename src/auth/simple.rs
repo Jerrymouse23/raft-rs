@@ -14,7 +14,10 @@ impl<C> SimpleAuth<C>
     where C: Credentials
 {
     pub fn new(credentials: C, community_string: String) -> Self {
-        SimpleAuth { credentials, community_string}
+        SimpleAuth {
+            credentials,
+            community_string,
+        }
     }
 }
 

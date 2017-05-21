@@ -21,10 +21,9 @@ pub trait Auth: Clone + Send + 'static {
     fn set_community_string(&mut self, cstr: String);
 
     fn compare_community_string(&self, cstr: &str) -> bool {
-        if self.get_community_string() == cstr{
+        if self.get_community_string() == cstr {
             true
-        }
-        else{
+        } else {
             false
         }
     }

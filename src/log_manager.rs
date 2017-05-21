@@ -95,7 +95,8 @@ impl<L, M> LogManager<L, M>
     {
         let reader = message.get_root::<message::Reader>().unwrap();
 
-        let logid_in_bytes = reader.get_log_id()
+        let logid_in_bytes = reader
+            .get_log_id()
             .expect("LogId property was not set in the message");
         let id = match Uuid::from_bytes(logid_in_bytes) {
             Ok(id) => id,
@@ -108,9 +109,10 @@ impl<L, M> LogManager<L, M>
         let log_id = LogId(id);
 
         /// TODO: implement error handling
-        let mut cons = self.consensus
-            .get_mut(&log_id)
-            .expect(&format!("There is not consensus instance with this {:?}", log_id));
+        let mut cons =
+            self.consensus
+                .get_mut(&log_id)
+                .expect(&format!("There is not consensus instance with this {:?}", log_id));
 
         cons.apply_peer_message(from, &reader, actions);
     }
@@ -128,7 +130,10 @@ impl<L, M> LogManager<L, M>
                          lid: &LogId,
                          consensus: ConsensusTimeout,
                          actions: &mut Actions) {
-        self.consensus.get_mut(lid).unwrap().apply_timeout(consensus, actions);
+        self.consensus
+            .get_mut(lid)
+            .unwrap()
+            .apply_timeout(consensus, actions);
     }
 
     pub fn handle_queue(&mut self,

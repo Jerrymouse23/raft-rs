@@ -16,7 +16,10 @@ impl<C> NullAuth<C>
     where C: Credentials
 {
     pub fn new(credentials: C, community_string: String) -> Self {
-        NullAuth { credentials, community_string  }
+        NullAuth {
+            credentials,
+            community_string,
+        }
     }
 }
 

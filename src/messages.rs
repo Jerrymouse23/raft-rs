@@ -20,7 +20,8 @@ pub fn server_connection_preamble(id: ServerId,
                                   -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        let mut server = message.init_root::<connection_preamble::Builder>()
+        let mut server = message
+            .init_root::<connection_preamble::Builder>()
             .init_id()
             .init_server();
         server.set_addr(&format!("{}", addr));
@@ -43,7 +44,8 @@ pub fn client_connection_preamble(id: ClientId,
                                   -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        let mut client = message.init_root::<connection_preamble::Builder>()
+        let mut client = message
+            .init_root::<connection_preamble::Builder>()
             .init_id()
             .init_client();
         client.set_username(username);
@@ -59,7 +61,8 @@ pub fn server_add(id: ServerId,
                   -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
-        let mut message = message.init_root::<connection_preamble::Builder>()
+        let mut message = message
+            .init_root::<connection_preamble::Builder>()
             .init_id()
             .init_server_add();
         message.set_id(id.as_u64());
@@ -298,8 +301,7 @@ pub fn command_response_success(data: &[u8], lid: LogId) -> Rc<Builder<HeapAlloc
     {
         let mut response = message.init_root::<client_response::Builder>();
         response.set_log_id(&lid.as_bytes());
-        response.init_proposal()
-            .set_success(data);
+        response.init_proposal().set_success(data);
     }
     Rc::new(message)
 }
@@ -309,8 +311,7 @@ pub fn command_response_unknown_leader(lid: LogId) -> Rc<Builder<HeapAllocator>>
     {
         let mut response = message.init_root::<client_response::Builder>();
         response.set_log_id(&lid.as_bytes());
-        response.init_proposal()
-            .set_unknown_leader(());
+        response.init_proposal().set_unknown_leader(());
     }
     Rc::new(message)
 }
@@ -322,7 +323,8 @@ pub fn command_response_not_leader(leader_hint: &SocketAddr,
     {
         let mut response = message.init_root::<client_response::Builder>();
         response.set_log_id(&lid.as_bytes());
-        response.init_proposal()
+        response
+            .init_proposal()
             .set_not_leader(&format!("{}", leader_hint));
     }
     Rc::new(message)
@@ -335,7 +337,9 @@ pub fn transaction_begin(lid: LogId, session: TransactionId) -> Rc<Builder<HeapA
     {
         let mut request = message.init_root::<message::Builder>();
         request.set_log_id(&lid.as_bytes());
-        request.init_transaction_begin().set_session(&session.as_bytes());
+        request
+            .init_transaction_begin()
+            .set_session(&session.as_bytes());
     }
     Rc::new(message)
 }
@@ -345,7 +349,9 @@ pub fn transaction_commit(lid: LogId, session: TransactionId) -> Rc<Builder<Heap
     {
         let mut request = message.init_root::<message::Builder>();
         request.set_log_id(&lid.as_bytes());
-        request.init_transaction_commit().set_session(&session.as_bytes());
+        request
+            .init_transaction_commit()
+            .set_session(&session.as_bytes());
     }
     Rc::new(message)
 }
@@ -355,7 +361,8 @@ pub fn client_transaction_begin(lid: LogId, session: TransactionId) -> Builder<H
     {
         let mut request = message.init_root::<client_request::Builder>();
         request.set_log_id(&lid.as_bytes());
-        request.init_transaction_begin()
+        request
+            .init_transaction_begin()
             .set_session(&session.as_bytes());
     }
     message
@@ -365,7 +372,8 @@ pub fn client_transaction_commit(lid: LogId, session: TransactionId) -> Builder<
     {
         let mut request = message.init_root::<client_request::Builder>();
         request.set_log_id(&lid.as_bytes());
-        request.init_transaction_commit()
+        request
+            .init_transaction_commit()
             .set_session(&session.as_bytes());
     }
     message
@@ -376,7 +384,9 @@ pub fn client_transaction_rollback(lid: LogId, session: TransactionId) -> Builde
     {
         let mut request = message.init_root::<client_request::Builder>();
         request.set_log_id(&lid.as_bytes());
-        request.init_transaction_rollback().set_session(&session.as_bytes());
+        request
+            .init_transaction_rollback()
+            .set_session(&session.as_bytes());
     }
     message
 }
@@ -386,8 +396,7 @@ pub fn command_transaction_success(data: &[u8], lid: LogId) -> Rc<Builder<HeapAl
     {
         let mut response = message.init_root::<client_response::Builder>();
         response.set_log_id(&lid.as_bytes());
-        response.init_proposal()
-            .set_success(data);
+        response.init_proposal().set_success(data);
     }
     Rc::new(message)
 }
@@ -399,7 +408,8 @@ pub fn command_transaction_failure(error: transaction::TransactionError,
     {
         let mut response = message.init_root::<client_response::Builder>();
         response.set_log_id(&lid.as_bytes());
-        response.init_transaction()
+        response
+            .init_transaction()
             .set_failure(format!("{}", error).as_bytes());
     }
     Rc::new(message)
@@ -410,7 +420,9 @@ pub fn transaction_rollback(lid: LogId, session: TransactionId) -> Rc<Builder<He
     {
         let mut request = message.init_root::<message::Builder>();
         request.set_log_id(&lid.as_bytes());
-        request.init_transaction_rollback().set_session(&session.as_bytes());
+        request
+            .init_transaction_rollback()
+            .set_session(&session.as_bytes());
     }
     Rc::new(message)
 }

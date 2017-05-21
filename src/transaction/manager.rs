@@ -50,7 +50,7 @@ impl TransactionManager {
             self.session = Some(session);
             self.is_active = true;
 
-            let snapshot = Snapshot{
+            let snapshot = Snapshot {
                 commit_index,
                 last_applied,
                 follower_state_min,
@@ -69,15 +69,16 @@ impl TransactionManager {
         let snapshot = self.snapshot.clone();
 
         if self.is_active {
-                let snapshot = snapshot.ok_or(TransactionError::Other("Snapshot is None".to_owned()))?;
+            let snapshot = snapshot
+                .ok_or(TransactionError::Other("Snapshot is None".to_owned()))?;
 
-                let commit_index = snapshot.commit_index;
-                let last_applied = snapshot.last_applied;
-                let follower_state_min = snapshot.follower_state_min;
+            let commit_index = snapshot.commit_index;
+            let last_applied = snapshot.last_applied;
+            let follower_state_min = snapshot.follower_state_min;
 
-                try!(self.commit());
+            try!(self.commit());
 
-                Ok((commit_index, last_applied, follower_state_min))
+            Ok((commit_index, last_applied, follower_state_min))
         } else {
             Err(TransactionError::NotActive)
         }

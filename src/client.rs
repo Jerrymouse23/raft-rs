@@ -160,8 +160,7 @@ impl<C> Client<C>
                         Ok(command_response::Which::Success(data)) => {
                             scoped_debug!("received response Success");
                             self.leader_connection = Some(connection);
-                            return data.map(Vec::from)
-                                .map_err(|e| e.into()); // Exit the function.
+                            return data.map(Vec::from).map_err(|e| e.into()); // Exit the function.
                         }
                         Ok(command_response::Which::UnknownLeader(())) => {
                             scoped_debug!("received response UnknownLeader");
@@ -170,10 +169,11 @@ impl<C> Client<C>
                         Ok(command_response::Which::NotLeader(leader)) => {
                             scoped_debug!("received response NotLeader");
                             let leader_str = try!(leader);
-                            if !self.cluster.contains(&try!(SocketAddr::from_str(leader_str))) {
+                            if !self.cluster
+                                    .contains(&try!(SocketAddr::from_str(leader_str))) {
                                 scoped_debug!("cluster violation detected");
                                 return Err(RaftError::ClusterViolation(leader_str.to_string())
-                                    .into());
+                                               .into());
                             }
                             let mut connection: TcpStream = try!(TcpStream::connect(leader_str));
                             let preamble =
@@ -202,8 +202,7 @@ impl<C> Client<C>
                         Ok(command_response::Which::Success(data)) => {
                             scoped_debug!("received response Success");
                             self.leader_connection = Some(connection);
-                            return data.map(Vec::from)
-                                .map_err(|e| e.into()); // Exit the function.
+                            return data.map(Vec::from).map_err(|e| e.into()); // Exit the function.
                         }
                         Ok(command_response::Which::Failure(data)) => {
                             scoped_debug!("received response failure");
@@ -216,10 +215,11 @@ impl<C> Client<C>
                         Ok(command_response::Which::NotLeader(leader)) => {
                             scoped_debug!("received response NotLeader");
                             let leader_str = try!(leader);
-                            if !self.cluster.contains(&try!(SocketAddr::from_str(leader_str))) {
+                            if !self.cluster
+                                    .contains(&try!(SocketAddr::from_str(leader_str))) {
                                 scoped_debug!("cluster violation detected");
                                 return Err(RaftError::ClusterViolation(leader_str.to_string())
-                                    .into());
+                                               .into());
                             }
                             let mut connection: TcpStream = try!(TcpStream::connect(leader_str));
                             let preamble =
