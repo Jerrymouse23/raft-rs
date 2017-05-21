@@ -1,32 +1,11 @@
-use std::fmt;
-
-use capnp::message::{Builder, HeapAllocator};
 use consensus::Actions;
 use messages;
-use std::rc::Rc;
 use LogIndex;
 use LogId;
-use ClientId;
 use TransactionId;
 
-#[derive(Debug,Clone)]
-pub enum TransactionError {
-    NotActive,
-    AlreadyActive,
-    Other(String),
-}
-
-impl fmt::Display for TransactionError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            TransactionError::NotActive => fmt::Display::fmt("No transaction is active", f),
-            TransactionError::AlreadyActive => {
-                fmt::Display::fmt("A transaction is already active", f)
-            }
-            TransactionError::Other(ref error) => fmt::Display::fmt(error, f),
-        }
-    }
-}
+use transaction::TransactionError;
+use transaction::snapshot::Snapshot;
 
 #[derive(Clone)]
 pub struct TransactionManager {
@@ -36,12 +15,7 @@ pub struct TransactionManager {
     pub session: Option<TransactionId>,
     /// The amount of the messages which has been applied during transaction
     counter: usize,
-    /// The commit_index before the transaction
-    commit_index: LogIndex,
-    /// The last_applied index before the transaction
-    last_applied: LogIndex,
-    /// The follower_state_min index before the transaction
-    follower_state_min: Option<LogIndex>,
+    snapshot: Option<Snapshot>,
 }
 
 impl TransactionManager {
@@ -51,9 +25,7 @@ impl TransactionManager {
             is_active: false,
             session: None,
             counter: 0,
-            commit_index: LogIndex::from(0),
-            last_applied: LogIndex::from(0),
-            follower_state_min: None,
+            snapshot: None,
         }
     }
 
@@ -77,9 +49,15 @@ impl TransactionManager {
 
             self.session = Some(session);
             self.is_active = true;
-            self.commit_index = commit_index;
-            self.last_applied = last_applied;
-            self.follower_state_min = follower_state_min;
+
+            let snapshot = Snapshot{
+                commit_index,
+                last_applied,
+                follower_state_min,
+            };
+
+            self.snapshot = Some(snapshot);
+
             Ok(())
         } else {
             Err(TransactionError::AlreadyActive)
@@ -88,30 +66,32 @@ impl TransactionManager {
 
     /// Reverts all messages which has been applied during transaction
     pub fn rollback(&mut self) -> Result<(LogIndex, LogIndex, Option<LogIndex>), TransactionError> {
+        let snapshot = self.snapshot.clone();
+
         if self.is_active {
-            let commit_index = self.commit_index;
-            let last_applied = self.last_applied;
-            let follower_state_min = self.follower_state_min;
+                let snapshot = snapshot.ok_or(TransactionError::Other("Snapshot is None".to_owned()))?;
 
-            try!(self.end());
+                let commit_index = snapshot.commit_index;
+                let last_applied = snapshot.last_applied;
+                let follower_state_min = snapshot.follower_state_min;
 
-            Ok((commit_index, last_applied, follower_state_min))
+                try!(self.commit());
+
+                Ok((commit_index, last_applied, follower_state_min))
         } else {
             Err(TransactionError::NotActive)
         }
     }
 
     /// Resets all values of the TransactionManager for the next transaction
-    pub fn end(&mut self) -> Result<(), TransactionError> {
+    pub fn commit(&mut self) -> Result<(), TransactionError> {
         if self.is_active {
             scoped_debug!("TRANSACTION FINISHED! {} messages received", self.counter);
 
             self.session = None;
             self.counter = 0;
             self.is_active = false;
-            self.commit_index = LogIndex::from(0);
-            self.last_applied = LogIndex::from(0);
-            self.follower_state_min = None;
+            self.snapshot = None;
 
             Ok(())
         } else {

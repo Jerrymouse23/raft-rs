@@ -821,7 +821,7 @@ impl<L, M> Consensus<L, M>
         if self.transaction.is_active {
             assert_eq!(self.transaction.session.expect("No TransactionSession defined"),
                        session);
-            self.transaction.end();
+            self.transaction.commit();
         } else {
             scoped_warn!("Received TransactionCommit but no transaction is currently running");
         }
@@ -842,12 +842,12 @@ impl<L, M> Consensus<L, M>
                 let entries_failed = self.log.rollback(commit_index).unwrap();
 
                 for &(_, ref command) in entries_failed.iter().rev() {
+                    /// TODO check for errors
                     self.state_machine.write().unwrap().revert(command.as_slice());
                 }
             }
 
             self.log.truncate(commit_index).unwrap();
-            self.state_machine.write().unwrap().rollback();
         } else {
             scoped_warn!("Cannot rollback; no transaction running");
         }
@@ -891,7 +891,7 @@ impl<L, M> Consensus<L, M>
         if self.is_leader() {
             if self.transaction.is_active {
                 self.transaction.broadcast_end(self.lid, actions);
-                self.transaction.end().unwrap();
+                self.transaction.commit().unwrap();
 
                 let message =
                     messages::command_transaction_success(b"Transaction has been stopped",
@@ -943,7 +943,6 @@ impl<L, M> Consensus<L, M>
                 }
 
                 self.log.truncate(commit_index).unwrap();
-                self.state_machine.write().unwrap().rollback();
 
                 actions.client_messages.push((from, message));
             } else {

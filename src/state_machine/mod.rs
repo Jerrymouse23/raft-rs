@@ -54,8 +54,6 @@ pub trait StateMachine: Debug + Send + Clone + 'static {
     /// Restore a snapshot of the state machine.
     fn restore_snapshot(&mut self, map: Vec<u8>) -> Result<(), StateMachineError>;
 
-    /// Reverts all messages which has been applied during a transaction
+    /// Reverts single message which has been applied during a transaction
     fn revert(&mut self, command: &[u8]) -> Result<(), StateMachineError>;
-
-    fn rollback(&mut self) -> Result<(), StateMachineError>;
 }

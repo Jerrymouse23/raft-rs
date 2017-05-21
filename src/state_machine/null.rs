@@ -25,8 +25,4 @@ impl StateMachine for NullStateMachine {
     fn revert(&mut self, _command: &[u8]) -> Result<(), StateMachineError> {
         Ok(())
     }
-
-    fn rollback(&mut self) -> Result<(), StateMachineError> {
-        Ok(())
-    }
 }
