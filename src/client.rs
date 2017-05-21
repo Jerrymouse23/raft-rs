@@ -267,7 +267,10 @@ mod tests {
 
     use auth::Auth;
     use auth::null::NullAuth;
+    use auth::credentials::Credentials;
     use auth::credentials::SingleCredentials;
+    use auth::hasher::Hasher;
+    use auth::hasher::Sha256Hasher;
 
     use {Client, messages, Result, LogId, TransactionId};
     use messages_capnp::{connection_preamble, client_request};
@@ -284,7 +287,7 @@ mod tests {
             connection_preamble::id::Which::Client(client) => {
                 let client = try!(client);
 
-                let id = Uuid::from_bytes(client.get_id().unwrap()).expect("va*lid bytes");
+                let id = Uuid::from_bytes(client.get_id().unwrap()).expect("valid bytes");
 
                 Ok(id == client_id)
             }
@@ -312,10 +315,10 @@ mod tests {
         let test_addr = test_server.local_addr().unwrap();
         cluster.insert(test_addr);
 
-        let mut client = Client::new::<NullAuth<SingleCredentials>>(cluster,
-                                                                    "username".to_string(),
-                                                                    "password".to_string(),
-                                                                    *lid);
+        let credentials = SingleCredentials::new("username", &Sha256Hasher::hash("password"));
+
+        let mut client = Client::new(cluster, credentials, *lid);
+
         let client_id = client.id.0.clone();
         let to_propose = b"Bears";
 
@@ -352,10 +355,10 @@ mod tests {
         let test_addr = test_server.local_addr().unwrap();
         cluster.insert(test_addr);
 
-        let mut client = Client::new::<NullAuth<SingleCredentials>>(cluster,
-                                                                    "username".to_string(),
-                                                                    "password".to_string(),
-                                                                    *lid);
+        let credentials = SingleCredentials::new("username", &Sha256Hasher::hash("password"));
+
+
+        let mut client = Client::new(cluster, credentials, *lid);
         let to_propose = b"Bears";
 
         // The client connects on the proposal.
@@ -390,10 +393,9 @@ mod tests {
         let second_addr = second_server.local_addr().unwrap();
         cluster.insert(second_addr);
 
-        let mut client = Client::new::<NullAuth<SingleCredentials>>(cluster,
-                                                                    "username".to_string(),
-                                                                    "password".to_string(),
-                                                                    *lid);
+        let credentials = SingleCredentials::new("username", &Sha256Hasher::hash("password"));
+
+        let mut client = Client::new(cluster, credentials, *lid);
         let client_id = client.id.0.clone();
         let to_propose = b"Bears";
 
@@ -452,10 +454,9 @@ mod tests {
         let second_addr = second_server.local_addr().unwrap();
         // cluster.insert(second_addr); <--- NOT in cluster.
 
-        let mut client = Client::new::<NullAuth<SingleCredentials>>(cluster,
-                                                                    "username".to_string(),
-                                                                    "password".to_string(),
-                                                                    *lid);
+        let credentials = SingleCredentials::new("username", &Sha256Hasher::hash("password"));
+
+        let mut client = Client::new(cluster, credentials, *lid);
         let client_id = client.id.0.clone();
         let to_propose = b"Bears";
 
