@@ -15,6 +15,8 @@ mod null;
 #[derive(Debug)]
 pub enum StateMachineError {
     Io(::std::io::Error),
+    Serialization(::bincode::serde::SerializeError),
+    Deserialization(::bincode::serde::DeserializeError),
     Other(String),
 }
 
@@ -23,6 +25,8 @@ impl ::std::fmt::Display for StateMachineError {
         use std::fmt::Display;
         match *self {
             StateMachineError::Io(ref error) => Display::fmt(&error, f),
+            StateMachineError::Serialization(ref error) => Display::fmt(&error, f),
+            StateMachineError::Deserialization(ref error) => Display::fmt(&error, f),
             StateMachineError::Other(ref text) => Display::fmt(&text, f),
         }
     }
