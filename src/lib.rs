@@ -189,6 +189,8 @@ pub enum RaftError {
     LeaderSearchExhausted,
     /// An error during transaction
     TransactionError(transaction::TransactionError),
+    /// Statemachine errors
+    StateMachineError(state_machine::StateMachineError),
     Other(String),
 }
 
@@ -227,6 +229,7 @@ impl fmt::Display for RaftError {
                 fmt::Display::fmt("Cannot find leader in the cluster", f)
             }
             RaftError::TransactionError(ref error) => fmt::Display::fmt(&format!("{}", error), f),
+            RaftError::StateMachineError(ref error) => fmt::Display::fmt(&format!("{:?}",error),f),
             RaftError::Other(ref error) => fmt::Display::fmt(error, f),
         }
     }
@@ -244,7 +247,8 @@ impl ::std::error::Error for RaftError {
             RaftError::InvalidPeerSet => "An invalid peer in the peer set",
             RaftError::ConnectionRegisterFailed => "Registering a connection failed",
             RaftError::LeaderSearchExhausted => "Cannot find leader in the cluster",
-            RaftError::TransactionError(ref error) => "An error occured during the transaction",
+            RaftError::TransactionError(_) => "An error occured during the transaction",
+            RaftError::StateMachineError(_) => "An error occured during processing statemachine",
             RaftError::ClusterViolation(ref error) |
             RaftError::Other(ref error) => error,
         }

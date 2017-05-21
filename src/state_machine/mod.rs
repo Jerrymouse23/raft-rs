@@ -12,6 +12,22 @@ use std::fmt::Debug;
 // mod channel;
 mod null;
 
+#[derive(Debug)]
+pub enum StateMachineError {
+    Io(::std::io::Error),
+    Other(String),
+}
+
+impl ::std::fmt::Display for StateMachineError {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        use std::fmt::Display;
+        match *self {
+            StateMachineError::Io(ref error) => Display::fmt(&error, f),
+            StateMachineError::Other(ref text) => Display::fmt(&text, f),
+        }
+    }
+}
+
 // pub use state_machine::channel::ChannelStateMachine;
 pub use state_machine::null::NullStateMachine;
 
@@ -25,21 +41,21 @@ pub use state_machine::null::NullStateMachine;
 pub trait StateMachine: Debug + Send + Clone + 'static {
     /// Applies a command to the state machine.
     /// Returns an application-specific result value.
-    fn apply(&mut self, command: &[u8]) -> Vec<u8>;
+    fn apply(&mut self, command: &[u8]) -> Result<Vec<u8>, StateMachineError>;
 
     /// Queries a value of the state machine. Does not go through the durable log, or mutate the
     /// state machine.
     /// Returns an application-specific result value.
-    fn query(&self, query: &[u8]) -> Vec<u8>;
+    fn query(&self, query: &[u8]) -> Result<Vec<u8>, StateMachineError>;
 
     /// Take a snapshot of the state machine.
-    fn snapshot(&self) -> Vec<u8>;
+    fn snapshot(&self) -> Result<Vec<u8>, StateMachineError>;
 
     /// Restore a snapshot of the state machine.
-    fn restore_snapshot(&mut self, map: Vec<u8>) -> ();
+    fn restore_snapshot(&mut self, map: Vec<u8>) -> Result<(), StateMachineError>;
 
     /// Reverts all messages which has been applied during a transaction
-    fn revert(&mut self, command: &[u8]) -> ();
+    fn revert(&mut self, command: &[u8]) -> Result<(), StateMachineError>;
 
-    fn rollback(&mut self);
+    fn rollback(&mut self) -> Result<(), StateMachineError>;
 }

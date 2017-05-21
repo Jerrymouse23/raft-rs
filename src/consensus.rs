@@ -37,18 +37,18 @@ use std::sync::{Arc, RwLock};
 use transaction;
 
 #[derive(Copy, Clone, Debug)]
-pub struct TimeoutConfiguration{
+pub struct TimeoutConfiguration {
     pub election_timeout_min: u64,
     pub election_timeout_max: u64,
-    pub heartbeat_timeout: u64
+    pub heartbeat_timeout: u64,
 }
 
-impl Default for TimeoutConfiguration{
-    fn default() -> Self{
-        TimeoutConfiguration{
+impl Default for TimeoutConfiguration {
+    fn default() -> Self {
+        TimeoutConfiguration {
             election_timeout_min: 5000,
             election_timeout_max: 10000,
-            heartbeat_timeout: 2000
+            heartbeat_timeout: 2000,
         }
     }
 }
@@ -68,7 +68,8 @@ impl ConsensusTimeout {
     pub fn duration_ms(&self, timeout_config: TimeoutConfiguration) -> u64 {
         match *self {
             ConsensusTimeout::Election(..) => {
-                rand::thread_rng().gen_range::<u64>(timeout_config.election_timeout_min, timeout_config.election_timeout_max)
+                rand::thread_rng().gen_range::<u64>(timeout_config.election_timeout_min,
+                                                    timeout_config.election_timeout_max)
             }
             ConsensusTimeout::Heartbeat(..) => timeout_config.heartbeat_timeout,
         }
@@ -977,7 +978,7 @@ impl<L, M> Consensus<L, M>
         } else {
             // TODO: This is probably not exactly safe.
             let query = request.get_query().unwrap();
-            let result = self.state_machine.read().unwrap().query(query);
+            let result = self.state_machine.read().unwrap().query(query).unwrap();
             let message = messages::command_response_success(&result, self.lid);
             actions.client_messages.push((from, message));
         }
@@ -1144,7 +1145,8 @@ impl<L, M> Consensus<L, M>
             };
 
             if !entry.is_empty() {
-                let result = self.state_machine.write().unwrap().apply(entry);
+                let result =
+                    self.state_machine.write().unwrap().apply(entry).expect("Statemachine error");
                 results.insert(self.last_applied + 1, result);
             }
             self.last_applied = self.last_applied + 1;
