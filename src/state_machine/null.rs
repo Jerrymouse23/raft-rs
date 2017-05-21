@@ -13,11 +13,11 @@ impl StateMachine for NullStateMachine {
         Vec::new()
     }
 
-    fn snapshot(&self) -> (Vec<u8>, Vec<u8>) {
-        (Vec::new(), Vec::new())
+    fn snapshot(&self) -> Vec<u8> {
+        Vec::new()
     }
 
-    fn restore_snapshot(&mut self, _snap_map: Vec<u8>, _snap_log: Vec<u8>) {
+    fn restore_snapshot(&mut self, _snap_map: Vec<u8>) {
         ()
     }
 

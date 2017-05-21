@@ -19,12 +19,14 @@ use LogId;
 use TransactionId;
 use Result;
 use RaftError;
-use auth::Auth;
 use Error;
 use transaction;
+use auth::credentials::Credentials;
 
 /// The representation of a Client connection to the cluster.
-pub struct Client {
+pub struct Client<C>
+    where C: Credentials
+{
     /// The `Uuid` of the client, should be unique in the cluster.
     pub id: ClientId,
     /// The current connection to the current leader.
@@ -33,21 +35,16 @@ pub struct Client {
     leader_connection: Option<BufStream<TcpStream>>,
     /// A lookup for the cluster's nodes.
     cluster: HashSet<SocketAddr>,
-    /// The hashed client password
-    password: String,
-    /// The username to access server
-    username: String,
+    credentials: C,
     /// The LogId for the messages for the connection
     lid: LogId,
 }
 
-impl Client {
+impl<C> Client<C>
+    where C: Credentials
+{
     /// Creates a new client.
-    pub fn new<A: Auth>(cluster: HashSet<SocketAddr>,
-                        username: String,
-                        password: String,
-                        lid: LogId)
-                        -> Client {
+    pub fn new(cluster: HashSet<SocketAddr>, credentials: C, lid: LogId) -> Client<C> {
 
         // let hashed_password = Auth::generate(&password);
         // let hashed_password = A::generate(&password);
@@ -56,8 +53,7 @@ impl Client {
             id: ClientId::new(),
             leader_connection: None,
             cluster: cluster,
-            password: password,
-            username: username,
+            credentials: credentials,
             lid: lid,
         }
     }
@@ -94,7 +90,7 @@ impl Client {
     /// # Arguments
     /// * `session` - The ID of the transaction. The server tries to commit the transaction with
     /// this ID.
-    ///TODO rename `end_transaction` to `commit_transaction`
+    /// TODO rename `end_transaction` to `commit_transaction`
     pub fn end_transaction(&mut self, session: TransactionId) -> Result<Vec<u8>> {
         let mut message = messages::client_transaction_commit(self.lid, session);
         self.send_message(&mut message)
@@ -128,9 +124,10 @@ impl Client {
                     let leader = try!(members.next().ok_or(RaftError::LeaderSearchExhausted));
                     scoped_debug!("connecting to potential leader {}", leader);
                     // Send the preamble.
-                    let preamble = messages::client_connection_preamble(self.id,
-                                                                        self.username.as_str(),
-                                                                        self.password.as_str());
+                    let preamble =
+                        messages::client_connection_preamble(self.id,
+                                                             self.credentials.get_username(),
+                                                             self.credentials.get_password());
                     let mut stream = match TcpStream::connect(leader) {
                         Ok(stream) => BufStream::new(stream),
                         Err(_) => continue,
@@ -179,11 +176,12 @@ impl Client {
                                     .into());
                             }
                             let mut connection: TcpStream = try!(TcpStream::connect(leader_str));
-                            let preamble = messages::client_connection_preamble(self.id,
-                                                                                self.username
-                                                                                    .as_str(),
-                                                                                self.password
-                                                                                    .as_str());
+                            let preamble =
+                                messages::client_connection_preamble(self.id,
+                                                                     self.credentials
+                                                                         .get_username(),
+                                                                     self.credentials
+                                                                         .get_password());
                             if let Err(_) = serialize::write_message(&mut connection, &*preamble) {
                                 continue;
                             };
@@ -224,11 +222,12 @@ impl Client {
                                     .into());
                             }
                             let mut connection: TcpStream = try!(TcpStream::connect(leader_str));
-                            let preamble = messages::client_connection_preamble(self.id,
-                                                                                self.username
-                                                                                    .as_str(),
-                                                                                self.password
-                                                                                    .as_str());
+                            let preamble =
+                                messages::client_connection_preamble(self.id,
+                                                                     self.credentials
+                                                                         .get_username(),
+                                                                     self.credentials
+                                                                         .get_password());
                             if let Err(_) = serialize::write_message(&mut connection, &*preamble) {
                                 continue;
                             };
@@ -243,7 +242,9 @@ impl Client {
     }
 }
 
-impl fmt::Debug for Client {
+impl<C> fmt::Debug for Client<C>
+    where C: Credentials
+{
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "Client({})", self.id)
     }
