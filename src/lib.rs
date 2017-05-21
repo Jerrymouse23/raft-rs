@@ -133,6 +133,7 @@ pub use state_machine::StateMachine;
 pub use persistent_log::Log;
 pub use client::Client;
 pub use consensus::TimeoutConfiguration;
+pub use mio::EventLoop;
 
 use std::{io, net, ops, fmt};
 use uuid::Uuid;
