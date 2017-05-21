@@ -5,7 +5,7 @@ use auth::hasher::Hasher;
 
 use std::mem::replace;
 
-#[derive(Debug,Clone)]
+#[derive(Clone)]
 pub struct MultiAuth<C>
     where C: Credentials
 {
@@ -34,15 +34,8 @@ impl<C> MultiAuthBuilder<C>
         self
     }
 
-    pub fn add_user_plain<H: Hasher>(mut self,username: &str, plain_password: &str) -> Self{
-        let hashed_password = H::hash(plain_password);
-
-        self.credentials.push(C::new(username, &hashed_password));
-        self
-    }
-
-    pub fn add_user_hashed(mut self,username: &str, hashed_password: &str) -> Self{
-        self.credentials.push(C::new(username, hashed_password));
+    pub fn add_user<H: Hasher>(mut self,username: &str, password: &str) -> Self{
+        self.credentials.push(C::new::<H>(username, password));
         self
     }
 
@@ -96,23 +89,21 @@ impl<C> Auth for MultiAuth<C>
 #[cfg(test)]
 mod tests{
     use super::*;
-    use auth::credentials::SingleCredentials;
+    use auth::credentials::BasicCredentials;
     use auth::hasher::sha256::Sha256Hasher;
 
     #[test]
     fn test_MultiAuthBuilder(){
-        let mut builder = MultiAuth::<SingleCredentials>::build();
+        let mut builder = MultiAuth::<BasicCredentials>::build();
         let mut auth = builder
             .with_community_string("test")
-            .add_user_plain::<Sha256Hasher>("kper","123")
-            .add_user_hashed("kper2","a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3")
+            .add_user::<Sha256Hasher>("kper","123")
             .finalize();
 
         let cstr = auth.get_community_string();
 
         assert_eq!(cstr, "test");
         assert!(auth.find("kper", "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"));
-        assert!(auth.find("kper2","a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"));
 
     }
 }

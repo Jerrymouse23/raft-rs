@@ -835,11 +835,13 @@ mod tests {
     use super::*;
     use auth::Auth;
     use auth::null::NullAuth;
-    use auth::credentials::SingleCredentials;
+    use auth::credentials::BasicCredentials;
     use auth::credentials::Credentials;
+    use auth::hasher::Hasher;
+    use auth::hasher::Sha256Hasher;
     use uuid::Uuid;
 
-    type TestServer = Server<MemLog, NullStateMachine, NullAuth<SingleCredentials>>;
+    type TestServer = Server<MemLog, NullStateMachine, NullAuth<BasicCredentials>>;
     lazy_static!{
         static ref lid: LogId = LogId(Uuid::new_v4());
     }
@@ -852,7 +854,7 @@ mod tests {
                     SocketAddr::from_str("127.0.0.1:0").unwrap(),
                     peers,
                     logs,
-                    NullAuth::new(SingleCredentials::new("test", "test"), "test".to_string()),
+                    NullAuth::new(BasicCredentials::new::<Sha256Hasher>("test", "test"), "test".to_string()),
                     TimeoutConfiguration::default(),
                     129)
     }
@@ -862,7 +864,7 @@ mod tests {
         let mut builder = Server::builder();
         let mut logs: Vec<(LogId, MemLog, NullStateMachine)> = Vec::new();
         logs.push((*lid, MemLog::new(), NullStateMachine));
-        let mut auth = NullAuth::new(SingleCredentials::new("test", "test"), "this is a test".to_string());
+        let mut auth = NullAuth::new(BasicCredentials::new::<Sha256Hasher>("test", "test"), "this is a test".to_string());
         let addr = SocketAddr::from_str("127.0.0.1:0").unwrap();
         let mut peers: HashMap<ServerId, SocketAddr>  = HashMap::new();
         peers.insert(ServerId::from(10), addr);

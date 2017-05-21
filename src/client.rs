@@ -268,7 +268,7 @@ mod tests {
     use auth::Auth;
     use auth::null::NullAuth;
     use auth::credentials::Credentials;
-    use auth::credentials::SingleCredentials;
+    use auth::credentials::BasicCredentials;
     use auth::hasher::Hasher;
     use auth::hasher::Sha256Hasher;
 
@@ -315,7 +315,7 @@ mod tests {
         let test_addr = test_server.local_addr().unwrap();
         cluster.insert(test_addr);
 
-        let credentials = SingleCredentials::new("username", &Sha256Hasher::hash("password"));
+        let credentials = BasicCredentials::new::<Sha256Hasher>("username", "password");
 
         let mut client = Client::new(cluster, credentials, *lid);
 
@@ -355,7 +355,7 @@ mod tests {
         let test_addr = test_server.local_addr().unwrap();
         cluster.insert(test_addr);
 
-        let credentials = SingleCredentials::new("username", &Sha256Hasher::hash("password"));
+        let credentials = BasicCredentials::new::<Sha256Hasher>("username", "password");
 
 
         let mut client = Client::new(cluster, credentials, *lid);
@@ -393,7 +393,7 @@ mod tests {
         let second_addr = second_server.local_addr().unwrap();
         cluster.insert(second_addr);
 
-        let credentials = SingleCredentials::new("username", &Sha256Hasher::hash("password"));
+        let credentials = BasicCredentials::new::<Sha256Hasher>("username", "password");
 
         let mut client = Client::new(cluster, credentials, *lid);
         let client_id = client.id.0.clone();
@@ -454,7 +454,7 @@ mod tests {
         let second_addr = second_server.local_addr().unwrap();
         // cluster.insert(second_addr); <--- NOT in cluster.
 
-        let credentials = SingleCredentials::new("username", &Sha256Hasher::hash("password"));
+        let credentials = BasicCredentials::new::<Sha256Hasher>("username", "password");
 
         let mut client = Client::new(cluster, credentials, *lid);
         let client_id = client.id.0.clone();

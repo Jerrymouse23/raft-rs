@@ -9,7 +9,7 @@ pub mod hasher;
 use auth::hasher::Hasher;
 
 /// A trait to do authentification
-pub trait Auth: Clone + Debug + Send + 'static {
+pub trait Auth: Clone + Send + 'static {
     /// Checks hash and returns whether it was successful or not
     fn compare(&self, hash1: &str, hash2: &str) -> bool;
 

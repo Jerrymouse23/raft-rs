@@ -1,6 +1,7 @@
 pub mod sha256;
 pub mod plain;
 
+pub use auth::hasher::plain::PlainHasher;
 pub use auth::hasher::sha256::Sha256Hasher;
 
 pub trait Hasher {

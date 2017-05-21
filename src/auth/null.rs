@@ -4,7 +4,7 @@
 use auth::Auth;
 use auth::credentials::Credentials;
 
-#[derive(Debug,Clone)]
+#[derive(Clone)]
 pub struct NullAuth<C>
     where C: Credentials
 {
