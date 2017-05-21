@@ -148,9 +148,6 @@ pub struct Server<L, M, A>
     /// Connection listener.
     listener: TcpListener,
 
-    /// The amount of peers + clients who can connect to the server
-    max_connections: usize,
-
     /// Collection of connections indexed by token.
     connections: Slab<Connection>,
 
@@ -210,14 +207,13 @@ impl<L, M, A> Server<L, M, A>
             addr,
             log_manager,
             listener,
-            connections: Slab::new_starting_at(Token(1), 129),
+            connections: Slab::new_starting_at(Token(1), max_connections),
             peer_tokens: HashMap::new(),
             client_tokens: HashMap::new(),
             reconnection_timeouts: HashMap::new(),
             auth,
             requests_in_queue: requests_in_queue,
             timeout_config,
-            max_connections
         };
 
         for (peer_id, peer_addr) in peers {
@@ -881,7 +877,6 @@ mod tests {
 
         assert_eq!(server.id, ServerId::from(5));
         assert_eq!(server.addr, addr);
-        assert_eq!(server.max_connections, 3000 as usize);
         assert_eq!(server.log_manager.count(), 1);
         assert_eq!(server.auth.get_community_string(), "this is a test");
     }
