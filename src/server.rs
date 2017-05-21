@@ -832,12 +832,13 @@ mod tests {
     use auth::Auth;
     use auth::null::NullAuth;
     use auth::credentials::BasicCredentials;
+    use auth::credentials::PlainCredentials;
     use auth::credentials::Credentials;
     use auth::hasher::Hasher;
     use auth::hasher::Sha256Hasher;
     use uuid::Uuid;
 
-    type TestServer = Server<MemLog, NullStateMachine, NullAuth<BasicCredentials>>;
+    type TestServer = Server<MemLog, NullStateMachine, NullAuth<PlainCredentials>>;
     lazy_static!{
         static ref lid: LogId = LogId(Uuid::new_v4());
     }
@@ -850,7 +851,7 @@ mod tests {
                     SocketAddr::from_str("127.0.0.1:0").unwrap(),
                     peers,
                     logs,
-                    NullAuth::new(BasicCredentials::new::<Sha256Hasher>("test", "test"), "test".to_string()),
+                    NullAuth::new(PlainCredentials::new::<Sha256Hasher>("username", "pass"), "test".to_string()),
                     TimeoutConfiguration::default(),
                     129)
     }
@@ -879,6 +880,7 @@ mod tests {
         assert_eq!(server.addr, addr);
         assert_eq!(server.log_manager.count(), 1);
         assert_eq!(server.auth.get_community_string(), "this is a test");
+        assert!(server.auth.find("test","9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"));
     }
 
     /// Attempts to grab a local, unbound socket address for testing.
