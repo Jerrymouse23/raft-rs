@@ -209,7 +209,7 @@ impl<L, M> Consensus<L, M>
                         requests_in_queue: &mut Vec<(ClientId, Builder<HeapAllocator>)>,
                         actions: &mut Actions)
                         -> Result<(), ()> {
-        if !self.transaction.is_active {
+        if !self.transaction.is_active() {
             for (client, builder) in requests_in_queue.pop() {
                 self.apply_client_message(client,
                                           &Self::into_reader(&builder)
@@ -287,7 +287,7 @@ impl<L, M> Consensus<L, M>
                     let session = TransactionId::from_bytes(request.get_session().unwrap())
                         .expect("Invalid TransactionId");
 
-                    if self.transaction.is_active && !self.transaction.compare(session) {
+                    if !self.transaction.compare(session) {
 
                         let entry = request.get_entry().unwrap();
 
@@ -305,7 +305,7 @@ impl<L, M> Consensus<L, M>
                 }
             }
             client_request::Which::Query(Ok(query)) => {
-                if self.transaction.is_active {
+                if self.transaction.is_active() {
                     let query = query.get_query().unwrap();
                     let message = messages::query_request(query, &self.lid);
 
@@ -821,7 +821,7 @@ impl<L, M> Consensus<L, M>
     /// Starts new transaction
     fn transaction_begin(&mut self, _: ServerId, session: TransactionId, _: &mut Actions) {
         if !self.is_leader() {
-            if !self.transaction.is_active {
+            if !self.transaction.is_active() {
                 self.transaction
                     .begin(session,
                            self.commit_index,
@@ -835,11 +835,7 @@ impl<L, M> Consensus<L, M>
 
     /// Ends the current transaction successfully
     fn transaction_commit(&mut self, _: ServerId, session: TransactionId, _: &mut Actions) {
-        if self.transaction.is_active {
-            assert_eq!(self.transaction
-                           .session
-                           .expect("No TransactionSession defined"),
-                       session);
+        if self.transaction.is_active() {
             self.transaction.commit();
         } else {
             scoped_warn!("Received TransactionCommit but no transaction is currently running");
@@ -849,7 +845,7 @@ impl<L, M> Consensus<L, M>
 
     /// Ends the current transaction and rolls all messages in this transaction back
     fn transaction_rollback(&mut self, _: ServerId, _: TransactionId, _: &mut Actions) {
-        if self.transaction.is_active {
+        if self.transaction.is_active() {
             let (commit_index, last_applied, follower_state_min) =
                 self.transaction.rollback().unwrap();
             self.follower_state.write().unwrap().min_index = follower_state_min.unwrap();
@@ -880,7 +876,7 @@ impl<L, M> Consensus<L, M>
                                 session: TransactionId,
                                 actions: &mut Actions) {
         if self.is_leader() {
-            if !self.transaction.is_active {
+            if !self.transaction.is_active() {
                 self.transaction
                     .begin(session, self.commit_index, self.last_applied, None)
                     .unwrap();
@@ -910,7 +906,7 @@ impl<L, M> Consensus<L, M>
     /// Client ends transaction
     fn client_transaction_commit(&mut self, from: ClientId, actions: &mut Actions) {
         if self.is_leader() {
-            if self.transaction.is_active {
+            if self.transaction.is_active() {
                 self.transaction.broadcast_end(self.lid, actions);
                 self.transaction.commit().unwrap();
 
@@ -941,7 +937,7 @@ impl<L, M> Consensus<L, M>
     /// Client rollback transaction
     fn client_transaction_rollback(&mut self, from: ClientId, actions: &mut Actions) {
         if self.is_leader() {
-            if self.transaction.is_active {
+            if self.transaction.is_active() {
                 self.transaction.broadcast_rollback(self.lid, actions);
                 let (commit_index, last_applied, _) = self.transaction.rollback().unwrap();
                 self.commit_index = commit_index;
@@ -1085,7 +1081,7 @@ impl<L, M> Consensus<L, M>
 
         // reset transaction
 
-        if self.transaction.is_active {
+        if self.transaction.is_active() {
             self.transaction.broadcast_rollback(self.lid, actions);
 
             let (commit_index, last_applied, _) = self.transaction.rollback().unwrap();

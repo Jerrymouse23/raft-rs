@@ -4,29 +4,20 @@ use LogIndex;
 use LogId;
 use TransactionId;
 
+use transaction::Transaction;
 use transaction::TransactionError;
 use transaction::snapshot::Snapshot;
 
-#[derive(Clone)]
+use std::collections::VecDeque;
+
 pub struct TransactionManager {
-    /// Whether a transaction is running
-    pub is_active: bool,
-    /// The ID of the current transaction. If `None`, no transaction is running
-    pub session: Option<TransactionId>,
-    /// The amount of the messages which has been applied during transaction
-    counter: usize,
-    snapshot: Option<Snapshot>,
+    transactions: VecDeque<Transaction>,
 }
 
 impl TransactionManager {
     /// Creates new TransactionManager
     pub fn new() -> Self {
-        TransactionManager {
-            is_active: false,
-            session: None,
-            counter: 0,
-            snapshot: None,
-        }
+        TransactionManager { transactions: VecDeque::new() }
     }
 
     /// Begins new transaction
@@ -42,35 +33,28 @@ impl TransactionManager {
                  last_applied: LogIndex,
                  follower_state_min: Option<LogIndex>)
                  -> Result<(), TransactionError> {
-        assert!(!self.is_active);
+        scoped_debug!("TRANSACTION BEGINS");
 
-        if !self.is_active {
-            scoped_debug!("TRANSACTION BEGINS");
+        let snapshot = Snapshot {
+            commit_index,
+            last_applied,
+            follower_state_min,
+        };
 
-            self.session = Some(session);
-            self.is_active = true;
+        let transaction = Transaction::new(session, snapshot);
 
-            let snapshot = Snapshot {
-                commit_index,
-                last_applied,
-                follower_state_min,
-            };
+        self.transactions.push_back(transaction);
 
-            self.snapshot = Some(snapshot);
-
-            Ok(())
-        } else {
-            Err(TransactionError::AlreadyActive)
-        }
+        Ok(())
     }
 
     /// Reverts all messages which has been applied during transaction
     pub fn rollback(&mut self) -> Result<(LogIndex, LogIndex, Option<LogIndex>), TransactionError> {
-        let snapshot = self.snapshot.clone();
-
-        if self.is_active {
-            let snapshot = snapshot
-                .ok_or(TransactionError::Other("Snapshot is None".to_owned()))?;
+        if self.is_active() {
+            let snapshot = self.transactions
+                .back()
+                .ok_or(TransactionError::NotActive)?
+                .get_snapshot();
 
             let commit_index = snapshot.commit_index;
             let last_applied = snapshot.last_applied;
@@ -86,13 +70,11 @@ impl TransactionManager {
 
     /// Resets all values of the TransactionManager for the next transaction
     pub fn commit(&mut self) -> Result<(), TransactionError> {
-        if self.is_active {
-            scoped_debug!("TRANSACTION FINISHED! {} messages received", self.counter);
+        if self.is_active() {
+            scoped_debug!("TRANSACTION FINISHED! {} messages received",
+                          self.get_counter());
 
-            self.session = None;
-            self.counter = 0;
-            self.is_active = false;
-            self.snapshot = None;
+            self.transactions.pop_back();
 
             Ok(())
         } else {
@@ -104,7 +86,7 @@ impl TransactionManager {
     pub fn broadcast_begin(&mut self, lid: LogId, actions: &mut Actions) {
         scoped_debug!("BROADCAST TRANSACTION BEGINS");
         let message = messages::transaction_begin(lid,
-                                                  self.session
+                                                  self.get_current_session()
                                                       .expect("Cannot start transaction when no \
                                                                TransactionId has been set"));
         actions.peer_messages_broadcast.push(message);
@@ -114,7 +96,7 @@ impl TransactionManager {
     pub fn broadcast_end(&self, lid: LogId, actions: &mut Actions) {
         scoped_debug!("BROADCAST TRANSACTION ENDS");
         let message = messages::transaction_commit(lid,
-                                                   self.session
+                                                   self.get_current_session()
                                                        .expect("Cannot end transaction when \
                                                                 no TransactionId has been set"));
         actions.peer_messages_broadcast.push(message);
@@ -125,11 +107,15 @@ impl TransactionManager {
     pub fn broadcast_rollback(&self, lid: LogId, actions: &mut Actions) {
         scoped_debug!("BROADCAST TRANSACTION ROLLBACK");
         let message = messages::transaction_rollback(lid,
-                                                     self.session
+                                                     self.get_current_session()
                                                          .expect("Cannot rollback transaction \
                                                                   when no TransactionId has \
                                                                   been set"));
         actions.peer_messages_broadcast.push(message);
+    }
+
+    pub fn get_current_session(&self) -> Option<TransactionId> {
+        self.transactions.back().map(|x| x.get_session())
     }
 
     /// Compares the current TransactionId with the given one. If `true`, it is the same
@@ -137,21 +123,31 @@ impl TransactionManager {
     /// # Arguments
     /// * `session` - The TransactionId which will be compared with
     pub fn compare(&self, session: TransactionId) -> bool {
-        self.session.expect("No TransactionId has been set") == session
-    }
-
-    /// Returns whether the a transaction is running
-    pub fn get(&self) -> bool {
-        self.is_active
+        match self.transactions.back() {
+            Some(t) => t.compare_session(session),
+            None => true,
+        }
     }
 
     /// Returns how many messages has been applied
     pub fn get_counter(&self) -> usize {
-        self.counter
+        match self.transactions.back() {
+            Some(t) => t.get_counter(),
+            None => 0,
+        }
     }
 
     /// Counts up the message counter
-    pub fn count_up(&mut self) {
-        self.counter += 1;
+    pub fn count_up(&mut self) -> Result<(), TransactionError> {
+        self.transactions
+            .back_mut()
+            .ok_or(TransactionError::NotActive)?
+            .count_up();
+
+        Ok(())
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.transactions.back().is_some()
     }
 }

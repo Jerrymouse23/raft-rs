@@ -55,7 +55,7 @@ impl<L, M> LogManager<L, M>
 
     // TODO rename to `is_active_transaction`
     pub fn active_transaction(&self, logid: &LogId) -> bool {
-        self.consensus[logid].transaction.is_active
+        self.consensus[logid].transaction.is_active()
     }
 
     pub fn init(&self) -> Actions {

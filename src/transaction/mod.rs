@@ -2,8 +2,10 @@ use std::fmt;
 
 pub mod manager;
 mod snapshot;
+mod transaction;
 
 pub use transaction::manager::TransactionManager;
+pub use transaction::transaction::Transaction;
 
 #[derive(Debug,Clone)]
 pub enum TransactionError {
