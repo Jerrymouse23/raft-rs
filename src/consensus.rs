@@ -34,7 +34,7 @@ use mio::Timeout as TimeoutHandle;
 
 use std::sync::{Arc, RwLock};
 
-use transaction;
+use transaction::{self, TransactionError};
 
 #[derive(Copy, Clone, Debug)]
 pub struct TimeoutConfiguration {
@@ -199,7 +199,7 @@ impl<L, M> Consensus<L, M>
         }
     }
 
-    /// Returns the consenus peers.
+    /// Returns the consensus peers.
     pub fn peers(&self) -> &HashMap<ServerId, SocketAddr> {
         &self.peers
     }
@@ -207,21 +207,38 @@ impl<L, M> Consensus<L, M>
     /// If a transaction is inactive, method processes client messages
     pub fn handle_queue(&mut self,
                         requests_in_queue: &mut Vec<(ClientId, Builder<HeapAllocator>)>,
-                        actions: &mut Actions)
-                        -> Result<(), ()> {
-        if !self.transaction.is_active() {
-            for (client, builder) in requests_in_queue.pop() {
-                self.apply_client_message(client,
-                                          &Self::into_reader(&builder)
-                                               .get_root::<client_request::Reader>()
-                                               .unwrap(),
-                                          actions);
-            }
+                        actions: &mut Actions) {
 
-            Ok(())
-        } else {
-            Ok(())
+    match self.handle_parent_transaction_queue(actions) {
+        Err(TransactionError::Other(ref error)) => panic!("{}", error),
+        Err(_) => return,
+        Ok(()) => {
+                for (client, builder) in requests_in_queue.pop() {
+                    self.apply_client_message(client,
+                                              &Self::into_reader(&builder)
+                                                   .get_root::<client_request::Reader>()
+                                                   .unwrap(),
+                                              actions);
+                }
         }
+    }
+    }
+
+    fn handle_parent_transaction_queue(&mut self, actions: &mut Actions) -> Result<(), TransactionError> {
+        for (ref client, ref builder) in
+            try!(self.transaction
+                .get_current_transaction()
+                .ok_or(TransactionError::NotActive))
+                .requests_in_queue
+                .pop() {
+            self.apply_client_message(*client,
+                                      &Self::into_reader(&builder)
+                                           .get_root::<client_request::Reader>()
+                                           .unwrap(),
+                                      actions);
+        }
+
+        Ok(())
     }
 
     /// Applies a peer message to the consensus state machine.
@@ -297,7 +314,15 @@ impl<L, M> Consensus<L, M>
 
                         self.transaction.count_up();
                     } else {
-                        self.proposal_request(from, request, actions)
+                        if self.transaction.does_belong_to_parent(session) {
+                            let entry = request.get_entry().unwrap();
+
+                            let message = messages::proposal_request(session, entry, self.lid);
+
+                            self.transaction.belongs_to_parent(session, from, message);
+                        } else {
+                            self.proposal_request(from, request, actions)
+                        }
                     }
 
                 } else {

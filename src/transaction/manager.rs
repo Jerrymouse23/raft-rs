@@ -3,15 +3,17 @@ use messages;
 use LogIndex;
 use LogId;
 use TransactionId;
+use ClientId;
 
 use transaction::Transaction;
 use transaction::TransactionError;
 use transaction::snapshot::Snapshot;
+use capnp::message::{Builder, Allocator, HeapAllocator, Reader, ReaderOptions};
 
 use std::collections::VecDeque;
 
 pub struct TransactionManager {
-    transactions: VecDeque<Transaction>,
+    pub transactions: VecDeque<Transaction>,
 }
 
 impl TransactionManager {
@@ -150,4 +152,112 @@ impl TransactionManager {
     pub fn is_active(&self) -> bool {
         self.transactions.back().is_some()
     }
+
+    pub fn does_belong_to_parent(&self, session: TransactionId) -> bool {
+        self.transactions
+            .iter()
+            .find(|x| x.compare_session(session))
+            .is_some()
+    }
+
+    pub fn belongs_to_parent(&mut self,
+                             session: TransactionId,
+                             from: ClientId,
+                             message: Builder<HeapAllocator>) {
+        let transaction = match self.transactions
+                  .iter_mut()
+                  .find(|x| x.compare_session(session)) {
+            Some(t) => t,
+            None => return,
+        };
+
+        transaction.requests_in_queue.push((from, message));
+    }
+
+    pub fn get_current_transaction(&mut self) -> Option<&mut Transaction> {
+        self.transactions.back_mut()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use consensus::Actions;
+    use TransactionId;
+    use LogIndex;
+
+    #[test]
+    fn test_simple_transaction() {
+        let mut t = TransactionManager::new();
+        let actions = Actions::new();
+
+        let tid = TransactionId::new();
+        t.begin(tid, LogIndex(0), LogIndex(0), Some(LogIndex(0)));
+
+        assert_eq!(t.get_current_session().unwrap(), tid);
+    }
+
+    #[test]
+    fn test_nested_transaction_sessions() {
+        let mut t = TransactionManager::new();
+        let actions = Actions::new();
+
+        let tid = TransactionId::new();
+        t.begin(tid, LogIndex(0), LogIndex(0), Some(LogIndex(0)));
+
+        assert_eq!(t.get_current_session().unwrap(), tid);
+
+        let tid2 = TransactionId::new();
+
+        t.begin(tid2, LogIndex(1), LogIndex(1), Some(LogIndex(1)));
+
+        assert_eq!(t.get_current_session().unwrap(), tid2);
+
+        t.commit().unwrap();
+
+        assert_eq!(t.get_current_session().unwrap(), tid);
+    }
+
+    #[test]
+    fn test_nested_transaction_rollback() {
+        let mut t = TransactionManager::new();
+        let actions = Actions::new();
+
+        let tid = TransactionId::new();
+
+        t.begin(tid, LogIndex(0), LogIndex(0), Some(LogIndex(0)));
+
+        assert_eq!(t.get_current_session().unwrap(), tid);
+
+        let tid2 = TransactionId::new();
+
+        t.begin(tid2, LogIndex(10), LogIndex(10), Some(LogIndex(10)));
+
+        let (commit_index, last_applied, follower_state_min) = t.rollback().unwrap();
+
+        assert_eq!(commit_index, LogIndex(10));
+        assert_eq!(last_applied, LogIndex(10));
+        assert_eq!(follower_state_min, Some(LogIndex(10)));
+
+        t.commit().unwrap();
+
+        assert_eq!(t.transactions.len(), 0);
+    }
+
+    #[test]
+    fn test_nested_transaction_ownership() {
+        let mut t = TransactionManager::new();
+        let actions = Actions::new();
+
+        let tid = TransactionId::new();
+
+        t.begin(tid, LogIndex(0), LogIndex(0), Some(LogIndex(0)));
+
+        let tid2 = TransactionId::new();
+
+        t.begin(tid2, LogIndex(10), LogIndex(10), Some(LogIndex(10)));
+
+        assert!(t.does_belong_to_parent(tid2));
+    }
+
 }

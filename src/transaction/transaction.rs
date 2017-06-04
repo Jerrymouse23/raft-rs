@@ -1,5 +1,7 @@
 use transaction::snapshot::Snapshot;
 use TransactionId;
+use ClientId;
+use capnp::message::{Builder, Allocator, HeapAllocator, Reader, ReaderOptions};
 
 pub struct Transaction {
     snapshot: Snapshot,
@@ -7,6 +9,7 @@ pub struct Transaction {
     session: TransactionId,
     /// The amount of the messages which has been applied during transaction
     counter: usize,
+    pub requests_in_queue: Vec<(ClientId, Builder<HeapAllocator>)>,
 }
 
 impl Transaction {
@@ -15,6 +18,7 @@ impl Transaction {
             snapshot,
             session,
             counter: 0,
+            requests_in_queue: Vec::new(),
         }
     }
 
