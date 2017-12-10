@@ -75,11 +75,13 @@ pub fn server_add(id: ServerId,
 // AppendEntries
 
 pub fn append_entries_request(term: Term,
-                              prev_log_index: LogIndex,
-                              prev_log_term: Term,
-                              entries: &[(Term, &[u8])],
+                              // prev_log_index: LogIndex,
+                              // prev_log_term: Term,
+                              entries: &[&[u8]],
                               leader_commit: LogIndex,
-                              lid: &LogId)
+                              backup_pre_req_sigs: &[(ServerId, &[u8])],
+                              backup_req_sigs: &[(ServerId, &[u8])],
+							  lid: &LogId)
                               -> Rc<Builder<HeapAllocator>> {
     let bytes = &lid.as_bytes();
 
@@ -91,22 +93,42 @@ pub fn append_entries_request(term: Term,
         request.set_log_id(bytes);
         let mut request = request.init_append_entries_request();
         request.set_term(term.as_u64());
-        request.set_prev_log_index(prev_log_index.as_u64());
-        request.set_prev_log_term(prev_log_term.as_u64());
+        // request.set_prev_log_index(prev_log_index.as_u64());
+        // request.set_prev_log_term(prev_log_term.as_u64());
         request.set_leader_commit(leader_commit.as_u64());
 
         let mut entry_list = request.init_entries(entries.len() as u32);
         for (n, entry) in entries.iter().enumerate() {
-            let mut slot = entry_list.borrow().get(n as u32);
-            slot.set_term(entry.0.into());
-            slot.set_data(entry.1);
+            // let mut slot = entry_list.borrow().get(n as u32);
+            // slot.set_term(entry.0.into());
+            // slot.set_data(entry.1);
+            // slot.set_data(entry);
+            entry_list.set(n as u32, entry);
+        }
+
+        let mut backup_pre_req_sigs_list = request.init_backup_pre_req_sigs(backup_pre_req_sigs.len() as u32);
+        for (n, backup_pre_req_sig) in backup_pre_req_sigs.iter().enumerate() {
+            let mut slot = backup_pre_req_sigs_list.borrow().get(n as u32);
+            slot.set_server_id(backup_pre_req_sig.0.into());
+            slot.set_data(backup_pre_req_sig.1);
+            // backup_pre_req_sigs_list.set(n as u32, backup_pre_req_sig);
+        }
+
+        let mut backup_req_sigs_list = request.init_backup_req_sigs(backup_req_sigs.len() as u32);
+        for (n, backup_req_sig) in backup_req_sigs.iter().enumerate() {
+            let mut slot = backup_req_sigs_list.borrow().get(n as u32);
+            slot.set_server_id(backup_req_sig.0.into());
+            slot.set_data(backup_req_sig.1);
+            // backup_req_sigs_list.set(n as u32, backup_req_sig);
         }
     }
     Rc::new(message)
 }
 
 pub fn append_entries_response_success(term: Term,
+                                       node_num: u64,
                                        log_index: LogIndex,
+                                       append_sig: (ServerId, &[u8]),
                                        lid: &LogId)
                                        -> Rc<Builder<HeapAllocator>> {
     let bytes = &lid.as_bytes();
@@ -119,11 +141,17 @@ pub fn append_entries_response_success(term: Term,
         response.set_log_id(bytes);
         let mut response = response.init_append_entries_response();
         response.set_term(term.as_u64());
-        response.set_success(log_index.as_u64());
+        response.set_node_num(node_num);
+        // response.set_success(log_index.as_u64());
+        response.set_log_index(log_index.as_u64());
+        let mut sig = response.init_append_sig();
+        sig.set_server_id(append_sig.0.into());
+        sig.set_data(append_sig.1);
     }
     Rc::new(message)
 }
 
+/*
 pub fn append_entries_response_stale_term(term: Term, lid: &LogId) -> Rc<Builder<HeapAllocator>> {
     let mut message = Builder::new_default();
     {
@@ -162,6 +190,74 @@ pub fn append_entries_response_internal_error(term: Term,
         let mut response = response.init_append_entries_response();
         response.set_term(term.as_u64());
         response.set_internal_error(error);
+    }
+    Rc::new(message)
+}
+*/
+
+// PreAppendEntries
+
+/*
+PreAppendEntriesRequest
+term @0 :UInt64;
+logIndex @1 :UInt64;
+entriesHash @2 :List(Data);
+*/
+pub fn pre_append_entries_request(term: Term,
+                                  log_index: LogIndex,
+                                  entries_hash: &[&[u8]],
+							      lid: &LogId)
+                                  -> Rc<Builder<HeapAllocator>> {
+    let bytes = &lid.as_bytes();
+
+    assert!(bytes.len() > 0);
+
+    let mut message = Builder::new_default();
+    {
+        let mut request = message.init_root::<message::Builder>();
+        request.set_log_id(bytes);
+        let mut request = request.init_pre_append_entries_request();
+        request.set_term(term.as_u64());
+        request.set_log_index(log_index.as_u64());
+
+        let mut entries_hash_list = request.init_entries_hash(entries_hash.len() as u32);
+        for (n, entry_hash) in entries_hash.iter().enumerate() {
+            entries_hash_list.set(n as u32, entry_hash);
+        }
+    }
+    Rc::new(message)
+}
+
+/*
+struct PreAppendEntriesResponse {
+  term @0 :UInt64;
+  nodeNum @1 :UInt64;
+  logIndex @2 :UInt64;
+  entriesSig @3 :Data;
+}
+*/
+pub fn pre_append_entries_response_success(term: Term,
+                                           node_num: u64,
+                                           log_index: LogIndex,
+                                           entries_sig: (ServerId, &[u8]),
+                                           lid: &LogId)
+                                           -> Rc<Builder<HeapAllocator>> {
+    let bytes = &lid.as_bytes();
+
+    assert!(bytes.len() > 0);
+
+    let mut message = Builder::new_default();
+    {
+        let mut response = message.init_root::<message::Builder>();
+        response.set_log_id(bytes);
+        let mut response = response.init_pre_append_entries_response();
+        response.set_term(term.as_u64());
+        response.set_node_num(node_num);
+        // response.set_success(log_index.as_u64());
+        response.set_log_index(log_index.as_u64());
+        let mut sig = response.init_entries_sig();
+        sig.set_server_id(entries_sig.0.into());
+        sig.set_data(entries_sig.1);
     }
     Rc::new(message)
 }

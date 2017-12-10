@@ -23,6 +23,13 @@ use Error;
 use transaction;
 use auth::credentials::Credentials;
 
+use rand::Rng;
+use rand::os::OsRng;
+use sha2::Sha512;
+use ed25519_dalek::Keypair;
+use ed25519_dalek::PublicKey;
+use ed25519_dalek::Signature;
+
 /// The representation of a Client connection to the cluster.
 pub struct Client<C>
     where C: Credentials
@@ -38,6 +45,9 @@ pub struct Client<C>
     credentials: C,
     /// The LogId for the messages for the connection
     lid: LogId,
+    /// The ed25519_dalek digital signature keypair
+    keypair: Keypair,
+    pub_keys: Vec<PublicKey>,
 }
 
 impl<C> Client<C>
@@ -48,6 +58,8 @@ impl<C> Client<C>
 
         // let hashed_password = Auth::generate(&password);
         // let hashed_password = A::generate(&password);
+        let mut cspring: OsRng = OsRng::new().unwrap();
+        let keypair: Keypair = Keypair::generate::<Sha512>(&mut cspring);
 
         Client {
             id: ClientId::new(),
@@ -55,8 +67,14 @@ impl<C> Client<C>
             cluster: cluster,
             credentials: credentials,
             lid: lid,
+            keypair: keypair,
+            pub_keys: Vec::new(),
         }
     }
+
+	// pub fn add_pubs(&mut self, &pubkeys: Vec<PublicKey>){
+	// 	self.pub_keys = pubkeys.clone()
+	// }
 
     /// Proposes an entry to be appended to the replicated log. This will only
     /// return once the entry has been durably committed.
@@ -105,6 +123,10 @@ impl<C> Client<C>
         let mut message = messages::client_transaction_rollback(self.lid, session);
         self.send_message(&mut message)
     }
+    // fn send_signed_message(&mut self, message: &mut Builder<A>) ->Result<Vec<u8>>
+    //     where A: Allocator
+    // {
+    // }
 
     fn send_message<A>(&mut self, message: &mut Builder<A>) -> Result<Vec<u8>>
         where A: Allocator

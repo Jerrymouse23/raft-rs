@@ -96,7 +96,10 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
-
+#[macro_use]
+// extern crate rand;
+extern crate sha2;
+extern crate ed25519_dalek;
 
 /// Prepares the environment testing. Should be called as the first line of every test with the
 /// name of the test as the only argument.

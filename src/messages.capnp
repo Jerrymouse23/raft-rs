@@ -56,15 +56,22 @@ struct Client{
 struct Entry {
     # A log entry.
 
-    term @0 :UInt64;
-    # The term of the entry.
+    data @0 :Data;
+    # The user-defined data of the entry.
+}
+
+struct Sig {
+    # A digital signature.
+
+    serverId @0 :UInt64;
 
     data @1 :Data;
-    # The user-defined data of the entry.
 }
 
 struct Message {
     logId @7 :Data;
+
+		signature @8 :Data;
 
     union {
         appendEntriesRequest @0 :AppendEntriesRequest;
@@ -74,6 +81,8 @@ struct Message {
         transactionBegin @4 :TransactionBegin;
         transactionCommit @5 :TransactionCommit;
         transactionRollback @6 :TransactionRollback;
+				preAppendEntriesRequest @9 :PreAppendEntriesRequest;
+				preAppendEntriesResponse @10 :PreAppendEntriesResponse;
     }
 }
 
@@ -94,42 +103,70 @@ struct AppendEntriesRequest {
   term @0 :UInt64;
   # The leader's term.
 
-  prevLogIndex @1 :UInt64;
+  # prevLogIndex @1 :UInt64;
   # Index of log entry immediately preceding new ones.
 
-  prevLogTerm @2 :UInt64;
+  # prevLogTerm @2 :UInt64;
   # Term of prevLogIndex entry.
 
-  entries @3 :List(Entry);
+  entries @1 :List(Data);
   # Log entries to store (empty for heartbeat; may send more than one for
   # efficiency).
 
-  leaderCommit @4 :UInt64;
+  leaderCommit @2 :UInt64;
   # The Leader’s commit log index.
-}
 
+  backupPreReqSigs @3 : List(Sig);
+
+  backupReqSigs @4: List(Sig);
+
+}
 struct AppendEntriesResponse {
 
   term @0 :UInt64;
   # The responder's current term.
 
-  union {
-    success @1 :UInt64;
-    # The `AppendEntries` request was a success. The responder's latest log
-    # index is returned.
+  nodeNum @1 :UInt64;
+  # The node that is responding
 
-    staleTerm @2 :Void;
-    # The `AppendEntries` request failed because the follower has a greater term
-    # than the leader.
+  logIndex @2 :UInt64;
+  # Index of log entry immediately preceding new ones.
 
-    inconsistentPrevEntry @3 :UInt64;
-    # The `AppendEntries` request failed because the follower failed the
-    # previous entry term and index checks. Includes the index of the
-    # inconsistent entry.
+  appendSig @3 :Sig;
+  # Log entries to store (empty for heartbeat; may send more than one for
+  # efficiency).
 
-    internalError @4 :Text;
-    # an internal error occured; a description is included.
-  }
+  # CommitSig @3 :Sig;
+}
+
+struct PreAppendEntriesRequest {
+
+  term @0 :UInt64;
+  # The leader's term.
+
+  logIndex @1 :UInt64;
+  # Index of log entry immediately preceding new ones.
+
+  entriesHash @2 :List(Data);
+  # Log entries to store (empty for heartbeat; may send more than one for
+  # efficiency).
+}
+
+struct PreAppendEntriesResponse {
+
+  term @0 :UInt64;
+  # The responder's current term.
+
+  nodeNum @1 :UInt64;
+  # The node that is responding
+
+  logIndex @2 :UInt64;
+  # Index of log entry immediately preceding new ones.
+
+  entriesSig @3 :Sig;
+  # Log entries to store (empty for heartbeat; may send more than one for
+  # efficiency).
+
 }
 
 struct RequestVoteRequest {
@@ -187,7 +224,7 @@ struct AddPeerResponse{
 
 struct ClientRequest {
   logId @6 :Data;
-  
+
   union {
     ping @0 :PingRequest;
     proposal @1 :ProposalRequest;

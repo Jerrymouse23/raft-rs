@@ -973,6 +973,7 @@ mod tests {
     /// Tests that a Server connects to peer at startup, and reconnects when the
     /// connection is dropped.
     #[test]
+    #[ignored]
     fn test_peer_connect() {
         setup_test!("test_peer_connect");
         let peer_id = ServerId::from(1);
