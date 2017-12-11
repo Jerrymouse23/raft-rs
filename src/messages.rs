@@ -126,7 +126,7 @@ pub fn append_entries_request(term: Term,
 }
 
 pub fn append_entries_response_success(term: Term,
-                                       node_num: u64,
+                                       node_num: ServerId,
                                        log_index: LogIndex,
                                        append_sig: (ServerId, &[u8]),
                                        lid: &LogId)
@@ -141,7 +141,7 @@ pub fn append_entries_response_success(term: Term,
         response.set_log_id(bytes);
         let mut response = response.init_append_entries_response();
         response.set_term(term.as_u64());
-        response.set_node_num(node_num);
+        response.set_node_num(node_num.into());
         // response.set_success(log_index.as_u64());
         response.set_log_index(log_index.as_u64());
         let mut sig = response.init_append_sig();
@@ -197,15 +197,9 @@ pub fn append_entries_response_internal_error(term: Term,
 
 // PreAppendEntries
 
-/*
-PreAppendEntriesRequest
-term @0 :UInt64;
-logIndex @1 :UInt64;
-entriesHash @2 :List(Data);
-*/
 pub fn pre_append_entries_request(term: Term,
                                   log_index: LogIndex,
-                                  entries_hash: &[&[u8]],
+                                  entries_hash: &[u8],
 							      lid: &LogId)
                                   -> Rc<Builder<HeapAllocator>> {
     let bytes = &lid.as_bytes();
@@ -219,25 +213,18 @@ pub fn pre_append_entries_request(term: Term,
         let mut request = request.init_pre_append_entries_request();
         request.set_term(term.as_u64());
         request.set_log_index(log_index.as_u64());
+        request.set_entries_hash(entries_hash);
 
-        let mut entries_hash_list = request.init_entries_hash(entries_hash.len() as u32);
-        for (n, entry_hash) in entries_hash.iter().enumerate() {
-            entries_hash_list.set(n as u32, entry_hash);
-        }
+        // let mut entries_hash_list = request.init_entries_hash(entries_hash.len() as u32);
+        // for (n, entry_hash) in entries_hash.iter().enumerate() {
+        //     entries_hash_list.set(n as u32, entry_hash);
+        // }
     }
     Rc::new(message)
 }
 
-/*
-struct PreAppendEntriesResponse {
-  term @0 :UInt64;
-  nodeNum @1 :UInt64;
-  logIndex @2 :UInt64;
-  entriesSig @3 :Data;
-}
-*/
 pub fn pre_append_entries_response_success(term: Term,
-                                           node_num: u64,
+                                           node_num: ServerId,
                                            log_index: LogIndex,
                                            entries_sig: (ServerId, &[u8]),
                                            lid: &LogId)
@@ -252,7 +239,7 @@ pub fn pre_append_entries_response_success(term: Term,
         response.set_log_id(bytes);
         let mut response = response.init_pre_append_entries_response();
         response.set_term(term.as_u64());
-        response.set_node_num(node_num);
+        response.set_node_num(node_num.into());
         // response.set_success(log_index.as_u64());
         response.set_log_index(log_index.as_u64());
         let mut sig = response.init_entries_sig();

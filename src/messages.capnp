@@ -147,8 +147,8 @@ struct PreAppendEntriesRequest {
   logIndex @1 :UInt64;
   # Index of log entry immediately preceding new ones.
 
-  entriesHash @2 :List(Data);
-  # Log entries to store (empty for heartbeat; may send more than one for
+  entriesHash @2 :Data;
+  # Hash of all log entries, to store (empty for heartbeat; may send more than one for
   # efficiency).
 }
 
