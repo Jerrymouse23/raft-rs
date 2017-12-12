@@ -116,9 +116,13 @@ struct AppendEntriesRequest {
   leaderCommit @2 :UInt64;
   # The Leader’s commit log index.
 
-  backupPreReqSigs @3 : List(Sig);
+  backupPreReqSigs @3 :List(Sig);
 
-  backupReqSigs @4: List(Sig);
+  backupReqSigs @4 :List(Sig);
+
+  backupPreReq @5 :Data;
+
+  backupReq @6 :Data;
 
 }
 struct AppendEntriesResponse {

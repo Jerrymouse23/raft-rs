@@ -37,6 +37,15 @@ use std::sync::{Arc, RwLock};
 
 use transaction::{self, TransactionError};
 
+// use rand::Rng;
+use rand::os::OsRng;
+use sha2::Sha512;
+use ed25519_dalek::Keypair;
+use ed25519_dalek::PublicKey;
+use ed25519_dalek::Signature;
+
+use serde_json::{Value, Error};
+
 #[derive(Copy, Clone, Debug)]
 pub struct TimeoutConfiguration {
     pub election_timeout_min: u64,
@@ -170,6 +179,10 @@ pub struct Consensus<L, M> {
     lid: LogId,
     /// Currently registered consensus timeouts.
     pub consensus_timeouts: HashMap<ConsensusTimeout, TimeoutHandle>,
+
+    /// The ed25519_dalek digital signature keypair
+    keypair: Keypair,
+    pub_keys: Vec<PublicKey>,
 }
 
 impl<L, M> Consensus<L, M>
@@ -181,7 +194,8 @@ impl<L, M> Consensus<L, M>
                lid: LogId,
                peers: HashMap<ServerId, SocketAddr>,
                log: L,
-               state_machine: M)
+               state_machine: M,
+               keypair: Keypair)
                -> Consensus<L, M> {
         let leader_state = LeaderState::new(log.latest_log_index().unwrap(),
                                             &peers.keys().cloned().collect());
@@ -200,8 +214,14 @@ impl<L, M> Consensus<L, M>
             transaction: TransactionManager::new(),
             lid: lid,
             consensus_timeouts: HashMap::new(),
+            keypair: keypair,
+            pub_keys: Vec::New(),
         }
     }
+
+    pub fn set_pub_keys(&mut self, &pubkeys: Vec<PublicKey>){
+		self.pub_keys = pubkeys.clone()
+	}
 
     /// Returns the consensus peers.
     pub fn peers(&self) -> &HashMap<ServerId, SocketAddr> {
@@ -550,9 +570,15 @@ impl<L, M> Consensus<L, M>
                             panic!("PreAppendEntriesRequest: no entries_hash")
                         }
 
-                        // TODO sign message
-                        let sig = signit();
-                        let entries_sig = (self.id, sig);
+                        // Sign
+                        let message: &[u8] = format!("{}{}{}", self.current_term(),
+                                                               self.id.into(),
+                                                               self.log.latest_log_index()
+                                                                       .unwrap())
+                                                                       .as_bytes();
+                        let sig: Signature = self.keypair.sign::<Sha512>(message);
+                        let sigwrap = serde_json::to_string(&sig).unwrap();
+                        let entries_sig = (self.id, sigwrap);
                         messages::pre_append_entries_response_success(self.current_term(),
                                                                       self.id,
                                                                       self.log
@@ -620,6 +646,40 @@ impl<L, M> Consensus<L, M>
                               actions: &mut Actions) {
         scoped_trace!("AppendEntriesRequest from peer {}", &from);
 
+        // Verify all signatures listed in the message
+
+        // Verify signed PreAppend messages
+        if let Ok(backup_pre_req_sigs_list) = request.get_backup_pre_req_sigs() {
+            for sig_entry in backup_pre_req_sigs_list.iter() {
+                let pub_key = self.pub_keys[sig_entry.get_server_id() as usize];
+                let sig_obj: Signature = serde_json::from_str(&sig_entry.get_data()).unwrap();
+                let Ok(backup_pre_req) = request.get_backup_pre_req();
+                let verified: bool = pub_key.verify::<Sha512>(backup_pre_req, &sig_obj);
+                if !verified {
+                    scoped_trace!("AppendEntriesRequest from peer {}: invalid signature for PreAppend", &from);
+                    return;
+                }
+            }
+        } else {
+            scoped_trace!("AppendEntriesRequest from peer {}: empty PreAppend sig list", &from);
+        }
+
+        // Verify signed AppendEntries messages
+        if let Ok(backup_req_sigs_list) = request.get_backup_req_sigs() {
+            for sig_entry in backup_req_sigs_list.iter() {
+                let pub_key = self.pub_keys[sig_entry.get_server_id() as usize];
+                let sig_obj: Signature = serde_json::from_str(&sig_entry.get_data()).unwrap();
+                let Ok(backup_req) = request.get_backup_req();
+                let verified: bool = pub_key.verify::<Sha512>(backup_req, &sig_obj);
+                if !verified {
+                    scoped_trace!("AppendEntriesRequest from peer {}: invalid signature for Append", &from);
+                    return;
+                }
+            }
+        } else {
+            scoped_trace!("AppendEntriesRequest from peer {}: empty Append sig list", &from);
+        }
+
         let leader_term = Term(request.get_term());
         let current_term = self.current_term();
 
@@ -638,82 +698,97 @@ impl<L, M> Consensus<L, M>
                         self.follower_state.write().unwrap().set_leader(from);
                     }
 
-                    let leader_prev_log_index = LogIndex(request.get_prev_log_index());
-                    let leader_prev_log_term = Term(request.get_prev_log_term());
+                    let log_index = request.get_leader_commit().into();
+                    // let leader_prev_log_index = LogIndex(request.get_prev_log_index());
+                    // let leader_prev_log_term = Term(request.get_prev_log_term());
 
                     let latest_log_index = self.latest_log_index();
 
-                    if latest_log_index < leader_prev_log_index {
-                        // If the previous entries index was not the same we'd leave a gap! Reply failure.
-                        scoped_debug!("AppendEntriesRequest: inconsistent previous log index: \
-                                      leader: {}, local: {}",
-                                      leader_prev_log_index,
-                                      latest_log_index);
+                    if latest_log_index < log_index {
 
-                        messages::append_entries_response_inconsistent_prev_entry(
-                            self.current_term(), leader_prev_log_index,&self.lid)
-                    } else {
-                        let existing_term = if leader_prev_log_index == LogIndex::from(0) {
-                            Term::from(0)
-                        } else {
-                            self.log.entry(leader_prev_log_index).unwrap().0
-                        };
+                    // if latest_log_index < leader_prev_log_index {
+                    //     // If the previous entries index was not the same we'd leave a gap! Reply failure.
+                    //     scoped_debug!("AppendEntriesRequest: inconsistent previous log index: \
+                    //                   leader: {}, local: {}",
+                    //                   leader_prev_log_index,
+                    //                   latest_log_index);
+                    //
+                    //     messages::append_entries_response_inconsistent_prev_entry(
+                    //         self.current_term(), leader_prev_log_index,&self.lid)
+                    // } else {
+                    //     let existing_term = if leader_prev_log_index == LogIndex::from(0) {
+                    //         Term::from(0)
+                    //     } else {
+                    //         self.log.entry(leader_prev_log_index).unwrap().0
+                    //     };
+                    //
+                    //     if existing_term != leader_prev_log_term {
+                    //         scoped_debug!("AppendEntriesRequest: inconsistent previous log term: \
+                    //                       leader term: {}, local term: {}",
+                    //                       leader_prev_log_term,
+                    //                       existing_term);
+                    //         // If an existing entry conflicts with a new one (same index but different terms),
+                    //         // delete the existing entry and all that follow it
+                    //         messages::append_entries_response_inconsistent_prev_entry(self.current_term(),
+                    //             leader_prev_log_index,&self.lid)
+                    //     } else {
 
-                        if existing_term != leader_prev_log_term {
-                            scoped_debug!("AppendEntriesRequest: inconsistent previous log term: \
-                                          leader term: {}, local term: {}",
-                                          leader_prev_log_term,
-                                          existing_term);
-                            // If an existing entry conflicts with a new one (same index but different terms),
-                            // delete the existing entry and all that follow it
-                            messages::append_entries_response_inconsistent_prev_entry(self.current_term(),
-                                leader_prev_log_index,&self.lid)
-                        } else {
-                            if let Ok(entries) = request.get_entries() {
-                                let num_entries: u32 = entries.len();
-                                let new_latest_log_index = leader_prev_log_index +
-                                                           num_entries as u64;
+                        // TODO: Validate signatures
 
-                                if new_latest_log_index <
-                                   self.follower_state.read().unwrap().min_index {
-                                    // Stale entry; ignore. This guards against overwriting a
-                                    // possibly committed part of the log if messages get
-                                    // rearranged; see ktoso/akka-raft#66.
-                                    return;
-                                }
-                                scoped_debug!("AppendEntriesRequest: {} entries from leader: {}",
-                                              num_entries,
-                                              from);
+                        if let Ok(entries) = request.get_entries() {
+                            let num_entries: u32 = entries.len();
+                            let new_latest_log_index = leader_prev_log_index +
+                                                       num_entries as u64;
 
-                                let entries_vec: Vec<(Term, &[u8])> = entries
-                                    .iter()
-                                    .map(|entry| {
-                                             (Term::from(entry.get_term()),
-                                              entry.get_data().unwrap_or(b""))
-                                         })
-                                    .collect();
-
-                                self.log
-                                    .append_entries(leader_prev_log_index + 1, &entries_vec)
-                                    .unwrap();
-                                self.follower_state.write().unwrap().min_index =
-                                    new_latest_log_index;
-                                // We are matching the leader's log up to and including `new_latest_log_index`.
-                                self.commit_index =
-                                    cmp::min(LogIndex::from(request.get_leader_commit()),
-                                             new_latest_log_index);
-                                self.apply_commits();
-
-                            } else {
-                                panic!("AppendEntriesRequest: no entry list")
+                            if new_latest_log_index <
+                               self.follower_state.read().unwrap().min_index {
+                                // Stale entry; ignore. This guards against overwriting a
+                                // possibly committed part of the log if messages get
+                                // rearranged; see ktoso/akka-raft#66.
+                                return;
                             }
+                            scoped_debug!("AppendEntriesRequest: {} entries from leader: {}",
+                                          num_entries,
+                                          from);
 
-                            messages::append_entries_response_success(self.current_term(),
-                                                                      self.log
-                                                                          .latest_log_index()
-                                                                          .unwrap(),
-                                                                      &self.lid)
+                            let entries_vec: Vec<&[u8]> = entries
+                                .iter()
+                                .map(|entry| {
+                                         (Term::from(entry.get_term()),
+                                          entry.get_data().unwrap_or(b""))
+                                     })
+                                .collect();
+
+                            self.log
+                                .append_entries(leader_prev_log_index + 1, &entries_vec)
+                                .unwrap();
+                            self.follower_state.write().unwrap().min_index =
+                                new_latest_log_index;
+                            // We are matching the leader's log up to and including `new_latest_log_index`.
+                            self.commit_index =
+                                cmp::min(LogIndex::from(request.get_leader_commit()),
+                                         new_latest_log_index);
+                            self.apply_commits();
+
+                        } else {
+                            panic!("AppendEntriesRequest: no entry list")
                         }
+
+                        // Sign
+                        let message: &[u8] = format!("{}{}", self.current_term(),
+                                                               self.log.latest_log_index()
+                                                                       .unwrap())
+                                                                       .as_bytes();
+                        let sig: Signature = self.keypair.sign::<Sha512>(message);
+                        let sigwrap = serde_json::to_string(&sig).unwrap();
+                        let entries_sig = (self.id, sigwrap);
+
+                        messages::append_entries_response_success(self.current_term(),
+                                                                  self.log
+                                                                      .latest_log_index()
+                                                                      .unwrap(),
+                                                                  entries_sig,
+                                                                  &self.lid)
                     }
                 };
 
@@ -722,31 +797,35 @@ impl<L, M> Consensus<L, M>
                 actions.peer_messages.push((from, message.clone()));
             }
             ConsensusState::Candidate => {
-                // recognize the new leader, return to follower state, and apply the entries
-                scoped_info!("received AppendEntriesRequest from Consensus {{ id: {}, term: {} \
-                              }} with newer term; transitioning to Follower",
-                             from,
-                             leader_term);
-                self.transition_to_follower(leader_term, from, actions);
-                return self.append_entries_request(from, request, actions);
-            }
-            ConsensusState::Leader => {
-                if leader_term == current_term {
-                    // The single leader-per-term invariant is broken; there is a bug in the Raft
-                    // implementation.
-                    panic!("{:?}: peer leader {} with matching term {:?} detected.",
-                           self,
-                           from,
-                           current_term);
-                }
+                // TODO: Candidate needs to handle this to make leader change work
 
                 // recognize the new leader, return to follower state, and apply the entries
-                scoped_info!("received AppendEntriesRequest from Consensus {{ id: {}, term: {} \
-                              }} with newer term; transitioning to Follower",
-                             from,
-                             leader_term);
-                self.transition_to_follower(leader_term, from, actions);
-                return self.append_entries_request(from, request, actions);
+                // scoped_info!("received AppendEntriesRequest from Consensus {{ id: {}, term: {} \
+                //               }} with newer term; transitioning to Follower",
+                //              from,
+                //              leader_term);
+                // self.transition_to_follower(leader_term, from, actions);
+                // return self.append_entries_request(from, request, actions);
+            }
+            ConsensusState::Leader => {
+                // Ignore message - cannot trust incoming message
+
+                // if leader_term == current_term {
+                //     // The single leader-per-term invariant is broken; there is a bug in the Raft
+                //     // implementation.
+                //     panic!("{:?}: peer leader {} with matching term {:?} detected.",
+                //            self,
+                //            from,
+                //            current_term);
+                // }
+                //
+                // // recognize the new leader, return to follower state, and apply the entries
+                // scoped_info!("received AppendEntriesRequest from Consensus {{ id: {}, term: {} \
+                //               }} with newer term; transitioning to Follower",
+                //              from,
+                //              leader_term);
+                // self.transition_to_follower(leader_term, from, actions);
+                // return self.append_entries_request(from, request, actions);
             }
         }
     }

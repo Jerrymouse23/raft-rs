@@ -81,6 +81,8 @@ pub fn append_entries_request(term: Term,
                               leader_commit: LogIndex,
                               backup_pre_req_sigs: &[(ServerId, &[u8])],
                               backup_req_sigs: &[(ServerId, &[u8])],
+                              backup_pre_req: &[u8],
+                              backup_req: &[u8],
 							  lid: &LogId)
                               -> Rc<Builder<HeapAllocator>> {
     let bytes = &lid.as_bytes();
@@ -96,6 +98,8 @@ pub fn append_entries_request(term: Term,
         // request.set_prev_log_index(prev_log_index.as_u64());
         // request.set_prev_log_term(prev_log_term.as_u64());
         request.set_leader_commit(leader_commit.as_u64());
+        request.set_backup_pre_req(backup_pre_req);
+        request.set_backup_req(backup_req);
 
         let mut entry_list = request.init_entries(entries.len() as u32);
         for (n, entry) in entries.iter().enumerate() {
